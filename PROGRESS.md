@@ -1,6 +1,6 @@
 # Progress
 
-Current milestone: 5 (demo + page-turn realism v8: curved gutter, per-page binding)
+Current milestone: 5 (demo + page-turn realism v8: curved gutter, per-page binding) + Blender project
 Last completed task: Curved gutter (plinth + rounded right block) with each sheet bound at its own gutter point
 Current blocker: inotify watch limit blocks `npm run dev` (use `vite preview`)
 Build status: PASS (tsc + vite build)
@@ -20,6 +20,7 @@ Visual inspection: PASS (frames inspected at t=0/1.6/2.4/2.8/4.6/5.0/5.6/5.9/6.2
 - [~] Page-turn realism v6: stiffer pages via long-range bending spans 3-6 (max fold 33.7deg -> 27.3deg; smoother curl, flatter stack)
 - [~] Page-turn realism v7: hinged cover opening (2.2 s, no hop/clip) + page/cover collision (open-cover lining floor) + spine-edge settle + low spine plinth + `npm run test:cover`
 - [~] Page-turn realism v8: curved gutter (plinth + rounded right block) + per-page gutter binding + each page curves up from the gutter to its stack + gutter-aware collision floor
+- [x] Blender project (Option B): native Blender 5.3 scene generator, analytic shape-key page turn, Cycles studio, `blender/book.blend` + previews
 - [ ] Milestone 5 — Integrate page with book
 - [ ] Milestone 6 — Cover, spine, and endpapers
 - [ ] Milestone 7 — Photographic page design

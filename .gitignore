@@ -15,3 +15,7 @@ screenshots
 !.vscode/extensions.json
 .idea
 *.log
+# Blender
+blender/renders/
+blender/*.blend1
+blender/*.blend2

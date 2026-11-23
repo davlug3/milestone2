@@ -13,9 +13,18 @@ export function createBookMaterials() {
     metalness: 0.0,
   });
 
-  const coverInner = new THREE.MeshStandardMaterial({
-    color: 0xd9cbb2, // warm endpaper / inner lining
-    roughness: 0.95,
+  // Endpaper (pastedown + flyleaf). Slightly deeper than the paper so the
+  // pastedown reads as a different stock from the text block.
+  const endpaper = new THREE.MeshStandardMaterial({
+    color: 0xcdbfa4, // warm stone / oatmeal
+    roughness: 0.96,
+    metalness: 0.0,
+  });
+
+  // The crease along the hinge of a pastedown: a shade darker, low sheen.
+  const endpaperHinge = new THREE.MeshStandardMaterial({
+    color: 0xb3a488,
+    roughness: 0.94,
     metalness: 0.0,
   });
 
@@ -35,9 +44,12 @@ export function createBookMaterials() {
     color: 0x16202a, // darker spine cloth
     roughness: 0.78,
     metalness: 0.0,
+    // The spine is a thin closed shell; double-sided keeps the head/tail caps
+    // and grazing silhouettes solid.
+    side: THREE.DoubleSide,
   });
 
-  return { cover, coverInner, paper, paperEdge, spine };
+  return { cover, endpaper, endpaperHinge, paper, paperEdge, spine };
 }
 
 export type BookMaterials = ReturnType<typeof createBookMaterials>;

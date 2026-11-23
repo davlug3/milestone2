@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { BOOK_DIMENSIONS } from "../config/bookConfig";
 import { createBookMaterials } from "../book/materials";
 import { createCover } from "../book/cover";
+import { createSpineRig } from "../book/spine";
 import { addStudioLighting } from "../rendering/lighting";
 import { PaperSimulation } from "../physics/PaperSimulation";
 import { ThickSheetGeometry } from "../paper/ThickSheetGeometry";
@@ -226,12 +227,23 @@ export function startBookDemo(container: HTMLElement): () => void {
   // Curved gutter plinth: fills the gap between the covers' inner lining edges
   // with a solid whose top follows the gutter curve. Only the top 0.25 mm is
   // visible (the rest is hidden inside the cover boards). Its dip animates with
-  // the cover opening, so the gutter visibly forms as the book opens.
+  // the cover opening, so the gutter visibly forms as the book opens. The top
+  // face is endpaper stock; the sides are spine cloth, so the joint reads as
+  // cloth wrapping the case rather than a beige block under the spine.
   const plinthGeo = new THREE.BoxGeometry(2 * GUTTER_HALF, CT, H, 24, 1, 1);
   const plinthPos = plinthGeo.attributes.position;
   const plinthBase = new Float32Array(plinthPos.count);
   for (let i = 0; i < plinthBase.length; i++) plinthBase[i] = plinthPos.getY(i);
-  const plinth = new THREE.Mesh(plinthGeo, materials.coverInner);
+  // BoxGeometry material groups: +x, -x, +y, -y, +z, -z.
+  const plinthMaterials = [
+    materials.spine,
+    materials.spine,
+    materials.endpaper,
+    materials.spine,
+    materials.spine,
+    materials.spine,
+  ];
+  const plinth = new THREE.Mesh(plinthGeo, plinthMaterials);
   plinth.name = "gutter-plinth";
   plinth.position.y = CT / 2;
   plinth.castShadow = true;
@@ -263,6 +275,16 @@ export function startBookDemo(container: HTMLElement): () => void {
   coverPivot.position.set(0, closedCenterY, 0);
   coverPivot.add(frontCover);
   scene.add(coverPivot);
+
+  // Spine: a curved case strip that wraps from the back board's edge around to
+  // the front board's outer hinge corner. It rounds when the book is closed and
+  // rolls inward as the cover opens, tucking into the spine hollow. Rebuilt
+  // from the same cover pose that drives the hinge, so it never detaches.
+  const spineRig = createSpineRig(BOOK_DIMENSIONS, materials, {
+    originX: 0,
+    thickness: 0.0008,
+  });
+  scene.add(spineRig.mesh);
 
   // --- Heightfield (shared collision surface) ------------------------------
   const heightfield = new Heightfield({ width: W, height: H, nx: 110, nz: 110 });
@@ -296,12 +318,15 @@ export function startBookDemo(container: HTMLElement): () => void {
     const landY = landBase + k * landStep; // first turned lands lowest
 
     // Top of whatever is directly beneath this sheet on the right (the next
-    // sheet down, or the top static sheet). Keeps a waiting/turning page from
-    // sagging into the stack it rests on.
+    // sheet down, or the top static sheet). The pages rest `sheetVStep` apart,
+    // but `belowRestY` is the *mid-surface* of the sheet below, so clamp a
+    // shell thickness higher: otherwise a turning page can lie flush with the
+    // page underneath and z-fight (obvious once the flyleaf is tinted).
     const belowRestY = restBase + (NUM_SHEETS - 1 - (k + 1)) * sheetVStep;
+    const belowFloorY = belowRestY + 0.00025;
     const groundHeight = (x: number, z: number): number =>
       x >= blockLeftLocal
-        ? Math.max(belowRestY, heightfield.heightAt(x, z))
+        ? Math.max(belowFloorY, heightfield.heightAt(x, z))
         : heightfield.heightAt(x, z);
 
     const sim = new PaperSimulation({
@@ -353,10 +378,22 @@ export function startBookDemo(container: HTMLElement): () => void {
     controller.apply(sim.particles);
 
     const geo = new ThickSheetGeometry(cols, rows, 0.00025);
-    const material = createPaperMaterial();
+    // Sheet 0 is the front flyleaf and the last sheet is the back flyleaf: the
+    // free halves of the front/back endpapers. They are the same simulated
+    // sheets as any page, just on endpaper stock, so the first and last turns
+    // read as endpapers connecting the case to the block.
+    const isFlyleaf = k === 0 || k === NUM_TURNS - 1;
+    const material = isFlyleaf
+      ? createPaperMaterial({ color: 0xd8ccb4, roughness: 0.95 })
+      : createPaperMaterial();
     material.side = THREE.DoubleSide;
     const mesh = new THREE.Mesh(geo.geometry, material);
-    mesh.name = `turning-page-${k}`;
+    mesh.name =
+      k === 0
+        ? "front-flyleaf"
+        : k === NUM_TURNS - 1
+          ? "back-flyleaf"
+          : `turning-page-${k}`;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     mesh.position.x = W / 2; // gutter at world x=0
@@ -454,8 +491,16 @@ export function startBookDemo(container: HTMLElement): () => void {
     const pose = coverPose(u, closedCenterY, OPEN_COVER_CENTER_Y);
     coverPivot.position.y = pose.hingeY;
     coverPivot.rotation.z = pose.angle;
+    // The spine follows the hinge: rounded when closed, rolling into the
+    // hollow as the cover opens, flush when flat.
+    spineRig.update({ u, hingeY: pose.hingeY, angle: pose.angle });
     // The gutter hollow forms as the cover opens.
     updatePlinth(u);
+    // While the book is closed the joint reads as spine cloth; once the cover
+    // is up, the exposed gutter floor changes to endpaper stock. Without this
+    // the beige top of the joint peeks out beside the closed spine.
+    const plinthMats = plinth.material as THREE.Material[];
+    plinthMats[2] = u >= 0.5 ? materials.endpaper : materials.spine;
   }
   updateCover(0);
 
@@ -509,6 +554,14 @@ export function startBookDemo(container: HTMLElement): () => void {
         if (o.name === name) o.visible = visible;
       });
     },
+    /** Debug aid: place the camera for close-up validation shots. */
+    camera: (
+      position: [number, number, number],
+      lookAt: [number, number, number],
+    ) => {
+      camera.position.set(...position);
+      camera.lookAt(lookAt[0], lookAt[1], lookAt[2]);
+    },
     /** Current cover pose + the open-cover collision surface (debug aid). */
     cover: () => {
       const u = clamp01(
@@ -526,6 +579,22 @@ export function startBookDemo(container: HTMLElement): () => void {
         gutterHalf: GUTTER_HALF,
         blockInnerX: BLOCK_INNER_X,
         bindings: pages.map((_, k) => gutterBinding(gutterBindingS(k, NUM_TURNS), BOOK_DIMENSIONS)),
+      };
+    },
+    /** Current spine cross-section bounds + bulge (debug/validation aid). */
+    spine: () => {
+      const u = clamp01(
+        (time - TIMELINE.coverStart) / (TIMELINE.coverEnd - TIMELINE.coverStart),
+      );
+      const pose = coverPose(u, closedCenterY, OPEN_COVER_CENTER_Y);
+      return {
+        u,
+        ...spineRig.bounds(),
+        protrusion: spineRig.protrusion(),
+        front: {
+          x: -Math.sin(pose.angle) * CT * 0.5,
+          y: pose.hingeY + Math.cos(pose.angle) * CT * 0.5,
+        },
       };
     },
     /** Per-page particle bounds in world space (debug/validation aid). */
@@ -566,6 +635,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     window.removeEventListener("resize", onResize);
     ui.remove();
     for (const pg of pages) pg.geo.dispose();
+    spineRig.mesh.geometry.dispose();
     renderer.dispose();
   };
 }

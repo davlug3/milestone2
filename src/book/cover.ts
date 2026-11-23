@@ -34,21 +34,39 @@ export function createCover(
   board.receiveShadow = true;
   group.add(board);
 
-  // Thin inner lining on the interior face only (not visible on a closed book
-  // from the outside). Front cover's inside faces down (-Y); back cover's inside
-  // faces up (+Y) so it shows when the cover is open.
+  // Pastedown: the glued-down half of the endpaper. Warm endpaper stock,
+  // slightly inset from the board edges. Front cover's inside faces down
+  // (-Y); back cover's inside faces up (+Y) so it shows when the cover opens.
   const lining = new THREE.Mesh(
     new THREE.BoxGeometry(
       dims.width * 0.97,
       dims.coverThickness * 0.2,
       dims.height * 0.97,
     ),
-    materials.coverInner,
+    materials.endpaper,
   );
   const liningOffset = dims.coverThickness * 0.5;
-  lining.position.y = side === "front" ? -liningOffset : liningOffset;
+  const facing = side === "front" ? -1 : 1;
+  lining.position.y = facing * liningOffset;
   lining.receiveShadow = true;
   group.add(lining);
+
+  // Hinge crease: a narrow darker strip along the spine edge of the pastedown.
+  // It marks where the endpaper folds into the joint, visually joining the
+  // cover to the book block instead of leaving a bare lining panel.
+  const creaseWidth = dims.width * 0.025;
+  const creaseThickness = dims.coverThickness * 0.06;
+  const crease = new THREE.Mesh(
+    new THREE.BoxGeometry(creaseWidth, creaseThickness, dims.height * 0.92),
+    materials.endpaperHinge,
+  );
+  crease.position.set(
+    -dims.width / 2 + creaseWidth / 2,
+    lining.position.y + facing * (dims.coverThickness * 0.1 + creaseThickness * 0.5),
+    0,
+  );
+  crease.receiveShadow = true;
+  group.add(crease);
 
   return group;
 }

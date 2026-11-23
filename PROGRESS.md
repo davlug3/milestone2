@@ -1,11 +1,11 @@
 # Progress
 
-Current milestone: 5 (demo + page-turn realism v8: curved gutter, per-page binding, thicker book) + Blender project
-Last completed task: Curved gutter (plinth + rounded right block) with each sheet bound at its own gutter point
-Current blocker: inotify watch limit blocks `npm run dev` (use `vite preview`)
+Current milestone: 6 (cover, spine, endpapers) — complete
+Last completed task: Animated curved spine (tucks into the spine hollow), endpapers + tinted flyleaves, dark cloth joint at the gutter plinth
+Current blocker: none
 Build status: PASS (tsc + vite build)
-Test status: PASS (sim, page metrics stretch 1.15x dihedral 29.8deg penetration 0, 8-page stacking 0mm interpenetration, cover + curved gutter PASS, demo 0 errors)
-Visual inspection: PASS (frames inspected at t=0/1.6/2.4/2.8/4.6/5.0/5.6/5.9/6.2/8/10/30 plus gutter close-ups; curved gutter fan visible, pages bind at distinct gutter points, no clipping)
+Test status: PASS (sim, page metrics stretch 1.15x dihedral 29.7deg penetration 0, 8-page stacking 0mm interpenetration, cover + curved gutter PASS, spine PASS, demo 0 errors)
+Visual inspection: PASS (closed spine from two angles, opening at t=1.4/2.0, open gutter/left edge at t=3.0, flyleaf lift/landing at t=4.1/6.2 plus default-camera t=0/4.1/30 and the static `?test=book` scene; software WebGL 2, 1280x800 and 1024x640)
 
 ## Completed
 
@@ -22,7 +22,8 @@ Visual inspection: PASS (frames inspected at t=0/1.6/2.4/2.8/4.6/5.0/5.6/5.9/6.2
 - [~] Page-turn realism v8: curved gutter (plinth + rounded right block) + per-page gutter binding + each page curves up from the gutter to its stack + gutter-aware collision floor
 - [x] Blender project (Option B): native Blender 5.3 scene generator, analytic shape-key page turn, Cycles studio, `blender/book.blend` + previews
 - [x] Thicker book: page block 12 mm -> 22 mm (closed book ~27 mm) in Three.js and Blender; all tests pass
-- [ ] Milestone 5 — Integrate page with book
+- [x] Milestone 6 — Cover, spine, and endpapers (animated spine rig + pastedowns/crease + front/back flyleaves + cloth joint at the gutter + `npm run test:spine`)
+- [~] Milestone 5 — Integrate page with book (pages are bound to per-sheet gutter points and collide with the block/cover; kept as a living correctness item)
 - [ ] Milestone 6 — Cover, spine, and endpapers
 - [ ] Milestone 7 — Photographic page design
 - [ ] Milestone 8 — Full shot timeline and camera
@@ -31,4 +32,4 @@ Visual inspection: PASS (frames inspected at t=0/1.6/2.4/2.8/4.6/5.0/5.6/5.9/6.2
 
 ## Next task
 
-Continue Milestone 5 — Integrate page with book: bind the demo pages to the actual book binding region (reuse book block geometry), and refine the cover/spine coupling. Remaining page-turn polish: the fore-edge follows a full semicircle, so it stays high until the last ~15% of the turn and then drops quickly; a future pass could finish the horizontal sweep at ~80% progress and settle earlier. Then proceed to Milestone 6 (cover/spine/endpaper mechanics).
+Milestone 7 — Photographic page design: placeholder photographs, several page layouts, textures on both faces of the turning sheets with correct UVs through deformation, restrained margins/captions. Keep textures on the simulated sheet (no floating image planes). Defer the fore-edge timing polish (finish the horizontal sweep at ~80% and settle earlier) until after milestone 7 so page imagery is validated on the current motion.

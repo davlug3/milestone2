@@ -8,12 +8,14 @@ import * as THREE from "three";
  * light. Front/back can differ later; for now one material is used for the
  * whole thin shell.
  */
-export function createPaperMaterial(): THREE.MeshStandardMaterial {
+export function createPaperMaterial(
+  options: { color?: number; roughness?: number } = {},
+): THREE.MeshStandardMaterial {
   const grain = makeGrainTexture(256);
 
   return new THREE.MeshStandardMaterial({
-    color: 0xf4efe4,
-    roughness: 0.92,
+    color: options.color ?? 0xf4efe4,
+    roughness: options.roughness ?? 0.92,
     metalness: 0.0,
     bumpMap: grain,
     bumpScale: 0.0008,

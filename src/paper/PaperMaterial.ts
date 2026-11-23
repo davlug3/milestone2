@@ -49,6 +49,12 @@ function makeGrainTexture(size: number): THREE.DataTexture {
   const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
+  // Mipmapped trilinear filtering: a fine grain sampled with nearest filtering
+  // under minification produces strong moire bands across the page.
+  tex.generateMipmaps = true;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.anisotropy = 4;
   tex.needsUpdate = true;
   return tex;
 }

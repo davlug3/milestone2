@@ -142,10 +142,13 @@ export class ThickSheetGeometry {
         // Edge vectors.
         const e1x = p1.x - p0.x, e1y = p1.y - p0.y, e1z = p1.z - p0.z;
         const e2x = p2.x - p0.x, e2y = p2.y - p0.y, e2z = p2.z - p0.z;
-        // Face normal = e1 x e2.
-        const nx = e1y * e2z - e1z * e2y;
-        const ny = e1z * e2x - e1x * e2z;
-        const nz = e1x * e2y - e1y * e2x;
+        // Face normal = e2 x e1 (points +Y for a flat sheet in the XZ plane,
+        // i.e. the same side as the rendered front surface). Using e1 x e2
+        // would point the mid-surface normals down, flipping the shell and
+        // making shadow normalBias offset into the page (full self-shadow).
+        const nx = e2y * e1z - e2z * e1y;
+        const ny = e2z * e1x - e2x * e1z;
+        const nz = e2x * e1y - e2y * e1x;
         out[i0 * 3] += nx; out[i0 * 3 + 1] += ny; out[i0 * 3 + 2] += nz;
         out[i1 * 3] += nx; out[i1 * 3 + 1] += ny; out[i1 * 3 + 2] += nz;
         out[i2 * 3] += nx; out[i2 * 3 + 1] += ny; out[i2 * 3 + 2] += nz;

@@ -19,10 +19,10 @@ export function addStudioLighting(scene: THREE.Scene): void {
   key.shadow.camera.right = 0.5;
   key.shadow.camera.top = 0.5;
   key.shadow.camera.bottom = -0.5;
-  key.shadow.bias = -0.0005;
+  key.shadow.bias = -0.0001;
   // normalBias offsets shadow lookups along the surface normal to suppress
-  // shadow acne (the dark triangular self-shadowing on thin, curved pages).
-  key.shadow.normalBias = 0.0015;
+  // shadow acne (the dark moire self-shadowing on thin, curved pages).
+  key.shadow.normalBias = 0.002;
   scene.add(key);
 
   // Gentle fill from the opposite side.

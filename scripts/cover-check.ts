@@ -1,21 +1,22 @@
 /**
- * Cover opening + page/cover collision check (headless, no rendering).
+ * Cover opening + curved gutter + page/cover collision check (headless).
  *
  * 1. Cover kinematics
- *    - the board is hinged at the spine: closed at one end, flat on the left
- *      at the other, with a monotonic swing
- *    - the board/lining never goes below the table
- *    - the board never enters the page block's volume
+ *    - hinged at the spine: closed at one end, flat on the left at the other
+ *    - monotonic swing; never below the table; never inside the page block
  *
- * 2. Open-cover surface
- *    - the top surface is the inner lining height
- *    - points outside the board footprint fall back to the table
+ * 2. Curved gutter
+ *    - the gutter curve starts/ends at the covers' inner lining edges
+ *    - it dips to the board top in the middle
+ *    - each sheet's binding point is unique and ordered along the curve
  *
- * 3. Page landing on the cover
- *    - one page turns exactly like the demo (same right-stack height, open
- *      cover floor, spine settle) and comes to rest on the cover
- *    - no part of the page goes below the cover surface
- *    - the landed page is flat (spine and fore-edge both on the left stack)
+ * 3. Page landing
+ *    - one page turns exactly like the demo (right-stack height, open-cover
+ *      floor, curved gutter binding) and comes to rest on the cover
+ *    - its spine edge is at its own gutter binding point
+ *    - its fore-edge is at the stack height
+ *    - the sheet is curved (spine edge below the stack height)
+ *    - no part of the page goes below the book surface
  *
  * Run: npm run test:cover
  */
@@ -30,6 +31,13 @@ import {
   openCoverSurface,
   openCoverTopAt,
 } from "../src/book/coverRig";
+import {
+  LINING_INSET,
+  gutterBinding,
+  gutterBindingS,
+  gutterParticleFloorY,
+  gutterSurfaceY,
+} from "../src/book/gutterRig";
 
 const W = BOOK_DIMENSIONS.width;
 const H = BOOK_DIMENSIONS.height;
@@ -54,6 +62,12 @@ const COVER_FLOOR = OPEN_COVER.topY + PAGE_SHELL_HALF + COVER_GAP;
 const landY = COVER_FLOOR + 0.0002;
 const topSheetY = restY;
 const closedCenterY = topSheetY + 0.0005 + CT / 2;
+
+// Curved gutter (mirrors the demo).
+const GUTTER_HALF = W * LINING_INSET;
+const BLOCK_INNER_X = 0.005;
+const blockLeftLocal = BLOCK_INNER_X - W / 2;
+const BINDING = gutterBinding(0.5, BOOK_DIMENSIONS);
 
 const DUR = 2.5;
 const SETTLE = 0.5;
@@ -89,8 +103,8 @@ for (let i = 0; i <= ix; i++) {
 }
 
 const block = {
-  x0: W / 2 - (W * 0.96) / 2,
-  x1: W / 2 + (W * 0.96) / 2,
+  x0: BLOCK_INNER_X,
+  x1: W,
   y0: CT,
   y1: blockTop,
 };
@@ -141,18 +155,38 @@ if (!approx(topInside, expectedTop)) fail(`open cover top ${topInside}`);
 if (topOutsideX !== 0 || topOutsideZ !== 0) fail("cover footprint leaks outside board");
 if (!approx(OPEN_COVER.topY, expectedTop)) fail("openCoverSurface topY");
 
-// --- 3. Page landing on the cover -----------------------------------------
+// --- 3. Curved gutter ------------------------------------------------------
+const edgeY = gutterSurfaceY(-GUTTER_HALF, BOOK_DIMENSIONS, 1);
+const edgeYRight = gutterSurfaceY(GUTTER_HALF, BOOK_DIMENSIONS, 1);
+const middleY = gutterSurfaceY(0, BOOK_DIMENSIONS, 1);
+if (!approx(edgeY, expectedTop)) fail(`gutter left edge ${edgeY} != lining top`);
+if (!approx(edgeYRight, expectedTop)) fail(`gutter right edge ${edgeYRight} != lining top`);
+if (!(middleY < edgeY - 1e-6)) fail("gutter does not dip in the middle");
+
+const bindingXs: number[] = [];
+for (let k = 0; k < 8; k++) {
+  const b = gutterBinding(gutterBindingS(k, 8), BOOK_DIMENSIONS);
+  bindingXs.push(b.x);
+}
+for (let k = 1; k < bindingXs.length; k++) {
+  if (!(bindingXs[k] > bindingXs[k - 1])) fail("gutter binding x not increasing");
+}
+// The curve is symmetric, so y values repeat about the middle; uniqueness is
+// in the (x, y) pair, which the increasing-x check already guarantees.
+
+// --- 4. Page landing on the cover -----------------------------------------
 const hf = new Heightfield({ width: W, height: H, nx: 110, nz: 110 });
-hf.setBase((x, z) =>
-  x >= gutterX
-    ? blockTop
-    : openCoverTopAt(x + W / 2, z, BOOK_DIMENSIONS, OPEN_CENTER_Y) +
-      PAGE_SHELL_HALF +
-      COVER_GAP,
-);
+hf.setBase((x) => {
+  const worldX = x + W / 2;
+  if (worldX >= BLOCK_INNER_X) return blockTop;
+  if (worldX >= -GUTTER_HALF && worldX <= GUTTER_HALF) {
+    return gutterParticleFloorY(worldX, BOOK_DIMENSIONS, 1);
+  }
+  return COVER_FLOOR;
+});
 
 const groundHeight = (x: number, z: number): number =>
-  x >= gutterX
+  x >= blockLeftLocal
     ? Math.max(belowRestY, hf.heightAt(x, z))
     : hf.heightAt(x, z);
 
@@ -184,7 +218,9 @@ const controller = new PageTurnController({
   gutterX,
   restY,
   landY,
-  landSpineY: landY,
+  landSpineY: BINDING.y,
+  spineTargetX: BINDING.x - W / 2,
+  landSpineStart: 0.5,
   width: W,
   duration: DUR,
   liftScale: 0.6,
@@ -196,8 +232,8 @@ controller.seedZ(sim.particles);
 controller.setProgress(0);
 controller.apply(sim.particles);
 
-// Track cover penetration at every step, not just at the end.
-let worstBelowCover = Infinity;
+// Track book-surface penetration at every step, not just at the end.
+let worstBelowSurface = Infinity;
 const steps = Math.round((DUR + SETTLE) / DT);
 for (let s = 0; s <= steps; s++) {
   const progress = Math.min((s * DT) / DUR, 1);
@@ -205,19 +241,19 @@ for (let s = 0; s <= steps; s++) {
   controller.apply(sim.particles);
   sim.step();
   for (const p of sim.particles) {
-    // Only the part of the sheet over the open cover matters.
-    if (p.x < gutterX) {
-      const coverTop = openCoverTopAt(
-        p.x + W / 2,
-        p.z,
-        BOOK_DIMENSIONS,
-        OPEN_CENTER_Y,
-      );
-      worstBelowCover = Math.min(
-        worstBelowCover,
-        p.y - PAGE_SHELL_HALF - coverTop,
-      );
+    const worldX = p.x + W / 2;
+    let surface: number;
+    if (worldX >= BLOCK_INNER_X) {
+      surface = blockTop;
+    } else if (worldX >= -GUTTER_HALF && worldX <= GUTTER_HALF) {
+      surface = gutterSurfaceY(worldX, BOOK_DIMENSIONS, 1);
+    } else {
+      surface = OPEN_COVER.topY;
     }
+    worstBelowSurface = Math.min(
+      worstBelowSurface,
+      p.y - PAGE_SHELL_HALF - surface,
+    );
   }
 }
 
@@ -235,33 +271,42 @@ for (const p of sim.particles) {
 let foreY = 0;
 for (const i of foreEdgeIndices) foreY += sim.particles[i].y;
 foreY /= foreEdgeIndices.length;
-const spineY = sim.particles[spineIndices[0]].y;
+const spine = sim.particles[spineIndices[0]];
+const spineY = spine.y;
+const spineX = spine.x + W / 2;
 
 const spread = maxY - minY;
 
 console.log(
   `cover: lowestY=${(worstLowest * 1000).toFixed(2)}mm ` +
     `boardInBlock=${boardInBlock} topY=${(expectedTop * 1000).toFixed(2)}mm ` +
-    `floorY=${(COVER_FLOOR * 1000).toFixed(3)}mm`,
+    `gutterEdge=${(edgeY * 1000).toFixed(3)}mm gutterMid=${(middleY * 1000).toFixed(3)}mm`,
 );
 console.log(
-  `page: belowCover=${worstBelowCover === Infinity ? "none" : `${(worstBelowCover * 1000).toFixed(3)}mm`} ` +
-    `spineY=${(spineY * 1000).toFixed(3)}mm foreEdgeY=${(foreY * 1000).toFixed(3)}mm ` +
-    `spread=${(spread * 1000).toFixed(2)}mm nan=${nan}`,
+  `page: belowSurface=${worstBelowSurface === Infinity ? "none" : `${(worstBelowSurface * 1000).toFixed(3)}mm`} ` +
+    `spine=(${(spineX * 1000).toFixed(3)},${(spineY * 1000).toFixed(3)})mm ` +
+    `binding=(${(BINDING.x * 1000).toFixed(3)},${(BINDING.y * 1000).toFixed(3)})mm ` +
+    `foreEdgeY=${(foreY * 1000).toFixed(3)}mm spread=${(spread * 1000).toFixed(2)}mm nan=${nan}`,
 );
 
 if (nan) fail("NaN particle");
-if (worstBelowCover < -1e-6) {
-  fail(`page sinks into the cover by ${-worstBelowCover * 1000}mm`);
+if (worstBelowSurface < -1e-6) {
+  fail(`page sinks into the book by ${-worstBelowSurface * 1000}mm`);
 }
-if (!approx(spineY, landY, 1e-9)) {
-  fail(`spine edge did not settle to landY (${spineY} vs ${landY})`);
+if (!approx(spineX, BINDING.x, 1e-9)) {
+  fail(`spine edge x ${spineX} != binding x ${BINDING.x}`);
+}
+if (!approx(spineY, BINDING.y, 1e-9)) {
+  fail(`spine edge y ${spineY} != binding y ${BINDING.y}`);
 }
 if (!approx(foreY, landY, 1e-9)) {
   fail(`fore-edge did not settle to landY (${foreY} vs ${landY})`);
 }
+if (!(spineY < landY - 1e-4)) {
+  fail("spine edge is not below the stack height (gutter not curved)");
+}
 if (spread > 0.0015) {
-  fail(`landed page is not flat enough (spread ${spread * 1000}mm)`);
+  fail(`landed page is not smooth enough (spread ${spread * 1000}mm)`);
 }
 
-console.log("PASS: cover opens without clipping and pages rest on the cover");
+console.log("PASS: cover opens, gutter is curved, and the page rests on the cover");

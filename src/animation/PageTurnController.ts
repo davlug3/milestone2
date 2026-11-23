@@ -12,9 +12,10 @@ import { clamp01, smootherstep } from "./easing";
  * uniform roll about a single axis.
  *
  * Geometry (sheet in the XZ plane, gutter at local x = gutterX):
- *   - spine edge (x = gutterX) starts pinned at restY and, when
- *     `landSpineY` is given, descends with the sheet to the destination
- *     stack height
+ *   - spine edge (x = gutterX) starts at (gutterX, restY). When `spineTargetX`
+ *     and `landSpineY` are given, it moves to its own binding point in the
+ *     gutter and settles there as the sheet crosses, so a landed sheet curves
+ *     up from the gutter to the stack instead of being flat all the way in.
  *   - fore-edge starts at (gutterX + width, restY) on the right
  *   - fore-edge sweeps over the top and descends to landY on the left
  *     (gutterX - width, landY), where landY is the destination surface height
@@ -41,16 +42,20 @@ export interface PageTurnConfig {
   restY: number;
   /** Final fore-edge height (y) on the destination side (e.g. lower stack). */
   landY: number;
-  /**
-   * Final height (y) of the spine edge on the destination side. Defaults to
+  /** Final height (y) of the spine edge on the destination side. Defaults to
    * `restY` (spine stays at its starting height).
    */
   landSpineY?: number;
   /**
-   * Normalized progress at which the spine edge starts descending to
-   * `landSpineY`. It stays at the old stack height through the crossing so the
-   * sheet is not folded over the block edge mid-turn; it settles into the
-   * gutter only once the page is on the destination side. Default 0.7.
+   * Local x the spine edge moves to on the destination side (its own point in
+   * the curved gutter). Defaults to `gutterX` (no sideways motion).
+   */
+  spineTargetX?: number;
+  /**
+   * Normalized progress at which the spine edge starts moving to its gutter
+   * binding point. It stays at the old stack height through the crossing so
+   * the sheet is not folded over the block edge; it settles into the gutter
+   * once the page is on the destination side. Default 0.5.
    */
   landSpineStart?: number;
   /** Page width: gutter to fore-edge distance (m). Also the arc radius. */
@@ -74,7 +79,8 @@ export interface PageTurnConfig {
 export class PageTurnController {
   private readonly cfg: PageTurnConfig;
   private readonly targets: { x: number; y: number; z: number }[];
-  /** Current target Y of the pinned spine edge. */
+  /** Current target of the pinned spine edge. */
+  private spineTargetX: number;
   private spineTargetY: number;
   public guiding = true;
   public released = false;
@@ -82,6 +88,7 @@ export class PageTurnController {
   constructor(cfg: PageTurnConfig) {
     this.cfg = cfg;
     this.targets = cfg.foreEdgeIndices.map(() => ({ x: 0, y: 0, z: 0 }));
+    this.spineTargetX = cfg.gutterX;
     this.spineTargetY = cfg.restY;
     this.setProgress(0);
   }
@@ -106,14 +113,17 @@ export class PageTurnController {
     const liftScale = c.liftScale ?? 0.6;
 
     // The spine edge stays at the old stack height through the crossing, then
-    // settles onto the destination stack once the sheet is on that side. This
-    // keeps the mid-turn sheet smooth (no fold over the block edge) while still
-    // letting a landed page lie flat in the gutter.
+    // moves to its own point in the gutter once the sheet is on that side. This
+    // keeps the mid-turn sheet smooth (no fold over the block edge) while
+    // letting a landed page curve up from the gutter to its stack.
     if (c.landSpineY !== undefined) {
-      const start = c.landSpineStart ?? 0.7;
+      const start = c.landSpineStart ?? 0.5;
       const k = smootherstep(clamp01((base - start) / (1 - start)));
+      const targetX = c.spineTargetX ?? c.gutterX;
+      this.spineTargetX = c.gutterX + (targetX - c.gutterX) * k;
       this.spineTargetY = c.restY + (c.landSpineY - c.restY) * k;
     } else {
+      this.spineTargetX = c.gutterX;
       this.spineTargetY = c.restY;
     }
 
@@ -163,13 +173,14 @@ export class PageTurnController {
       p.invMass = 0;
       p.pinned = true;
     }
-    // Keep the gutter edge on the spine, but let its height settle onto the
-    // destination stack. XZ stay where they are; only Y is driven.
+    // Keep the gutter edge on its own point in the curved gutter. X and Y are
+    // driven; Z stays where the sheet's rest shape put it.
     if (this.cfg.spineIndices) {
       for (const i of this.cfg.spineIndices) {
         const p = particles[i];
+        p.x = p.px = this.spineTargetX;
         p.y = p.py = this.spineTargetY;
-        p.vy = 0;
+        p.vx = p.vy = 0;
         p.invMass = 0;
         p.pinned = true;
       }

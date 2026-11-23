@@ -1,11 +1,11 @@
 # Progress
 
-Current milestone: 5 (demo + page-turn realism v7: hinged cover, page/cover collision)
-Last completed task: Hinged front cover (no hop/clip) + pages landing on the open cover + spine settle + low spine plinth
+Current milestone: 5 (demo + page-turn realism v8: curved gutter, per-page binding)
+Last completed task: Curved gutter (plinth + rounded right block) with each sheet bound at its own gutter point
 Current blocker: inotify watch limit blocks `npm run dev` (use `vite preview`)
 Build status: PASS (tsc + vite build)
-Test status: PASS (sim, page metrics stretch 1.15x dihedral 29.8deg penetration 0, 8-page stacking 0mm interpenetration, cover kinematics + page/cover contact PASS, demo 0 errors)
-Visual inspection: PASS (frames inspected at t=0/1.2/1.6/2.0/2.4/2.8/3.2/4.6/5/5.6/5.9/6.4/8/10/26/30; hinged cover swing, pages land on the cover, clean gutter, final stack)
+Test status: PASS (sim, page metrics stretch 1.15x dihedral 29.8deg penetration 0, 8-page stacking 0mm interpenetration, cover + curved gutter PASS, demo 0 errors)
+Visual inspection: PASS (frames inspected at t=0/1.6/2.4/2.8/4.6/5.0/5.6/5.9/6.2/8/10/30 plus gutter close-ups; curved gutter fan visible, pages bind at distinct gutter points, no clipping)
 
 ## Completed
 
@@ -19,6 +19,7 @@ Visual inspection: PASS (frames inspected at t=0/1.2/1.6/2.0/2.4/2.8/3.2/4.6/5/5
 - [~] Page-turn realism v5: 15 persistent sheets, page-to-page collision (baked heightfield), shadow-acne fix (inverted shell normals), right-stack collision floor
 - [~] Page-turn realism v6: stiffer pages via long-range bending spans 3-6 (max fold 33.7deg -> 27.3deg; smoother curl, flatter stack)
 - [~] Page-turn realism v7: hinged cover opening (2.2 s, no hop/clip) + page/cover collision (open-cover lining floor) + spine-edge settle + low spine plinth + `npm run test:cover`
+- [~] Page-turn realism v8: curved gutter (plinth + rounded right block) + per-page gutter binding + each page curves up from the gutter to its stack + gutter-aware collision floor
 - [ ] Milestone 5 — Integrate page with book
 - [ ] Milestone 6 — Cover, spine, and endpapers
 - [ ] Milestone 7 — Photographic page design

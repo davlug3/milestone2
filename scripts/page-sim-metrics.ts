@@ -15,6 +15,11 @@ import { PaperSimulation } from "../src/physics/PaperSimulation";
 import { PageTurnController } from "../src/animation/PageTurnController";
 import { BOOK_DIMENSIONS } from "../src/config/bookConfig";
 import { openCoverSurface } from "../src/book/coverRig";
+import {
+  LINING_INSET,
+  gutterBinding,
+  gutterParticleFloorY,
+} from "../src/book/gutterRig";
 
 const W = Number(process.env.W ?? 0.24);
 const H = Number(process.env.H ?? 0.31);
@@ -46,12 +51,23 @@ const COVER_FLOOR = OPEN_COVER.topY + PAGE_SHELL_HALF + COVER_GAP;
 const landY = Number(process.env.LANDY ?? COVER_FLOOR + 0.0002);
 const DT = 1 / 120;
 
+// Curved gutter (mirrors the demo).
+const GUTTER_HALF = BOOK_DIMENSIONS.width * LINING_INSET;
+const BLOCK_INNER_X = 0.005;
+const BINDING = gutterBinding(0.5, BOOK_DIMENSIONS);
+
 function clamp01(x: number) {
   return x < 0 ? 0 : x > 1 ? 1 : x;
 }
 
-const groundHeight = (x: number, _z: number): number =>
-  x >= gutterX ? blockTop : COVER_FLOOR;
+const groundHeight = (x: number, _z: number): number => {
+  const worldX = x + W / 2;
+  if (worldX >= BLOCK_INNER_X) return blockTop;
+  if (worldX >= -GUTTER_HALF && worldX <= GUTTER_HALF) {
+    return gutterParticleFloorY(worldX, BOOK_DIMENSIONS, 1);
+  }
+  return COVER_FLOOR;
+};
 
 const sim = new PaperSimulation({
   cols: COLS,
@@ -81,7 +97,9 @@ const controller = new PageTurnController({
   gutterX,
   restY,
   landY,
-  landSpineY: landY,
+  landSpineY: BINDING.y,
+  spineTargetX: BINDING.x - W / 2,
+  landSpineStart: 0.5,
   width: W,
   duration: DUR,
   liftScale: LIFTSCALE,

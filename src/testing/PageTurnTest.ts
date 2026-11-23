@@ -7,13 +7,14 @@ import { PageTurnController } from "../animation/PageTurnController";
 /**
  * Test scene: one guided page turn over a simple book block.
  *
- * A sheet lies flat in the XZ plane (spine at -X). The entire spine edge (c=0)
- * is pinned to the binding. One fore-edge corner is guided by a
- * PageTurnController through lift -> peel -> arch -> crossing -> fall -> settle.
- * A flat destination surface (ground at y=0) catches the page.
+ * A sheet lies flat in the XZ plane. The entire spine edge (c=0) is pinned to
+ * the gutter. The whole FORE-EDGE (c=cols-1) is driven by a PageTurnController
+ * along a semicircular arc of radius = page width about the gutter, producing a
+ * smooth developable curl (no sharp cone fold). After the sweep the fore-edge
+ * is held at its final rest position so the page settles on the left.
  *
- * The page is NOT rotated rigidly: only the corner pin is driven; constraints,
- * gravity, and the ground compute the rest.
+ * The page is NOT rotated rigidly: only the fore-edge is guided; constraints,
+ * bending, gravity, and the ground compute the rest of the shape.
  *
  * Reached via `?test=page-turn`. Supports `?t=<seconds>` to freeze at a given
  * time for deterministic screenshots.
@@ -51,9 +52,12 @@ export function startPageTurnTest(
   // Sheet dimensions: page lies flat. Width (X) = turn direction, height (Z).
   const cols = 25;
   const rows = 33;
-  const width = 0.22;
+  const width = 0.24;
   const height = 0.3;
-  const restY = 0.004; // rest height of the page above the destination surface
+  const restY = 0.05; // rest height above the ground (matches metrics harness)
+  const turnDuration = 2.6;
+  const settleDuration = 1.2;
+  const totalDuration = turnDuration + settleDuration;
 
   const sim = new PaperSimulation({
     cols,
@@ -61,37 +65,31 @@ export function startPageTurnTest(
     width,
     height,
     dt: 1 / 120,
-    iterations: 8,
-    bendStiffness: 0.4,
+    iterations: 12,
+    bendStiffness: 1.0,
     plane: "xz",
-    groundY: 0.0,
+    groundY: restY - 0.004,
   });
-  // Lift the whole sheet to restY so it sits above the ground surface.
-  for (const p of sim.particles) {
-    p.y = p.py = restY;
-  }
+  for (const p of sim.particles) p.y = p.py = restY;
 
-  // Pin the spine edge (c=0) to the binding.
-  for (let r = 0; r < rows; r++) {
-    sim.pin(r * cols + 0);
-  }
+  // Pin the spine edge (c=0) to the gutter.
+  for (let r = 0; r < rows; r++) sim.pin(r * cols + 0);
 
-  // Choose a fore-edge corner at (c=cols-1, r=0): x=+width/2, z=-height/2.
-  const cornerIndex = 0 * cols + (cols - 1);
-  const cornerParticle = sim.particles[cornerIndex];
-  const turnDuration = 3.0;
+  // Fore-edge indices (c = cols-1).
+  const foreEdgeIndices: number[] = [];
+  for (let r = 0; r < rows; r++) foreEdgeIndices.push(r * cols + (cols - 1));
+
   const controller = new PageTurnController({
-    cornerIndex,
-    cornerRest: { x: cornerParticle.x, y: restY, z: cornerParticle.z },
-    corner: { x: 1, z: -1 },
-    liftHeight: 0.09,
-    travelX: -width, // move corner from +X to -X (over to destination side)
+    foreEdgeIndices,
+    gutterX: -width / 2,
+    restY,
+    width, // arc radius = page width -> smooth semicircle
     duration: turnDuration,
-    flutter: 0.004,
+    liftScale: 1.0,
   });
-  // Pin the corner to the controller.
-  controller.update(0);
-  controller.apply(cornerParticle);
+  controller.seedZ(sim.particles);
+  controller.setProgress(0);
+  controller.apply(sim.particles);
 
   // Geometry + material.
   const geo = new ThickSheetGeometry(cols, rows, 0.00025);
@@ -100,42 +98,38 @@ export function startPageTurnTest(
   const mesh = new THREE.Mesh(geo.geometry, material);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
+  mesh.position.x = width / 2; // put gutter at world x=0
   scene.add(mesh);
 
-  // Simple ground / destination surface.
+  // Ground / destination surface (near rest height so the page settles gently).
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(2, 2),
     new THREE.MeshStandardMaterial({ color: 0x14161a, roughness: 0.95 }),
   );
   ground.rotation.x = -Math.PI / 2;
-  ground.position.y = 0;
+  ground.position.y = restY - 0.004;
   ground.receiveShadow = true;
   scene.add(ground);
-
-  // Optional destination stack (thin block on -X side).
-  const stack = new THREE.Mesh(
-    new THREE.BoxGeometry(width, restY, height),
-    new THREE.MeshStandardMaterial({ color: 0xe6dcc8, roughness: 0.95 }),
-  );
-  stack.position.set(-width / 2 - width / 2, restY / 2, 0);
-  stack.receiveShadow = true;
-  scene.add(stack);
 
   geo.update(sim.particles);
 
   // Deterministic freeze support: simulate to freezeTime then hold.
   let simTime = 0;
   const step = 1 / 120;
-  if (options?.freezeTime !== undefined) {
-    const steps = Math.round(options.freezeTime / step);
-    for (let i = 0; i < steps; i++) {
+  function advanceTo(t: number): void {
+    const targetSteps = Math.round(t / step);
+    while (simTime < targetSteps - 1e-6) {
       simTime += step;
-      const p = Math.min(simTime / turnDuration, 1);
-      controller.update(p);
-      controller.apply(cornerParticle);
+      const progress = Math.min(simTime / turnDuration, 1);
+      controller.setProgress(progress);
+      controller.apply(sim.particles);
       sim.step();
     }
     geo.update(sim.particles);
+  }
+
+  if (options?.freezeTime !== undefined) {
+    advanceTo(Math.min(options.freezeTime, totalDuration));
   }
 
   let last = performance.now();
@@ -150,15 +144,15 @@ export function startPageTurnTest(
       let steps = 0;
       while (acc >= step && steps < 8) {
         simTime += step;
-        const p = Math.min(simTime / turnDuration, 1);
-        controller.update(p);
-        controller.apply(cornerParticle);
+        const progress = Math.min(simTime / turnDuration, 1);
+        controller.setProgress(progress);
+        controller.apply(sim.particles);
         sim.step();
         acc -= step;
         steps++;
       }
+      geo.update(sim.particles);
     }
-    geo.update(sim.particles);
     renderer.render(scene, camera);
     raf = requestAnimationFrame(frame);
   }

@@ -16,4 +16,5 @@
 - Sim tests run headless via `npm run test:sim` (esbuild bundle + node).
 - Sheet topology supports two rest planes: 'xy' (vertical, drop tests) and 'xz' (flat, page turns).
 - Page turn: kinematic corner pin driven by `PageTurnController` (lift/peel/arch/cross/fall/settle via eased target); never rigid rotation. Ground collision (y clamp) for landing.
-- Test scenes selectable via `?test=paper-drop|paper-edge|page-turn`; `?t=<seconds>` freezes a page-turn frame for deterministic screenshots.
+- Test scenes selectable via `?test=paper-drop|paper-edge|page-turn|book`; `?t=<seconds>` freezes a page-turn frame for deterministic screenshots.
+- Page turn v2 (realism fix): drive the WHOLE fore-edge (not a single corner) along a semicircular arc of radius = page width about the gutter. Radius = width keeps the sheet at natural length so it never buckles into a gutter crease. High bending stiffness (1.0) + 12 solver iterations distribute curvature smoothly. After the sweep the fore-edge is held at its final rest position so the page settles on the destination (left) stack instead of crumpling. Objective smoothness verified via `npm run test:page` (worst dihedral 15.6 deg, stretch <=1.08x).

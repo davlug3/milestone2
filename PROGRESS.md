@@ -1,10 +1,10 @@
 # Progress
 
-Current milestone: 5 (demo built ahead of full M5 integration)
-Last completed task: Animated book demo with play/pause button
+Current milestone: 5 (demo + page-turn realism fix)
+Last completed task: Page-turn realism overhaul (fore-edge curl, tuned physics)
 Current blocker: none
 Build status: PASS (tsc + vite build)
-Test status: PASS (sim-test 8/8, demo timeline 0 console errors, play/pause verified)
+Test status: PASS (sim 8/8, page metrics worstDihedral 15.6deg, demo 0 console errors)
 
 ## Completed
 
@@ -14,6 +14,7 @@ Test status: PASS (sim-test 8/8, demo timeline 0 console errors, play/pause veri
 - [x] Milestone 3 — Bending and thickness
 - [x] Milestone 4 — One guided page turn
 - [~] Animated demo (play button): closed book -> cover opens -> 3 page turns
+- [~] Page-turn realism: fore-edge curl drive, tuned stiffness, settle on left stack
 - [ ] Milestone 5 — Integrate page with book
 - [ ] Milestone 6 — Cover, spine, and endpapers
 - [ ] Milestone 7 — Photographic page design

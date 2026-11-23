@@ -1,11 +1,13 @@
 import * as THREE from "three";
+import { createBook } from "./book/createBook";
+import { addStudioLighting } from "./rendering/lighting";
 
 /**
- * Milestone 0 — Minimal WebGL scene.
+ * Milestone 1 — Static book block.
  *
- * Purpose: prove that a Three.js WebGLRenderer (WebGL 2) scene runs, renders
- * a frame, and exposes a deterministic "scene ready" signal for later
- * Playwright visual validation. No book geometry or physics yet.
+ * A closed hardcover book (two covers, spine, layered page stack) rests on a
+ * dark studio surface under basic three-point lighting. Camera is framed
+ * three-quarter on the book. No physics or animation yet.
  */
 
 const container = document.getElementById("app") ?? document.body;
@@ -18,38 +20,45 @@ const renderer = new THREE.WebGLRenderer({
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0x000000, 1);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 container.appendChild(renderer.domElement);
 
 // --- Scene & camera ---------------------------------------------------------
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0a0a0a);
+scene.background = new THREE.Color(0x0a0b0d);
 
 const camera = new THREE.PerspectiveCamera(
-  50,
+  42,
   window.innerWidth / window.innerHeight,
   0.01,
   100,
 );
-camera.position.set(0.4, 0.3, 0.6);
-camera.lookAt(0, 0, 0);
+// Three-quarter view looking slightly down at the book resting on the ground.
+// A low-ish elevation reveals the fore-edge page stack and the spine.
+camera.position.set(0.46, 0.20, 0.46);
+camera.lookAt(0, 0.018, 0);
 
-// --- Placeholder geometry (temporary, not the book) ------------------------
-const geometry = new THREE.BoxGeometry(0.24, 0.31, 0.035);
-const material = new THREE.MeshStandardMaterial({
-  color: 0xcccccc,
-  roughness: 0.9,
-  metalness: 0.0,
-});
-const mesh = new THREE.Mesh(geometry, material);
-scene.add(mesh);
+// --- Ground studio surface --------------------------------------------------
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(8, 8),
+  new THREE.MeshStandardMaterial({
+    color: 0x111317,
+    roughness: 0.95,
+    metalness: 0.0,
+  }),
+);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = 0;
+ground.receiveShadow = true;
+scene.add(ground);
 
-// --- Lighting (temporary) ---------------------------------------------------
-const keyLight = new THREE.DirectionalLight(0xffffff, 2.0);
-keyLight.position.set(0.5, 0.8, 0.5);
-scene.add(keyLight);
+// --- Book -------------------------------------------------------------------
+const book = createBook();
+scene.add(book);
 
-const ambient = new THREE.AmbientLight(0xffffff, 0.4);
-scene.add(ambient);
+// --- Lighting ---------------------------------------------------------------
+addStudioLighting(scene);
 
 // --- Resize handling --------------------------------------------------------
 function onResize(): void {
@@ -69,5 +78,4 @@ function render(): void {
 render();
 
 // --- Scene-ready signal (for visual validation tooling) ---------------------
-// Marks that the renderer initialized and the first frame is scheduled.
 (window as unknown as { __sceneReady: boolean }).__sceneReady = true;

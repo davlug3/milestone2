@@ -1,7 +1,7 @@
 # Decisions
 
 - Units: meters.
-- Coordinate convention: X width, Y height, Z depth. Spine along Y.
+- Coordinate convention (world): X = book width, Y = world up (book thickness), Z = book height (head-to-tail). Spine runs along Z at x = -width/2. Open book lies on the XZ plane; gravity is -Y. This supersedes PLAN.md section 3.1, which described an upright book and conflicted with gravity -Y for a book on a surface.
 - Renderer: Three.js WebGLRenderer / WebGL 2.
 - Physics: custom PBD/XPBD for the active page.
 - Simulation timestep: fixed 1/120 second initially.

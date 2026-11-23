@@ -1,7 +1,7 @@
 # Progress
 
-Current milestone: 1
-Last completed task: Milestone 0 — repo setup + WebGL 2 scene verified
+Current milestone: 2
+Last completed task: Milestone 1 — Static book block
 Current blocker: none
 Build status: PASS (tsc + vite build)
 Test status: PASS (Playwright preview, WebGL 2 render)
@@ -9,7 +9,7 @@ Test status: PASS (Playwright preview, WebGL 2 render)
 ## Completed
 
 - [x] Milestone 0 — Repository inspection and setup
-- [ ] Milestone 1 — Static book block
+- [x] Milestone 1 — Static book block
 - [ ] Milestone 2 — One deformable test sheet
 - [ ] Milestone 3 — Bending and thickness
 - [ ] Milestone 4 — One guided page turn
@@ -22,4 +22,4 @@ Test status: PASS (Playwright preview, WebGL 2 render)
 
 ## Next task
 
-Milestone 1 — Static book block: create a configurable book dimension object, front/back covers, a spine, a layered page stack, a ground plane, camera, and basic studio lighting.
+Milestone 2 — One deformable test sheet: particle grid, matching BufferGeometry with UVs, structural and shear constraints, gravity, fixed timestep, geometry update from particles, plus a small test scene.

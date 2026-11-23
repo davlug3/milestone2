@@ -58,7 +58,7 @@ import {
 const W = BOOK_DIMENSIONS.width;
 const H = BOOK_DIMENSIONS.height;
 const CT = BOOK_DIMENSIONS.coverThickness;
-const PBT = 0.012;
+const PBT = 0.022;
 const NUM_TURNS = 8;
 const NUM_STATIC = 7;
 const NUM_SHEETS = NUM_TURNS + NUM_STATIC;

@@ -42,7 +42,7 @@ import {
 const W = BOOK_DIMENSIONS.width;
 const H = BOOK_DIMENSIONS.height;
 const CT = BOOK_DIMENSIONS.coverThickness;
-const PBT = 0.012;
+const PBT = 0.022;
 const blockTop = CT + PBT;
 const cols = 25;
 const rows = 33;

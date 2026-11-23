@@ -372,7 +372,7 @@ def build_studio(coll, mats):
     cam_data.clip_start = 0.01
     cam_data.clip_end = 100.0
     cam = bpy.data.objects.new("Camera", cam_data)
-    cam.location = (0.0, 0.68, 0.58)
+    cam.location = (0.0, 0.74, 0.63)
     look_at(cam, (0.0, 0.0, 0.0))
     coll.objects.link(cam)
     bpy.context.scene.camera = cam

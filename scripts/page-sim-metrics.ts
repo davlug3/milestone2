@@ -7,7 +7,8 @@
  * Reports: stretch, dihedral (fold angle), curl (in-plane bow, mid row),
  * penetration (free particles below the local book surface), nan, fore-edge pos.
  *
- * Tune via env: BEND, ITERS, LIFTSCALE, LEAD, W, H, DUR, SETTLE, COLS, ROWS
+ * Tune via env: BEND, ITERS, BENDSPANS, LIFTSCALE, LEAD, LIFTVAR, W, H, DUR,
+ *                SETTLE, COLS, ROWS
  * Run: npm run test:page
  */
 import { PaperSimulation } from "../src/physics/PaperSimulation";
@@ -19,10 +20,15 @@ const COLS = Number(process.env.COLS ?? 25);
 const ROWS = Number(process.env.ROWS ?? 33);
 const BEND = Number(process.env.BEND ?? 1.0);
 const ITERS = Number(process.env.ITERS ?? 12);
+const BENDSTIFF = Number(process.env.BENDSTIFF ?? 0.5);
+const BENDSPANS = (process.env.BENDSPANS ?? "3,4,5,6")
+  .split(",")
+  .map((s) => Number(s.trim()))
+  .filter((n) => Number.isFinite(n) && n > 0);
 const LIFTSCALE = Number(process.env.LIFTSCALE ?? 0.6);
-const LEAD = Number(process.env.LEAD ?? 0.05);
-const LIFTVAR = Number(process.env.LIFTVAR ?? 0.0);
-const DUR = Number(process.env.DUR ?? 2.6);
+const LEAD = Number(process.env.LEAD ?? 0.04);
+const LIFTVAR = Number(process.env.LIFTVAR ?? 0.06);
+const DUR = Number(process.env.DUR ?? 2.5);
 const SETTLE = Number(process.env.SETTLE ?? 1.0);
 const CT = 0.0025;
 const PBT = 0.012;
@@ -46,6 +52,8 @@ const sim = new PaperSimulation({
   iterations: ITERS,
   bendStiffness: BEND,
   longRangeBend: true,
+  bendSpans: BENDSPANS,
+  longRangeStiffness: BENDSTIFF,
   plane: "xz",
   groundHeight,
 });

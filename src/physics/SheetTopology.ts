@@ -34,6 +34,13 @@ export function createSheetTopology(options: {
   /** Stiffness for the long-range links. Defaults to half of bendStiffness. */
   longRangeBendStiffness?: number;
   /**
+   * Explicit spans (in grid cells) for long-range bending links. Overrides the
+   * default `[3, 4]` used by `longRangeBend`. Longer spans resist large-scale
+   * curvature, i.e. they make the sheet stiffer without over-relaxing the
+   * 2-cell constraints.
+   */
+  bendSpans?: number[];
+  /**
    * Orientation of the flat rest sheet:
    *   'xy' (default): sheet in the XY plane at z=0 (vertical, for drop tests).
    *   'xz': sheet flat in the XZ plane at y=0 (horizontal, for page turns;
@@ -120,9 +127,11 @@ export function createSheetTopology(options: {
   // alone lets curvature concentrate into a couple of cells (a sharp buckle).
   // Adding longer-range links resists localized folding and spreads the bend
   // across many cells, producing a smooth, paper-like curl instead of a crease.
-  if (options.longRangeBend) {
+  if (options.longRangeBend || options.bendSpans) {
     const lrStiffness = options.longRangeBendStiffness ?? bendStiffness * 0.5;
-    for (let span = 3; span <= 4; span++) {
+    const spans = options.bendSpans ?? (options.longRangeBend ? [3, 4] : []);
+    for (const span of spans) {
+      if (span <= 2) continue; // 2-cell spans are already the base bend links
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
           if (c < cols - span) {

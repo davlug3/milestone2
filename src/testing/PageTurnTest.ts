@@ -68,6 +68,7 @@ export function startPageTurnTest(
     iterations: 12,
     bendStiffness: 1.0,
     longRangeBend: true,
+    bendSpans: [3, 4, 5, 6],
     plane: "xz",
     groundY: restY - 0.004,
   });

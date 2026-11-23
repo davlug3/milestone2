@@ -23,6 +23,10 @@ export class PaperSimulation {
     groundY?: number | null;
     groundHeight?: ((x: number, z: number) => number) | null;
     longRangeBend?: boolean;
+    /** Explicit long-range bending spans (grid cells). Stiffer for longer. */
+    bendSpans?: number[];
+    /** Stiffness of the long-range links (defaults to half of bendStiffness). */
+    longRangeStiffness?: number;
   }) {
     this.plane = options.plane ?? "xy";
     this.topology = createSheetTopology({
@@ -32,6 +36,8 @@ export class PaperSimulation {
       height: options.height,
       bendStiffness: options.bendStiffness,
       longRangeBend: options.longRangeBend,
+      bendSpans: options.bendSpans,
+      longRangeBendStiffness: options.longRangeStiffness,
       plane: this.plane,
     });
     this.solver = new XPBDSolver({

@@ -211,6 +211,7 @@ export function startBookDemo(container: HTMLElement): () => void {
       iterations: 12,
       bendStiffness: 1.0,
       longRangeBend: true,
+      bendSpans: [3, 4, 5, 6], // longer links => stiffer, smoother sheet
       plane: "xz",
       groundHeight,
     });

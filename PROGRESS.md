@@ -1,17 +1,17 @@
 # Progress
 
-Current milestone: 3
-Last completed task: Milestone 2 — One deformable test sheet
+Current milestone: 4
+Last completed task: Milestone 3 — Bending and thickness
 Current blocker: none
 Build status: PASS (tsc + vite build)
-Test status: PASS (sim-test 6/6, Playwright preview WebGL 2)
+Test status: PASS (sim-test 8/8, Playwright preview WebGL 2)
 
 ## Completed
 
 - [x] Milestone 0 — Repository inspection and setup
 - [x] Milestone 1 — Static book block
 - [x] Milestone 2 — One deformable test sheet
-- [ ] Milestone 3 — Bending and thickness
+- [x] Milestone 3 — Bending and thickness
 - [ ] Milestone 4 — One guided page turn
 - [ ] Milestone 5 — Integrate page with book
 - [ ] Milestone 6 — Cover, spine, and endpapers
@@ -22,4 +22,4 @@ Test status: PASS (sim-test 6/6, Playwright preview WebGL 2)
 
 ## Next task
 
-Milestone 3 — Bending and thickness: add bending constraints (two-step / dihedral), tune compliance, add a thin-shell visual representation (front/back surfaces offset along normals + perimeter edge), and a paper material. Reuse and extend the test sheet.
+Milestone 4 — One guided page turn: add a corner/edge target controller driving the sheet through lift, peel, arch, crossing, fall, and settle phases (guide the sheet, don't rotate it rigidly). Add a simple landing surface and gravity/damping tuning. This is the most important milestone.

@@ -136,6 +136,32 @@ function stepN(sim: PaperSimulation, n: number): void {
   check("no gross stretching (<3x rest)", maxStretch < 3.0, `maxStretch=${maxStretch.toFixed(2)}x (restMax~${restMax.toFixed(4)})`);
 }
 
+// 7. Bending constraints are present and wired into the topology.
+{
+  const sim = makeSim();
+  const cols = sim.topology.cols;
+  const rows = sim.topology.rows;
+  const structural = (cols - 1) * rows + (rows - 1) * cols;
+  const shear = (cols - 1) * (rows - 1) * 2;
+  const expectedBend = (cols - 2) * rows + (rows - 2) * cols;
+  const total = sim.topology.constraints.length;
+  check(
+    "bending constraints present",
+    total >= structural + shear + expectedBend,
+    `total=${total} expected>=${structural + shear + expectedBend}`,
+  );
+}
+
+// 8. With bending constraints, the sheet stays stable (no z explosion) over
+//    a long run.
+{
+  const sim = makeSim();
+  stepN(sim, 720);
+  let maxZ = 0;
+  for (const p of sim.particles) maxZ = Math.max(maxZ, Math.abs(p.z));
+  check("bending stays stable (z bounded)", maxZ < 1.0, `maxZ=${maxZ.toFixed(3)}`);
+}
+
 if (failures > 0) {
   console.error(`\n${failures} check(s) failed`);
   process.exit(1);

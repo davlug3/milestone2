@@ -10,4 +10,7 @@
 - Final animation: deterministic and cacheable.
 - Build system: Vite (no existing build system in repo at start).
 - Language: TypeScript (strict).
-- Folder layout: `src/app`, `src/config`, `src/book`, `src/paper`, `src/physics`, `src/animation`, `src/rendering`, `src/assets`.
+- Folder layout: `src/app`, `src/config`, `src/book`, `src/paper`, `src/physics`, `src/animation`, `src/rendering`, `src/testing`, `src/assets`.
+- Bending: two-step neighbor distance constraints (soft, stiffness ~0.35), configurable via `bendStiffness`. Dihedral bending deferred.
+- Paper thickness: thin-shell render (front/back offset along mid-surface normal + perimeter edge), default 0.25 mm visual.
+- Sim tests run headless via `npm run test:sim` (esbuild bundle + node).

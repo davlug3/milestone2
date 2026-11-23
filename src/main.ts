@@ -16,6 +16,8 @@ const container = (document.getElementById("app") ?? document.body) as HTMLEleme
 const testName = new URLSearchParams(window.location.search).get("test");
 if (testName === "paper-drop") {
   startPaperDropTest(container);
+} else if (testName === "paper-edge") {
+  startPaperDropTest(container, { edgeOn: true });
 } else {
   startBookScene(container);
 }

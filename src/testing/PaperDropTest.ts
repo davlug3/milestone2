@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { PaperSimulation } from "../physics/PaperSimulation";
-import { PageGeometry } from "../paper/PageGeometry";
+import { ThickSheetGeometry } from "../paper/ThickSheetGeometry";
+import { createPaperMaterial } from "../paper/PaperMaterial";
 
 /**
  * Test scene: one deformable sheet under gravity.
@@ -11,7 +12,10 @@ import { PageGeometry } from "../paper/PageGeometry";
  *
  * Returns a cleanup function.
  */
-export function startPaperDropTest(container: HTMLElement): () => void {
+export function startPaperDropTest(
+  container: HTMLElement,
+  options?: { edgeOn?: boolean },
+): () => void {
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -23,11 +27,17 @@ export function startPaperDropTest(container: HTMLElement): () => void {
   const camera = new THREE.PerspectiveCamera(
     45,
     window.innerWidth / window.innerHeight,
-    0.01,
+    0.001,
     100,
   );
-  camera.position.set(0, 0, 0.6);
-  camera.lookAt(0, 0, 0);
+  if (options?.edgeOn) {
+    // Grazing angle looking at the bottom edge to reveal paper thickness.
+    camera.position.set(0.02, -0.11, 0.16);
+    camera.lookAt(0, -0.12, 0);
+  } else {
+    camera.position.set(0, 0, 0.6);
+    camera.lookAt(0, 0, 0);
+  }
 
   // Lighting.
   scene.add(new THREE.AmbientLight(0xffffff, 0.6));
@@ -52,13 +62,9 @@ export function startPaperDropTest(container: HTMLElement): () => void {
     sim.pin((rows - 1) * cols + c);
   }
 
-  const pageGeo = new PageGeometry(cols, rows);
-  const material = new THREE.MeshStandardMaterial({
-    color: 0xf4efe4,
-    roughness: 0.92,
-    metalness: 0.0,
-    side: THREE.DoubleSide,
-  });
+  const pageGeo = new ThickSheetGeometry(cols, rows, 0.00025);
+  const material = createPaperMaterial();
+  material.side = THREE.DoubleSide;
   const mesh = new THREE.Mesh(pageGeo.geometry, material);
   mesh.castShadow = true;
   scene.add(mesh);

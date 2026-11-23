@@ -27,6 +27,8 @@ export function createSheetTopology(options: {
   rows: number;
   width: number;
   height: number;
+  /** Bending constraint stiffness (0..1). Defaults to a soft 0.35. */
+  bendStiffness?: number;
 }): SheetTopology {
   const { cols, rows, width, height } = options;
   const particles: Particle[] = [];
@@ -72,6 +74,27 @@ export function createSheetTopology(options: {
       constraints.push(
         createDistanceConstraint(idx(c + 1, r), idx(c, r + 1), diag, 0.7),
       );
+    }
+  }
+
+  // Bending constraints: two-step neighbors in each direction. These resist
+  // folding by keeping the distance across a 2-cell span near its rest length.
+  // Simple and stable; dihedral bending can be layered on later if needed.
+  const bendX = dx * 2;
+  const bendY = dy * 2;
+  const bendStiffness = options.bendStiffness ?? 0.35; // softer than structural/shear
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (c < cols - 2) {
+        constraints.push(
+          createDistanceConstraint(idx(c, r), idx(c + 2, r), bendX, bendStiffness),
+        );
+      }
+      if (r < rows - 2) {
+        constraints.push(
+          createDistanceConstraint(idx(c, r), idx(c, r + 2), bendY, bendStiffness),
+        );
+      }
     }
   }
 

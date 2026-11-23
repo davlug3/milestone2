@@ -136,7 +136,12 @@ interface PageInstance {
 
 export function startBookDemo(container: HTMLElement): () => void {
   // --- Renderer / scene / camera ------------------------------------------
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  const renderer = new THREE.WebGLRenderer({
+    antialias: true,
+    // Prefer the discrete/high-performance GPU when the client has one. This
+    // is only a hint: browsers without a usable GPU fall back automatically.
+    powerPreference: "high-performance",
+  });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
@@ -548,6 +553,19 @@ export function startBookDemo(container: HTMLElement): () => void {
       return time;
     },
     duration: TIMELINE.end,
+    /** WebGL backend actually in use (hardware GPU or software renderer). */
+    gpu: () => {
+      const gl = renderer.getContext();
+      const ext = gl.getExtension("WEBGL_debug_renderer_info");
+      return {
+        renderer: ext
+          ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL))
+          : String(gl.getParameter(gl.RENDERER)),
+        vendor: ext
+          ? String(gl.getParameter(ext.UNMASKED_VENDOR_WEBGL))
+          : String(gl.getParameter(gl.VENDOR)),
+      };
+    },
     /** Debug aid: show/hide every object with the given name. */
     debug: (name: string, visible: boolean) => {
       scene.traverse((o) => {

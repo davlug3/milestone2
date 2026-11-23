@@ -7,10 +7,13 @@
  *
  * This is a validation aid. It does not change application behavior.
  */
-import { chromium } from "playwright";
-import { spawn } from "node:child_process";
+import {
+  isSoftwareRenderer,
+  launchPreviewBrowser,
+  readWebGL,
+} from "./lib/browser.mjs";
+import { startPreviewServer, stopPreviewServer } from "./lib/server.mjs";
 import { mkdirSync } from "node:fs";
-import { setTimeout as sleep } from "node:timers/promises";
 
 const WIDTH = Number(process.env.PREVIEW_WIDTH ?? 1280);
 const HEIGHT = Number(process.env.PREVIEW_HEIGHT ?? 800);
@@ -21,28 +24,9 @@ const SHOT = process.env.PREVIEW_SHOT ?? "00-initial";
 
 mkdirSync(OUTPUT_DIR, { recursive: true });
 
-async function startServer() {
-  const server = spawn(
-    "npx",
-    ["vite", "preview", "--port", String(PORT), "--host", "127.0.0.1"],
-    { stdio: ["ignore", "pipe", "pipe"] },
-  );
-  // Wait for the server to respond.
-  for (let i = 0; i < 60; i++) {
-    try {
-      const res = await fetch(URL);
-      if (res.ok) return server;
-    } catch {
-      /* not up yet */
-    }
-    await sleep(250);
-  }
-  throw new Error(`Preview server did not start at ${URL}`);
-}
-
 async function main() {
-  const server = await startServer();
-  const browser = await chromium.launch();
+  const server = await startPreviewServer({ url: URL, port: PORT });
+  const { browser, launch } = await launchPreviewBrowser();
   const page = await browser.newPage({ viewport: { width: WIDTH, height: HEIGHT } });
 
   const consoleErrors = [];
@@ -56,31 +40,24 @@ async function main() {
 
   await page.goto(URL, { waitUntil: "networkidle" });
 
-  // WebGL 2 capability check inside the page.
-  const webgl = await page.evaluate(() => {
-    const canvas = document.createElement("canvas");
-    const gl2 = canvas.getContext("webgl2");
-    if (gl2) {
-      const dbg = gl2.getExtension("WEBGL_debug_renderer_info");
-      const renderer = dbg
-        ? gl2.getParameter(dbg.UNMASKED_RENDERER_WEBGL)
-        : "unknown";
-      return { webgl2: true, renderer };
-    }
-    return { webgl2: false, renderer: null };
-  });
+  // WebGL 2 capability and the backend actually in use.
+  const webgl = await readWebGL(page);
 
+  // Wait for the app's scene-ready signal.
   // Wait for the app's scene-ready signal.
   await page.waitForFunction(
     () => window.__sceneReady === true,
     { timeout: 10000 },
   );
-  await sleep(800); // allow fonts/first frames to settle
+  await page.waitForTimeout(800); // allow fonts/first frames to settle
 
   const outPath = `${OUTPUT_DIR}/${SHOT}.png`;
   await page.screenshot({ path: outPath });
 
-  console.log("WebGL2:", webgl.webgl2, "| renderer:", webgl.renderer);
+  const backend = isSoftwareRenderer(webgl.renderer) ? "software" : "hardware";
+  console.log(
+    `Browser: ${launch} (backend: ${backend}) | WebGL2: ${webgl.webgl2} | renderer: ${webgl.renderer}`,
+  );
   console.log("Screenshot:", outPath);
   console.log("Console errors:", consoleErrors.length);
   consoleErrors.forEach((e) => console.log("  ERR:", e));
@@ -88,7 +65,7 @@ async function main() {
   failedRequests.forEach((r) => console.log("  REQ:", r));
 
   await browser.close();
-  server.kill("SIGTERM");
+  stopPreviewServer(server);
 
   if (!webgl.webgl2) {
     console.error("FAIL: WebGL 2 not available");

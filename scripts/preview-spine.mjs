@@ -7,10 +7,13 @@
  *
  * Usage: node scripts/preview-spine.mjs
  */
-import { chromium } from "playwright";
-import { spawn } from "node:child_process";
+import {
+  isSoftwareRenderer,
+  launchPreviewBrowser,
+  readWebGL,
+} from "./lib/browser.mjs";
+import { startPreviewServer, stopPreviewServer } from "./lib/server.mjs";
 import { mkdirSync } from "node:fs";
-import { setTimeout as sleep } from "node:timers/promises";
 
 const PORT = Number(process.env.PREVIEW_PORT ?? 4311);
 const URL = process.env.PREVIEW_URL ?? `http://127.0.0.1:${PORT}/`;
@@ -69,27 +72,9 @@ const SHOTS = [
 
 mkdirSync(OUTPUT_DIR, { recursive: true });
 
-async function startServer() {
-  const server = spawn(
-    "npx",
-    ["vite", "preview", "--port", String(PORT), "--host", "127.0.0.1"],
-    { stdio: ["ignore", "pipe", "pipe"] },
-  );
-  for (let i = 0; i < 60; i++) {
-    try {
-      const res = await fetch(URL);
-      if (res.ok) return server;
-    } catch {
-      /* not up */
-    }
-    await sleep(250);
-  }
-  throw new Error(`preview server did not start at ${URL}`);
-}
-
 async function main() {
-  const server = await startServer();
-  const browser = await chromium.launch();
+  const server = await startPreviewServer({ url: URL, port: PORT });
+  const { browser, launch } = await launchPreviewBrowser();
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 
   const errors = [];
@@ -101,11 +86,12 @@ async function main() {
   await page.goto(URL, { waitUntil: "networkidle" });
   await page.waitForFunction(() => window.__sceneReady === true, { timeout: 10000 });
 
-  const webgl2 = await page.evaluate(() => {
-    const c = document.createElement("canvas");
-    return Boolean(c.getContext("webgl2"));
-  });
-  console.log("WebGL 2:", webgl2);
+  const webgl = await readWebGL(page);
+  const webgl2 = webgl.webgl2;
+  const backend = isSoftwareRenderer(webgl.renderer) ? "software" : "hardware";
+  console.log(
+    `browser: ${launch} (backend: ${backend}) | WebGL 2: ${webgl2} | renderer: ${webgl.renderer}`,
+  );
 
   for (const shot of SHOTS) {
     await page.evaluate(
@@ -115,7 +101,7 @@ async function main() {
       },
       shot,
     );
-    await sleep(200);
+    await page.waitForTimeout(200);
     const out = `${OUTPUT_DIR}/${shot.name}.png`;
     await page.screenshot({ path: out });
     const spine = await page.evaluate(() => window.__demo.spine());
@@ -130,7 +116,7 @@ async function main() {
   console.log("console errors:", errors.length);
   errors.forEach((e) => console.log("  ERR:", e));
   await browser.close();
-  server.kill("SIGTERM");
+  stopPreviewServer(server);
   if (!webgl2) {
     console.error("FAIL: WebGL 2 unavailable");
     process.exit(1);

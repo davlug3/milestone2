@@ -4,10 +4,13 @@
  *
  * Usage: node scripts/preview-demo.mjs
  */
-import { chromium } from "playwright";
-import { spawn } from "node:child_process";
+import {
+  isSoftwareRenderer,
+  launchPreviewBrowser,
+  readWebGL,
+} from "./lib/browser.mjs";
+import { startPreviewServer, stopPreviewServer } from "./lib/server.mjs";
 import { mkdirSync } from "node:fs";
-import { setTimeout as sleep } from "node:timers/promises";
 
 const PORT = Number(process.env.PREVIEW_PORT ?? 4310);
 const URL = process.env.PREVIEW_URL ?? `http://127.0.0.1:${PORT}/`;
@@ -18,27 +21,9 @@ const TIMES = (process.env.DEMO_TIMES ?? "0,2,4,5.5,7,9.5,12,13.5")
 
 mkdirSync(OUTPUT_DIR, { recursive: true });
 
-async function startServer() {
-  const server = spawn(
-    "npx",
-    ["vite", "preview", "--port", String(PORT), "--host", "127.0.0.1"],
-    { stdio: ["ignore", "pipe", "pipe"] },
-  );
-  for (let i = 0; i < 60; i++) {
-    try {
-      const res = await fetch(URL);
-      if (res.ok) return server;
-    } catch {
-      /* not up */
-    }
-    await sleep(250);
-  }
-  throw new Error(`preview server did not start at ${URL}`);
-}
-
 async function main() {
-  const server = await startServer();
-  const browser = await chromium.launch();
+  const server = await startPreviewServer({ url: URL, port: PORT });
+  const { browser, launch } = await launchPreviewBrowser();
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 
   const errors = [];
@@ -50,9 +35,17 @@ async function main() {
   await page.goto(URL, { waitUntil: "networkidle" });
   await page.waitForFunction(() => window.__sceneReady === true, { timeout: 10000 });
 
+  const gl = await readWebGL(page);
+  const appGpu = await page.evaluate(() => window.__demo.gpu?.() ?? null);
+  const backend = isSoftwareRenderer(gl.renderer) ? "software" : "hardware";
+  console.log(
+    `browser: ${launch} (backend: ${backend}) | WebGL2: ${gl.webgl2} | renderer: ${gl.renderer}`,
+  );
+  if (appGpu) console.log(`app renderer: ${appGpu.renderer} (${appGpu.vendor})`);
+
   for (const t of TIMES) {
     await page.evaluate((tt) => window.__demo.seek(tt), t);
-    await sleep(150);
+    await page.waitForTimeout(150);
     const out = `${OUTPUT_DIR}/demo-t${t}.png`;
     await page.screenshot({ path: out });
     console.log(`t=${t}s -> ${out}`);
@@ -64,7 +57,7 @@ async function main() {
   errors.forEach((e) => console.log("  ERR:", e));
 
   await browser.close();
-  server.kill("SIGTERM");
+  stopPreviewServer(server);
   if (errors.length > 0) {
     console.error("FAIL: console errors present");
     process.exit(1);

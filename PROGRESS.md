@@ -1,16 +1,16 @@
 # Progress
 
-Current milestone: 2
-Last completed task: Milestone 1 — Static book block
+Current milestone: 3
+Last completed task: Milestone 2 — One deformable test sheet
 Current blocker: none
 Build status: PASS (tsc + vite build)
-Test status: PASS (Playwright preview, WebGL 2 render)
+Test status: PASS (sim-test 6/6, Playwright preview WebGL 2)
 
 ## Completed
 
 - [x] Milestone 0 — Repository inspection and setup
 - [x] Milestone 1 — Static book block
-- [ ] Milestone 2 — One deformable test sheet
+- [x] Milestone 2 — One deformable test sheet
 - [ ] Milestone 3 — Bending and thickness
 - [ ] Milestone 4 — One guided page turn
 - [ ] Milestone 5 — Integrate page with book
@@ -22,4 +22,4 @@ Test status: PASS (Playwright preview, WebGL 2 render)
 
 ## Next task
 
-Milestone 2 — One deformable test sheet: particle grid, matching BufferGeometry with UVs, structural and shear constraints, gravity, fixed timestep, geometry update from particles, plus a small test scene.
+Milestone 3 — Bending and thickness: add bending constraints (two-step / dihedral), tune compliance, add a thin-shell visual representation (front/back surfaces offset along normals + perimeter edge), and a paper material. Reuse and extend the test sheet.

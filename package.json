@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:sim": "esbuild scripts/sim-test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/sim-test.mjs && node node_modules/.cache/sim-test.mjs"
   },
   "dependencies": {
     "three": "^0.180.0"

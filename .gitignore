@@ -19,3 +19,4 @@ screenshots
 blender/renders/
 blender/*.blend1
 blender/*.blend2
+blender/__pycache__/

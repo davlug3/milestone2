@@ -3,6 +3,7 @@ import { createBook } from "./book/createBook";
 import { addStudioLighting } from "./rendering/lighting";
 import { startPaperDropTest } from "./testing/PaperDropTest";
 import { startPageTurnTest } from "./testing/PageTurnTest";
+import { startBookDemo } from "./demo/bookDemoScene";
 
 /**
  * Entry point.
@@ -26,8 +27,11 @@ if (testName === "paper-drop") {
   startPaperDropTest(container, { edgeOn: true });
 } else if (testName === "page-turn") {
   startPageTurnTest(container, { freezeTime });
-} else {
+} else if (testName === "book") {
   startBookScene(container);
+} else {
+  // Default: animated book demo with a play button.
+  startBookDemo(container);
 }
 
 /**

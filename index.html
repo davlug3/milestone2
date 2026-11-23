@@ -15,6 +15,50 @@
       canvas {
         display: block;
       }
+      .demo-ui {
+        position: fixed;
+        left: 50%;
+        bottom: 24px;
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 10px 16px;
+        border-radius: 999px;
+        background: rgba(18, 20, 24, 0.72);
+        backdrop-filter: blur(8px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        font-family: system-ui, -apple-system, sans-serif;
+        color: #e8e4da;
+        user-select: none;
+      }
+      .demo-play {
+        appearance: none;
+        border: none;
+        cursor: pointer;
+        padding: 9px 20px;
+        min-width: 96px;
+        border-radius: 999px;
+        background: #e8e4da;
+        color: #14161a;
+        font-weight: 600;
+        font-size: 14px;
+        letter-spacing: 0.02em;
+        transition: transform 0.08s ease, background 0.15s ease;
+      }
+      .demo-play:hover {
+        background: #ffffff;
+      }
+      .demo-play:active {
+        transform: scale(0.97);
+      }
+      .demo-time {
+        font-variant-numeric: tabular-nums;
+        font-size: 13px;
+        min-width: 42px;
+        text-align: right;
+        opacity: 0.85;
+      }
     </style>
   </head>
   <body>

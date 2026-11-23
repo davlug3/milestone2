@@ -13,6 +13,8 @@
  */
 import { PaperSimulation } from "../src/physics/PaperSimulation";
 import { PageTurnController } from "../src/animation/PageTurnController";
+import { BOOK_DIMENSIONS } from "../src/config/bookConfig";
+import { openCoverSurface } from "../src/book/coverRig";
 
 const W = Number(process.env.W ?? 0.24);
 const H = Number(process.env.H ?? 0.31);
@@ -30,18 +32,26 @@ const LEAD = Number(process.env.LEAD ?? 0.04);
 const LIFTVAR = Number(process.env.LIFTVAR ?? 0.06);
 const DUR = Number(process.env.DUR ?? 2.5);
 const SETTLE = Number(process.env.SETTLE ?? 1.0);
-const CT = 0.0025;
+const CT = BOOK_DIMENSIONS.coverThickness;
 const PBT = 0.012;
 const blockTop = CT + PBT;
+const gutterX = -W / 2;
 const restY = Number(process.env.RESTY ?? blockTop + 0.0005);
-const landY = Number(process.env.LANDY ?? CT + 0.0003);
+
+// Open-cover collision surface (mirrors the demo).
+const OPEN_COVER = openCoverSurface(BOOK_DIMENSIONS, CT / 2);
+const PAGE_SHELL_HALF = 0.000125;
+const COVER_GAP = 0.00005;
+const COVER_FLOOR = OPEN_COVER.topY + PAGE_SHELL_HALF + COVER_GAP;
+const landY = Number(process.env.LANDY ?? COVER_FLOOR + 0.0002);
 const DT = 1 / 120;
 
 function clamp01(x: number) {
   return x < 0 ? 0 : x > 1 ? 1 : x;
 }
 
-const groundHeight = (x: number, _z: number): number => (x >= 0 ? blockTop : landY);
+const groundHeight = (x: number, _z: number): number =>
+  x >= gutterX ? blockTop : COVER_FLOOR;
 
 const sim = new PaperSimulation({
   cols: COLS,
@@ -58,15 +68,20 @@ const sim = new PaperSimulation({
   groundHeight,
 });
 for (const p of sim.particles) p.y = p.py = restY;
-for (let r = 0; r < ROWS; r++) sim.pin(r * COLS + 0); // pin spine edge
 const foreEdge: number[] = [];
-for (let r = 0; r < ROWS; r++) foreEdge.push(r * COLS + (COLS - 1));
+const spineEdge: number[] = [];
+for (let r = 0; r < ROWS; r++) {
+  spineEdge.push(r * COLS + 0);
+  foreEdge.push(r * COLS + (COLS - 1));
+}
 
 const controller = new PageTurnController({
   foreEdgeIndices: foreEdge,
-  gutterX: -W / 2,
+  spineIndices: spineEdge,
+  gutterX,
   restY,
   landY,
+  landSpineY: landY,
   width: W,
   duration: DUR,
   liftScale: LIFTSCALE,

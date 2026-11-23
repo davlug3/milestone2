@@ -17,10 +17,12 @@
 import { PaperSimulation } from "../src/physics/PaperSimulation";
 import { PageTurnController } from "../src/animation/PageTurnController";
 import { Heightfield } from "../src/physics/Heightfield";
+import { BOOK_DIMENSIONS } from "../src/config/bookConfig";
+import { openCoverSurface, openCoverTopAt } from "../src/book/coverRig";
 
-const W = 0.24;
-const H = 0.31;
-const CT = 0.0025;
+const W = BOOK_DIMENSIONS.width;
+const H = BOOK_DIMENSIONS.height;
+const CT = BOOK_DIMENSIONS.coverThickness;
 const PBT = 0.012;
 const blockTop = CT + PBT;
 const cols = 25;
@@ -30,14 +32,28 @@ const gutterX = -W / 2;
 const NUM_SHEETS = 15;
 const vStep = 0.0003;
 const restBase = blockTop + 0.0004;
-const landBase = CT + 0.0004;
+
+// Open-cover collision surface (mirrors the demo).
+const OPEN_CENTER_Y = CT / 2;
+const OPEN_COVER = openCoverSurface(BOOK_DIMENSIONS, OPEN_CENTER_Y);
+const PAGE_SHELL_HALF = 0.000125;
+const COVER_GAP = 0.00005;
+const COVER_FLOOR = OPEN_COVER.topY + PAGE_SHELL_HALF + COVER_GAP;
+const landBase = COVER_FLOOR + 0.0002;
+
 const landStep = 0.0008;
 const bakeMinX = gutterX - 0.04; // gutter strip is left free (natural fan)
 const bakeTop = 0.0006;
 const PAGES = Number(process.env.PAGES ?? 8);
 
 const hf = new Heightfield({ width: W, height: H, nx: 110, nz: 110 });
-hf.setBase((x) => (x >= gutterX ? blockTop : CT));
+hf.setBase((x, z) =>
+  x >= gutterX
+    ? blockTop
+    : openCoverTopAt(x + W / 2, z, BOOK_DIMENSIONS, OPEN_CENTER_Y) +
+      PAGE_SHELL_HALF +
+      COVER_GAP,
+);
 
 interface Settled {
   particles: { x: number; y: number; z: number; pinned: boolean }[];
@@ -62,14 +78,19 @@ function makePage(restY: number, landY: number, belowRestY: number) {
     groundHeight,
   });
   for (const p of sim.particles) p.y = p.py = restY;
-  for (let r = 0; r < rows; r++) sim.pin(r * cols + 0);
+  const spine: number[] = [];
   const fe: number[] = [];
-  for (let r = 0; r < rows; r++) fe.push(r * cols + (cols - 1));
+  for (let r = 0; r < rows; r++) {
+    spine.push(r * cols + 0);
+    fe.push(r * cols + (cols - 1));
+  }
   const ctrl = new PageTurnController({
     foreEdgeIndices: fe,
+    spineIndices: spine,
     gutterX,
     restY,
     landY,
+    landSpineY: landY,
     width: W,
     duration: 2.5,
     liftScale: 0.6,

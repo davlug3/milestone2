@@ -74,18 +74,21 @@ export function startPageTurnTest(
   });
   for (const p of sim.particles) p.y = p.py = restY;
 
-  // Pin the spine edge (c=0) to the gutter.
-  for (let r = 0; r < rows; r++) sim.pin(r * cols + 0);
-
-  // Fore-edge indices (c = cols-1).
+  // Spine edge (c=0) and fore-edge (c=cols-1) are both driven by the controller.
+  const spineIndices: number[] = [];
   const foreEdgeIndices: number[] = [];
-  for (let r = 0; r < rows; r++) foreEdgeIndices.push(r * cols + (cols - 1));
+  for (let r = 0; r < rows; r++) {
+    spineIndices.push(r * cols + 0);
+    foreEdgeIndices.push(r * cols + (cols - 1));
+  }
 
   const controller = new PageTurnController({
     foreEdgeIndices,
+    spineIndices,
     gutterX: -width / 2,
     restY,
     landY: restY - 0.004,
+    landSpineY: restY - 0.004,
     width, // arc radius = page width
     duration: turnDuration,
     liftScale: 0.6, // < 1 => real curl

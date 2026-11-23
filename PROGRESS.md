@@ -1,11 +1,11 @@
 # Progress
 
-Current milestone: 5 (demo + page-turn realism v6)
-Last completed task: Stiffer pages via longer-range bending links (spans 3-6)
+Current milestone: 5 (demo + page-turn realism v7: hinged cover, page/cover collision)
+Last completed task: Hinged front cover (no hop/clip) + pages landing on the open cover + spine settle + low spine plinth
 Current blocker: inotify watch limit blocks `npm run dev` (use `vite preview`)
 Build status: PASS (tsc + vite build)
-Test status: PASS (sim, page metrics stretch 1.21x dihedral 27.3deg penetration 0, 8-page stacking 0mm interpenetration, demo 0 errors)
-Visual inspection: PASS (frames inspected at t=0/3.5/4.3/5/5.8/6.6/10/20/30; closed start, pages persist, no shadow acne)
+Test status: PASS (sim, page metrics stretch 1.15x dihedral 29.8deg penetration 0, 8-page stacking 0mm interpenetration, cover kinematics + page/cover contact PASS, demo 0 errors)
+Visual inspection: PASS (frames inspected at t=0/1.2/1.6/2.0/2.4/2.8/3.2/4.6/5/5.6/5.9/6.4/8/10/26/30; hinged cover swing, pages land on the cover, clean gutter, final stack)
 
 ## Completed
 
@@ -18,6 +18,7 @@ Visual inspection: PASS (frames inspected at t=0/3.5/4.3/5/5.8/6.6/10/20/30; clo
 - [~] Page-turn realism v4: closed-book start, heightfield collision, 2D curl (lead+liftVar)
 - [~] Page-turn realism v5: 15 persistent sheets, page-to-page collision (baked heightfield), shadow-acne fix (inverted shell normals), right-stack collision floor
 - [~] Page-turn realism v6: stiffer pages via long-range bending spans 3-6 (max fold 33.7deg -> 27.3deg; smoother curl, flatter stack)
+- [~] Page-turn realism v7: hinged cover opening (2.2 s, no hop/clip) + page/cover collision (open-cover lining floor) + spine-edge settle + low spine plinth + `npm run test:cover`
 - [ ] Milestone 5 — Integrate page with book
 - [ ] Milestone 6 — Cover, spine, and endpapers
 - [ ] Milestone 7 — Photographic page design
@@ -27,4 +28,4 @@ Visual inspection: PASS (frames inspected at t=0/3.5/4.3/5/5.8/6.6/10/20/30; clo
 
 ## Next task
 
-Continue Milestone 5 — Integrate page with book: bind the demo pages to the actual book binding region (reuse book block geometry), and refine the cover/spine coupling. Remaining page-turn polish: the fore-edge follows a full semicircle, so it stays high until the last ~15% of the turn and then drops quickly; the spine edge stays pinned at the right-stack height so landed pages ramp up steeply near the gutter. A future pass could (a) finish the horizontal sweep at ~80% progress and settle earlier, and (b) drive the spine edge down toward the left stack, or use a prescribed 2D curl surface. Then proceed to Milestone 6 (cover/spine/endpaper mechanics).
+Continue Milestone 5 — Integrate page with book: bind the demo pages to the actual book binding region (reuse book block geometry), and refine the cover/spine coupling. Remaining page-turn polish: the fore-edge follows a full semicircle, so it stays high until the last ~15% of the turn and then drops quickly; a future pass could finish the horizontal sweep at ~80% progress and settle earlier. Then proceed to Milestone 6 (cover/spine/endpaper mechanics).

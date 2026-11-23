@@ -8,25 +8,37 @@ import { ThickSheetGeometry } from "../paper/ThickSheetGeometry";
 import { createPaperMaterial } from "../paper/PaperMaterial";
 import { PageTurnController } from "../animation/PageTurnController";
 import { Heightfield } from "../physics/Heightfield";
-import { smootherstep, clamp01 } from "../animation/easing";
+import { clamp01 } from "../animation/easing";
+import {
+  coverPose,
+  openCoverSurface,
+  openCoverTopAt,
+} from "../book/coverRig";
 
 /**
  * Animated hardcover book demo with a play/pause button.
  *
  * A CLOSED book (~15 visible sheets) rests on the right. On Play:
- *   1. the front cover swings open to the left
+ *   1. the front cover swings open to the left, hinged at the spine
  *   2. 8 sheets turn right->left one at a time, accumulating on the opened
  *      cover, while 7 sheets remain on the right
  *
  * Realism / stability:
+ *  - The cover is a rigid board hinged at the spine: it rotates about x=0 and
+ *    its hinge line stays at the top of the block until past vertical, then
+ *    settles to the table. No centre-line slide, no hop, no clipping through
+ *    the page block or the table.
+ *  - Pages collide with the OPEN COVER, not just a magic floor: the cover's
+ *    inner lining is the destination surface, with a half-shell clearance.
  *  - The whole FORE-EDGE is driven along a smooth 2D arc (per-row lead + lift
  *    variation), so the page curls in both directions, not as a cylinder.
+ *  - The pinned SPINE edge descends with the page, so a landed sheet lies flat
+ *    on the left stack instead of cantilevering from the old stack height.
  *  - Long-range bending links distribute curvature (smooth curl, no crease).
  *  - Page-to-page collision via a heightfield: a shared Heightfield stores the
  *    top surface of everything below. Each landed sheet is baked into it (outer
  *    region only, leaving the gutter free so pages fan naturally). The active
  *    sheet collides against this, so it rests on the pages below it.
- *  - Per-sheet spine heights are offset so pages don't coincide at the gutter.
  *
  * Playback is deterministic in an absolute timeline `time` (seconds).
  */
@@ -43,7 +55,19 @@ const FIXED_DT = 1 / 120;
 const blockTop = CT + PBT;
 const sheetVStep = 0.0003; // right-stack spacing (exaggerated for visibility)
 const restBase = blockTop + 0.0004;
-const landBase = CT + 0.0004;
+
+// --- Cover geometry / collision -------------------------------------------
+// The open front cover lies flat on the left; its inner lining is the top
+// surface that landing pages must rest on.
+const OPEN_COVER_CENTER_Y = CT / 2;
+const OPEN_COVER = openCoverSurface(BOOK_DIMENSIONS, OPEN_COVER_CENTER_Y);
+const PAGE_SHELL_HALF = 0.000125; // particle mid-surface to page face
+const COVER_CONTACT_GAP = 0.00005;
+// Particle-centre floor on the open cover (page underside just touches it).
+const COVER_FLOOR_Y =
+  OPEN_COVER.topY + PAGE_SHELL_HALF + COVER_CONTACT_GAP;
+// Keep each page's fore-edge pin just above the floor, then stack upward.
+const landBase = COVER_FLOOR_Y + 0.0002;
 // Must exceed the bake clearance (0.0006) so each page lands just above the
 // surface of the pages already stacked below it.
 const landStep = 0.0008;
@@ -58,7 +82,7 @@ interface TurnWindow {
 }
 
 const COVER_START = 0.6;
-const COVER_END = 3.2;
+const COVER_END = 2.8; // 2.2 s hinge swing
 const FIRST_TURN = 3.7;
 const TURN_GAP = TURN_DUR + SETTLE_DUR + 0.3;
 
@@ -150,34 +174,52 @@ export function startBookDemo(container: HTMLElement): () => void {
     scene.add(m);
   }
 
-  // Spine strip at the gutter (top at block-top so it never pokes into pages).
+  // Spine plinth at the gutter. It only rises to the open cover's top surface,
+  // so it reads as the hinge groove when the book is closed and, once open,
+  // sits flush with the cover instead of forming a wall between the two stacks.
+  // A full-height (blockTop) strip would be driven through by every turning
+  // page's descending spine edge and would tower over the landed pages.
+  // Sit it just right of the hinge so the opening cover (which stays at x <= 0)
+  // never passes through it; the 0.2 mm offset reads as the hinge groove.
+  const spineLeft = 0.0002;
+  const spineRight = W / 2 - (W * 0.96) / 2; // page block's left edge
+  const spineWidth = spineRight - spineLeft;
+  const spineHeight = OPEN_COVER.topY;
   const spine = new THREE.Mesh(
-    new THREE.BoxGeometry(0.006, blockTop, H),
+    new THREE.BoxGeometry(spineWidth, spineHeight, H),
     materials.spine,
   );
-  spine.position.set(0, blockTop / 2, 0);
+  spine.position.set((spineLeft + spineRight) / 2, spineHeight / 2, 0);
   spine.castShadow = true;
   scene.add(spine);
 
-  // Front cover (closed on right, opens to left).
+  // Front cover: a rigid board hinged on the spine (x=0). The board is offset
+  // +W/2 inside the pivot, so the pivot line is the book's hinge and rotation
+  // alone opens the cover. Its hinge height is animated separately (see
+  // coverPose) to model the hinge rolling down the spine as it goes flat.
   const topSheetY = restBase + (NUM_SHEETS - 1) * sheetVStep;
   const coverBottom = topSheetY + 0.0005;
-  const closedTopY = coverBottom + CT / 2;
+  const closedCenterY = coverBottom + CT / 2;
   const frontCover = createCover(BOOK_DIMENSIONS, materials, "front");
-  const closedPos = new THREE.Vector3(W / 2, closedTopY, 0);
-  const openPos = new THREE.Vector3(-W / 2, CT / 2, 0);
-  const closedQuat = new THREE.Quaternion();
-  const openQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI);
-  frontCover.position.copy(closedPos);
-  frontCover.quaternion.copy(closedQuat);
-  scene.add(frontCover);
+  frontCover.position.x = W / 2;
+  const coverPivot = new THREE.Group();
+  coverPivot.name = "front-cover-hinge";
+  coverPivot.position.set(0, closedCenterY, 0);
+  coverPivot.add(frontCover);
+  scene.add(coverPivot);
 
   // --- Heightfield (shared collision surface) ------------------------------
   const heightfield = new Heightfield({ width: W, height: H, nx: 110, nz: 110 });
   const gutterX = -W / 2; // local x of the spine
   const bakeMinX = gutterX - 0.04; // leave a 4cm gutter strip free (natural fan)
   function resetHeightfield(): void {
-    heightfield.setBase((x) => (x >= gutterX ? blockTop : CT));
+    heightfield.setBase((x, z) =>
+      x >= gutterX
+        ? blockTop
+        : openCoverTopAt(x + W / 2, z, BOOK_DIMENSIONS, OPEN_COVER_CENTER_Y) +
+          PAGE_SHELL_HALF +
+          COVER_CONTACT_GAP,
+    );
   }
   resetHeightfield();
 
@@ -216,16 +258,21 @@ export function startBookDemo(container: HTMLElement): () => void {
       groundHeight,
     });
     for (const p of sim.particles) p.y = p.py = restY;
-    for (let r = 0; r < rows; r++) sim.pin(r * cols + 0); // pin spine edge
 
+    const spineIndices: number[] = [];
     const foreEdgeIndices: number[] = [];
-    for (let r = 0; r < rows; r++) foreEdgeIndices.push(r * cols + (cols - 1));
+    for (let r = 0; r < rows; r++) {
+      spineIndices.push(r * cols + 0);
+      foreEdgeIndices.push(r * cols + (cols - 1));
+    }
 
     const controller = new PageTurnController({
       foreEdgeIndices,
+      spineIndices,
       gutterX,
       restY,
       landY,
+      landSpineY: landY, // gutter edge ends on the left stack, not above it
       width: W,
       duration: win.dur,
       liftScale: 0.6,
@@ -332,13 +379,14 @@ export function startBookDemo(container: HTMLElement): () => void {
   }
 
   function updateCover(t: number): void {
-    const p = smootherstep(
-      clamp01((t - TIMELINE.coverStart) / (TIMELINE.coverEnd - TIMELINE.coverStart)),
+    const u = clamp01(
+      (t - TIMELINE.coverStart) / (TIMELINE.coverEnd - TIMELINE.coverStart),
     );
-    frontCover.position.lerpVectors(closedPos, openPos, p);
-    frontCover.position.y += Math.sin(Math.PI * p) * 0.09;
-    frontCover.quaternion.slerpQuaternions(closedQuat, openQuat, p);
+    const pose = coverPose(u, closedCenterY, OPEN_COVER_CENTER_Y);
+    coverPivot.position.y = pose.hingeY;
+    coverPivot.rotation.z = pose.angle;
   }
+  updateCover(0);
 
   button.addEventListener("click", () => setPlaying(!playing));
 
@@ -384,6 +432,22 @@ export function startBookDemo(container: HTMLElement): () => void {
       return time;
     },
     duration: TIMELINE.end,
+    /** Current cover pose + the open-cover collision surface (debug aid). */
+    cover: () => {
+      const u = clamp01(
+        (time - TIMELINE.coverStart) / (TIMELINE.coverEnd - TIMELINE.coverStart),
+      );
+      const pose = coverPose(u, closedCenterY, OPEN_COVER_CENTER_Y);
+      return {
+        u,
+        angle: pose.angle,
+        hingeY: pose.hingeY,
+        closedCenterY,
+        openCenterY: OPEN_COVER_CENTER_Y,
+        topY: OPEN_COVER.topY,
+        floorY: COVER_FLOOR_Y,
+      };
+    },
     /** Per-page particle bounds in world space (debug/validation aid). */
     pageBounds: () =>
       pages.map((pg) => {
@@ -399,7 +463,17 @@ export function startBookDemo(container: HTMLElement): () => void {
           if (p.z < minZ) minZ = p.z;
           if (p.z > maxZ) maxZ = p.z;
         }
-        return { stepped: pg.stepped, minX, maxX, minY, maxY, minZ, maxZ };
+        return {
+          stepped: pg.stepped,
+          restY: pg.restY,
+          landY: pg.landY,
+          minX,
+          maxX,
+          minY,
+          maxY,
+          minZ,
+          maxZ,
+        };
       }),
   };
   (window as unknown as { __sceneReady: boolean }).__sceneReady = true;

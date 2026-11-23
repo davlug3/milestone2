@@ -84,9 +84,13 @@ export function startPageTurnTest(
     foreEdgeIndices,
     gutterX: -width / 2,
     restY,
+    landY: restY - 0.004,
     width, // arc radius = page width
     duration: turnDuration,
     liftScale: 0.6, // < 1 => real curl
+    lead: 0.04,
+    liftVar: 0.06,
+    rows,
   });
   controller.seedZ(sim.particles);
   controller.setProgress(0);

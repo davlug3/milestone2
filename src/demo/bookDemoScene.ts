@@ -12,37 +12,34 @@ import { smootherstep, clamp01 } from "../animation/easing";
 /**
  * Animated book demo with a play/pause button.
  *
- * A closed hardcover book rests on a studio surface. Pressing Play runs a
- * deterministic timeline:
- *   closed -> front cover swings open -> three deformable pages turn and settle
- *   on the opposite (left) stack.
+ * Starts as a CLOSED hardcover book on the right (back cover + page block +
+ * turning pages, all under the closed front cover; nothing on the left). On
+ * Play:
+ *   1. the front cover swings open to the left
+ *   2. three deformable pages turn right->left and settle on the opened cover
  *
- * Page-turn quality notes (see scripts/page-sim-metrics.ts):
- *  - The whole FORE-EDGE is driven (not a single corner). A single-corner pin
- *    forces a cone fold; driving the full edge lets the sheet form a smooth
- *    developable curl.
- *  - The fore-edge follows a semicircular arc of radius = page width about the
- *    gutter, so the sheet always spans its natural length and never buckles
- *    into a sharp gutter crease.
- *  - Bending stiffness is high and solver iterations raised, so curvature is
- *    distributed smoothly rather than concentrated in one fold.
- *  - After the sweep the fore-edge is held at its final rest position so the
- *    page settles flat on the destination stack instead of crumpling.
+ * Realism notes:
+ *  - The WHOLE fore-edge is driven along a smooth arc (not a single corner).
+ *  - Per-row phase lead twists the sheet so it curls in 2D (width + height),
+ *    not as a uniform cylinder.
+ *  - Long-range bending links distribute curvature (smooth curl, no crease).
+ *  - A heightfield collision (tall right stack, low left) keeps the page from
+ *    penetrating the book or other pages; the page lands on the left stack.
+ *  - The spine strip top is below the page rest plane so pages never intersect
+ *    the binding.
  *
- * Pages use the real PBD solver (PaperSimulation). Only one page is dynamic at
- * a time. The cover is a rigid board (covers are rigid in reality).
- *
- * Playback is driven by an absolute timeline `time` (seconds); physics is
- * stepped to match `time` via per-page step counters, so seeking and playing
- * produce the same result (deterministic).
+ * Playback is deterministic in an absolute timeline `time` (seconds); physics
+ * is stepped to match, so seeking and playing agree.
  */
 
 const W = BOOK_DIMENSIONS.width;
 const H = BOOK_DIMENSIONS.height;
 const CT = BOOK_DIMENSIONS.coverThickness;
-const PBT = 0.012; // page block thickness for the demo
+const PBT = 0.012; // page block thickness
+const NUM_TURNS = 3;
 
 const FIXED_DT = 1 / 120;
+const blockTop = CT + PBT; // right stack top
 
 interface TurnWindow {
   start: number;
@@ -54,11 +51,11 @@ const TIMELINE = {
   coverStart: 0.6,
   coverEnd: 3.2,
   turns: [
-    { start: 3.7, dur: 2.6, settle: 0.9 },
-    { start: 6.9, dur: 2.6, settle: 0.9 },
-    { start: 10.1, dur: 2.6, settle: 0.9 },
+    { start: 3.8, dur: 2.6, settle: 0.9 },
+    { start: 7.0, dur: 2.6, settle: 0.9 },
+    { start: 10.2, dur: 2.6, settle: 0.9 },
   ] as TurnWindow[],
-  end: 13.6,
+  end: 13.8,
 };
 
 interface PageInstance {
@@ -70,6 +67,7 @@ interface PageInstance {
   stepped: number;
   maxSteps: number;
   restY: number;
+  landY: number;
 }
 
 export function startBookDemo(container: HTMLElement): () => void {
@@ -90,11 +88,11 @@ export function startBookDemo(container: HTMLElement): () => void {
     0.01,
     100,
   );
-  camera.position.set(0.05, 0.46, 0.6);
+  camera.position.set(0.03, 0.5, 0.68);
   camera.lookAt(0, 0.03, 0);
 
   addStudioLighting(scene);
-  const pageKey = new THREE.DirectionalLight(0xffffff, 0.8);
+  const pageKey = new THREE.DirectionalLight(0xffffff, 0.7);
   pageKey.position.set(0.2, 0.9, 0.3);
   scene.add(pageKey);
 
@@ -107,16 +105,15 @@ export function startBookDemo(container: HTMLElement): () => void {
   ground.receiveShadow = true;
   scene.add(ground);
 
-  // --- Book parts (open-book layout, gutter at x=0) ------------------------
+  // --- Book parts (closed on the right; gutter at x=0) ---------------------
   const materials = createBookMaterials();
-  const closedTopY = CT + PBT + CT / 2;
 
   // Back cover (bottom, right side).
   const backCover = createCover(BOOK_DIMENSIONS, materials, "back");
   backCover.position.set(W / 2, CT / 2, 0);
   scene.add(backCover);
 
-  // Right page block (unturned pages).
+  // Right page block (the unturned pages).
   const rightBlock = new THREE.Mesh(
     new THREE.BoxGeometry(W * 0.96, PBT, H * 0.97),
     materials.paperEdge,
@@ -126,50 +123,27 @@ export function startBookDemo(container: HTMLElement): () => void {
   rightBlock.receiveShadow = true;
   scene.add(rightBlock);
 
-  // Left page block (destination stack the turned pages settle onto).
-  const leftBlock = new THREE.Mesh(
-    new THREE.BoxGeometry(W * 0.96, PBT, H * 0.97),
-    materials.paperEdge,
-  );
-  leftBlock.position.set(-W / 2, CT + PBT / 2, 0);
-  leftBlock.castShadow = true;
-  leftBlock.receiveShadow = true;
-  scene.add(leftBlock);
-
-  // Layered sheet detail on top of each block.
-  for (let side = -1; side <= 1; side += 2) {
-    for (let i = 0; i < 4; i++) {
-      const sheet = new THREE.Mesh(
-        new THREE.BoxGeometry(W * 0.96, 0.0004, H * 0.97),
-        i % 2 === 0 ? materials.paper : materials.paperEdge,
-      );
-      sheet.position.set(
-        (side * W) / 2,
-        CT + PBT + 0.0004 * (i + 0.5),
-        0,
-      );
-      sheet.receiveShadow = true;
-      scene.add(sheet);
-    }
-  }
-
-  // Spine strip at the gutter (x=0). Its top is kept at the page-block top
-  // (CT+PBT) so it never pokes up into the turning pages (which caused the
-  // spine/binding penetration). The page spine edge rests just above it.
-  const spineTop = CT + PBT;
+  // Spine strip at the gutter (x=0). Top kept at block-top height so it never
+  // pokes into the turning pages.
   const spine = new THREE.Mesh(
-    new THREE.BoxGeometry(0.006, spineTop, H),
+    new THREE.BoxGeometry(0.006, blockTop, H),
     materials.spine,
   );
-  spine.position.set(0, spineTop / 2, 0);
+  spine.position.set(0, blockTop / 2, 0);
   spine.castShadow = true;
   scene.add(spine);
 
-  // Front cover (animated rigid board): closed on the right, opens to the left.
+  // --- Front cover (closed on the right, opens to the left) ----------------
+  const restBase = blockTop + 0.0005; // bottom turning page rest height
+  const pageVStep = 0.0004;
+  const topTurningPageY = restBase + (NUM_TURNS - 1) * pageVStep + 0.0003;
+  const coverBottom = topTurningPageY + 0.0004;
+  const closedTopY = coverBottom + CT / 2;
+
   const frontCover = createCover(BOOK_DIMENSIONS, materials, "front");
   const closedPos = new THREE.Vector3(W / 2, closedTopY, 0);
-  const openPos = new THREE.Vector3(-W / 2, CT / 2 + 0.0006, 0);
-  const closedQuat = new THREE.Quaternion(); // identity
+  const openPos = new THREE.Vector3(-W / 2, CT / 2, 0); // open flat on the left
+  const closedQuat = new THREE.Quaternion();
   const openQuat = new THREE.Quaternion().setFromAxisAngle(
     new THREE.Vector3(0, 0, 1),
     Math.PI,
@@ -181,12 +155,19 @@ export function startBookDemo(container: HTMLElement): () => void {
   // --- Turning pages -------------------------------------------------------
   const cols = 25;
   const rows = 33;
-  const restBase = CT + PBT + 0.0009; // page rest height above the stacks
   const pages: PageInstance[] = [];
 
-  for (let i = 0; i < TIMELINE.turns.length; i++) {
+  for (let i = 0; i < NUM_TURNS; i++) {
     const win = TIMELINE.turns[i];
-    const pageRestY = restBase + i * 0.0007;
+    // Page 0 (turns first) starts on top (highest).
+    const pageRestY = restBase + (NUM_TURNS - 1 - i) * pageVStep;
+    const landY = CT + 0.0003 + i * 0.0005; // destination stack top (grows)
+
+    // Heightfield collision: tall right stack, low left stack.
+    const groundHeight = (x: number, _z: number): number => {
+      if (x >= 0) return blockTop; // right stack + gutter
+      return landY; // left side (open cover + already-turned pages)
+    };
 
     const sim = new PaperSimulation({
       cols,
@@ -196,27 +177,29 @@ export function startBookDemo(container: HTMLElement): () => void {
       dt: FIXED_DT,
       iterations: 12,
       bendStiffness: 1.0,
-      longRangeBend: true, // spread curvature -> smooth curl, no sharp buckle
+      longRangeBend: true,
       plane: "xz",
-      // Land on the destination (left) stack top, just under rest height.
-      groundY: restBase - 0.0005 + i * 0.0007,
+      groundHeight,
     });
     for (const p of sim.particles) p.y = p.py = pageRestY;
 
-    // Pin the spine edge (c=0) to the gutter.
+    // Pin the spine edge (c=0) at the gutter height.
     for (let r = 0; r < rows; r++) sim.pin(r * cols + 0);
 
-    // Fore-edge indices (c = cols-1) for every row.
     const foreEdgeIndices: number[] = [];
     for (let r = 0; r < rows; r++) foreEdgeIndices.push(r * cols + (cols - 1));
 
     const controller = new PageTurnController({
       foreEdgeIndices,
-      gutterX: -W / 2, // local spine x
+      gutterX: -W / 2,
       restY: pageRestY,
-      width: W, // arc radius = page width
+      landY,
+      width: W,
       duration: win.dur,
-      liftScale: 0.6, // < 1 => real curl (not a rigid flat flip)
+      liftScale: 0.6,
+      lead: 0.04, // 2D twist: head/tail lead differently
+      liftVar: 0.06, // 2D dome: head/tail edges curl a touch more than center
+      rows,
     });
     controller.seedZ(sim.particles);
     controller.setProgress(0);
@@ -228,8 +211,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     const mesh = new THREE.Mesh(geo.geometry, material);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    // Offset so the pinned spine edge sits at the gutter (world x=0).
-    mesh.position.x = W / 2;
+    mesh.position.x = W / 2; // gutter at world x=0
     scene.add(mesh);
     geo.update(sim.particles);
 
@@ -243,10 +225,11 @@ export function startBookDemo(container: HTMLElement): () => void {
       stepped: 0,
       maxSteps,
       restY: pageRestY,
+      landY,
     });
   }
 
-  // --- UI (play / pause button + time label) -------------------------------
+  // --- UI ------------------------------------------------------------------
   const ui = document.createElement("div");
   ui.className = "demo-ui";
   ui.innerHTML = `
@@ -265,22 +248,23 @@ export function startBookDemo(container: HTMLElement): () => void {
   let raf = 0;
 
   function setPlaying(next: boolean): void {
-    if (next && time >= TIMELINE.end) seek(0); // replay from start if at end
+    if (next && time >= TIMELINE.end) seek(0);
     playing = next;
     button.textContent = playing ? "❚❚ Pause" : "▶ Play";
   }
 
+  function resetPage(pg: PageInstance): void {
+    pg.stepped = 0;
+    pg.sim.reset();
+    for (const p of pg.sim.particles) p.y = p.py = pg.restY;
+    pg.controller.setProgress(0);
+    pg.controller.apply(pg.sim.particles);
+    pg.geo.update(pg.sim.particles);
+  }
+
   function seek(t: number): void {
     time = Math.max(0, Math.min(t, TIMELINE.end));
-    for (const pg of pages) {
-      pg.stepped = 0;
-      pg.sim.reset();
-      // reset() puts particles at y=0 in the xz plane; restore rest height.
-      for (const p of pg.sim.particles) p.y = p.py = pg.restY;
-      pg.controller.setProgress(0);
-      pg.controller.apply(pg.sim.particles);
-      pg.geo.update(pg.sim.particles);
-    }
+    for (const pg of pages) resetPage(pg);
     stepPagesTo(time);
     updateCover(time);
   }
@@ -348,7 +332,6 @@ export function startBookDemo(container: HTMLElement): () => void {
   }
   window.addEventListener("resize", onResize);
 
-  // Expose a small debug/automation API.
   (window as unknown as { __demo: unknown }).__demo = {
     play: () => setPlaying(true),
     pause: () => setPlaying(false),

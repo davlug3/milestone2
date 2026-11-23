@@ -25,11 +25,14 @@ export class XPBDSolver {
   /** Global velocity damping per step (0..1). 1 = no damping. */
   public damping: number;
   /**
-   * Optional ground plane at y = groundY. Particles are clamped to stay at or
-   * above it (PBD-style projection after constraint iterations). Set to
-   * `null` to disable. Used so a turning page lands and settles.
+   * Optional ground: either a flat plane at `groundY`, or a heightfield
+   * callback `groundHeight(x, z)` returning the surface height at that point.
+   * Particles are clamped to stay at or above the surface (PBD projection after
+   * constraint iterations). A heightfield lets a turning page collide with a
+   * tall book stack on one side and a low surface on the other. `null` disables.
    */
   public groundY: number | null;
+  public groundHeight: ((x: number, z: number) => number) | null;
 
   constructor(options?: {
     dt?: number;
@@ -37,12 +40,14 @@ export class XPBDSolver {
     gravity?: number;
     damping?: number;
     groundY?: number | null;
+    groundHeight?: ((x: number, z: number) => number) | null;
   }) {
     this.dt = options?.dt ?? 1 / 120;
     this.iterations = options?.iterations ?? 6;
     this.gravity = options?.gravity ?? 9.81;
     this.damping = options?.damping ?? 0.999;
     this.groundY = options?.groundY ?? null;
+    this.groundHeight = options?.groundHeight ?? null;
   }
 
   addParticle(p: Particle): number {
@@ -128,8 +133,17 @@ export class XPBDSolver {
     }
   }
 
-  /** Clamp particles above the ground plane (if enabled). */
+  /** Clamp particles above the ground (flat plane or heightfield). */
   private solveGround(): void {
+    if (this.groundHeight) {
+      const h = this.groundHeight;
+      for (const p of this.particles) {
+        if (p.pinned) continue;
+        const g = h(p.x, p.z);
+        if (p.y < g) p.y = g;
+      }
+      return;
+    }
     if (this.groundY === null) return;
     const g = this.groundY;
     for (const p of this.particles) {

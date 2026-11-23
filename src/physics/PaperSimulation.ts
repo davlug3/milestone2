@@ -21,6 +21,7 @@ export class PaperSimulation {
     bendStiffness?: number;
     plane?: "xy" | "xz";
     groundY?: number | null;
+    groundHeight?: ((x: number, z: number) => number) | null;
     longRangeBend?: boolean;
   }) {
     this.plane = options.plane ?? "xy";
@@ -37,6 +38,7 @@ export class PaperSimulation {
       dt: options.dt,
       iterations: options.iterations,
       groundY: options.groundY,
+      groundHeight: options.groundHeight,
     });
     for (const p of this.topology.particles) this.solver.addParticle(p);
     for (const c of this.topology.constraints) this.solver.addConstraint(c);

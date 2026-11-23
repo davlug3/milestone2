@@ -1,10 +1,10 @@
 # Progress
 
-Current milestone: 5 (demo + page-turn realism v2)
-Last completed task: Page-turn realism v2 (long-range bend, curl, spine/shadow fixes)
+Current milestone: 5 (demo + page-turn realism v4)
+Last completed task: Closed-book start fix + heightfield collision + 2D curl
 Current blocker: inotify watch limit blocks `npm run dev` (use `vite preview`)
 Build status: PASS (tsc + vite build)
-Test status: PASS (sim 8/8, page metrics dihedral 29deg curl 7.9cm penetration 0, demo 0 errors)
+Test status: PASS (sim 8/8, page metrics stretch 1.11x dihedral 35deg penetration 0, demo 0 errors, t=0 closed)
 
 ## Completed
 
@@ -14,7 +14,7 @@ Test status: PASS (sim 8/8, page metrics dihedral 29deg curl 7.9cm penetration 0
 - [x] Milestone 3 — Bending and thickness
 - [x] Milestone 4 — One guided page turn
 - [~] Animated demo (play button): closed book -> cover opens -> 3 page turns
-- [~] Page-turn realism v2: long-range bending curl, spine strip fix, shadow bias, collision ground
+- [~] Page-turn realism v4: closed-book start, heightfield collision, 2D curl (lead+liftVar)
 - [ ] Milestone 5 — Integrate page with book
 - [ ] Milestone 6 — Cover, spine, and endpapers
 - [ ] Milestone 7 — Photographic page design

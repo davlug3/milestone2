@@ -29,8 +29,16 @@ export function createSheetTopology(options: {
   height: number;
   /** Bending constraint stiffness (0..1). Defaults to a soft 0.35. */
   bendStiffness?: number;
+  /**
+   * Orientation of the flat rest sheet:
+   *   'xy' (default): sheet in the XY plane at z=0 (vertical, for drop tests).
+   *   'xz': sheet flat in the XZ plane at y=0 (horizontal, for page turns;
+   *         width along X, height along Z, gravity -Y perpendicular).
+   */
+  plane?: "xy" | "xz";
 }): SheetTopology {
   const { cols, rows, width, height } = options;
+  const plane = options.plane ?? "xy";
   const particles: Particle[] = [];
   const constraints: DistanceConstraint[] = [];
 
@@ -39,12 +47,18 @@ export function createSheetTopology(options: {
 
   const idx = (c: number, r: number): number => r * cols + c;
 
-  // Build particles in the XY plane, centered at origin, z=0.
+  // Build particles in the chosen plane, centered at origin.
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      const x = -width / 2 + c * dx;
-      const y = -height / 2 + r * dy;
-      particles.push(createParticle(x, y, 0));
+      const u = -width / 2 + c * dx; // along width
+      const v = -height / 2 + r * dy; // along height
+      if (plane === "xz") {
+        // Flat on the ground: width->X, height->Z, y=0.
+        particles.push(createParticle(u, 0, v));
+      } else {
+        // Vertical: width->X, height->Y, z=0.
+        particles.push(createParticle(u, v, 0));
+      }
     }
   }
 

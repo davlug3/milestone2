@@ -1,10 +1,10 @@
 # Progress
 
-Current milestone: 4
-Last completed task: Milestone 3 — Bending and thickness
+Current milestone: 5
+Last completed task: Milestone 4 — One guided page turn
 Current blocker: none
 Build status: PASS (tsc + vite build)
-Test status: PASS (sim-test 8/8, Playwright preview WebGL 2)
+Test status: PASS (sim-test 8/8, Playwright page-turn 4 times WebGL 2)
 
 ## Completed
 
@@ -12,7 +12,7 @@ Test status: PASS (sim-test 8/8, Playwright preview WebGL 2)
 - [x] Milestone 1 — Static book block
 - [x] Milestone 2 — One deformable test sheet
 - [x] Milestone 3 — Bending and thickness
-- [ ] Milestone 4 — One guided page turn
+- [x] Milestone 4 — One guided page turn
 - [ ] Milestone 5 — Integrate page with book
 - [ ] Milestone 6 — Cover, spine, and endpapers
 - [ ] Milestone 7 — Photographic page design
@@ -22,4 +22,4 @@ Test status: PASS (sim-test 8/8, Playwright preview WebGL 2)
 
 ## Next task
 
-Milestone 4 — One guided page turn: add a corner/edge target controller driving the sheet through lift, peel, arch, crossing, fall, and settle phases (guide the sheet, don't rotate it rigidly). Add a simple landing surface and gravity/damping tuning. This is the most important milestone.
+Milestone 5 — Integrate page with book: attach the page root to the book binding region, add simple page-to-stack and page-to-cover collision, add page stack ordering, and repeat the turn with a second page. Preserve the isolated page-turn test.

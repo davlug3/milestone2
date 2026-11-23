@@ -24,17 +24,25 @@ export class XPBDSolver {
   public readonly gravity: number;
   /** Global velocity damping per step (0..1). 1 = no damping. */
   public damping: number;
+  /**
+   * Optional ground plane at y = groundY. Particles are clamped to stay at or
+   * above it (PBD-style projection after constraint iterations). Set to
+   * `null` to disable. Used so a turning page lands and settles.
+   */
+  public groundY: number | null;
 
   constructor(options?: {
     dt?: number;
     iterations?: number;
     gravity?: number;
     damping?: number;
+    groundY?: number | null;
   }) {
     this.dt = options?.dt ?? 1 / 120;
     this.iterations = options?.iterations ?? 6;
     this.gravity = options?.gravity ?? 9.81;
     this.damping = options?.damping ?? 0.999;
+    this.groundY = options?.groundY ?? null;
   }
 
   addParticle(p: Particle): number {
@@ -120,6 +128,16 @@ export class XPBDSolver {
     }
   }
 
+  /** Clamp particles above the ground plane (if enabled). */
+  private solveGround(): void {
+    if (this.groundY === null) return;
+    const g = this.groundY;
+    for (const p of this.particles) {
+      if (p.pinned) continue;
+      if (p.y < g) p.y = g;
+    }
+  }
+
   /** Advance the simulation by one fixed step. */
   step(): void {
     this.savePrevious();
@@ -127,6 +145,7 @@ export class XPBDSolver {
     for (let i = 0; i < this.iterations; i++) {
       this.solveConstraints();
     }
+    this.solveGround();
     this.updateVelocities();
   }
 }

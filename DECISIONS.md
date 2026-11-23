@@ -14,3 +14,6 @@
 - Bending: two-step neighbor distance constraints (soft, stiffness ~0.35), configurable via `bendStiffness`. Dihedral bending deferred.
 - Paper thickness: thin-shell render (front/back offset along mid-surface normal + perimeter edge), default 0.25 mm visual.
 - Sim tests run headless via `npm run test:sim` (esbuild bundle + node).
+- Sheet topology supports two rest planes: 'xy' (vertical, drop tests) and 'xz' (flat, page turns).
+- Page turn: kinematic corner pin driven by `PageTurnController` (lift/peel/arch/cross/fall/settle via eased target); never rigid rotation. Ground collision (y clamp) for landing.
+- Test scenes selectable via `?test=paper-drop|paper-edge|page-turn`; `?t=<seconds>` freezes a page-turn frame for deterministic screenshots.

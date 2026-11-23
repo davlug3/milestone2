@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { createBook } from "./book/createBook";
 import { addStudioLighting } from "./rendering/lighting";
 import { startPaperDropTest } from "./testing/PaperDropTest";
+import { startPageTurnTest } from "./testing/PageTurnTest";
 
 /**
  * Entry point.
@@ -13,11 +14,18 @@ import { startPaperDropTest } from "./testing/PaperDropTest";
 
 const container = (document.getElementById("app") ?? document.body) as HTMLElement;
 
-const testName = new URLSearchParams(window.location.search).get("test");
+const params = new URLSearchParams(window.location.search);
+const testName = params.get("test");
+const freezeParam = params.get("t");
+const freezeTime =
+  freezeParam !== null && freezeParam !== "" ? Number(freezeParam) : undefined;
+
 if (testName === "paper-drop") {
   startPaperDropTest(container);
 } else if (testName === "paper-edge") {
   startPaperDropTest(container, { edgeOn: true });
+} else if (testName === "page-turn") {
+  startPageTurnTest(container, { freezeTime });
 } else {
   startBookScene(container);
 }

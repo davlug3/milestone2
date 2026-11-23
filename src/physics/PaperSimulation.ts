@@ -9,6 +9,7 @@ import type { Particle } from "./Particle";
 export class PaperSimulation {
   public readonly topology: SheetTopology;
   public readonly solver: XPBDSolver;
+  private readonly plane: "xy" | "xz";
 
   constructor(options: {
     cols: number;
@@ -17,14 +18,24 @@ export class PaperSimulation {
     height: number;
     dt?: number;
     iterations?: number;
+    bendStiffness?: number;
+    plane?: "xy" | "xz";
+    groundY?: number | null;
   }) {
+    this.plane = options.plane ?? "xy";
     this.topology = createSheetTopology({
       cols: options.cols,
       rows: options.rows,
       width: options.width,
       height: options.height,
+      bendStiffness: options.bendStiffness,
+      plane: this.plane,
     });
-    this.solver = new XPBDSolver({ dt: options.dt, iterations: options.iterations });
+    this.solver = new XPBDSolver({
+      dt: options.dt,
+      iterations: options.iterations,
+      groundY: options.groundY,
+    });
     for (const p of this.topology.particles) this.solver.addParticle(p);
     for (const c of this.topology.constraints) this.solver.addConstraint(c);
   }
@@ -38,6 +49,13 @@ export class PaperSimulation {
     const p = this.topology.particles[index];
     p.invMass = 0;
     p.pinned = true;
+  }
+
+  /** Un-pin a particle (restore unit inverse mass). */
+  unpin(index: number): void {
+    const p = this.topology.particles[index];
+    p.invMass = 1;
+    p.pinned = false;
   }
 
   /** Advance one fixed step. */
@@ -57,9 +75,17 @@ export class PaperSimulation {
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         const p = this.topology.particles[r * cols + c];
-        p.x = p.px = -width / 2 + c * dx;
-        p.y = p.py = -height / 2 + r * dy;
-        p.z = p.pz = 0;
+        const u = -width / 2 + c * dx;
+        const v = -height / 2 + r * dy;
+        if (this.plane === "xz") {
+          p.x = p.px = u;
+          p.y = p.py = 0;
+          p.z = p.pz = v;
+        } else {
+          p.x = p.px = u;
+          p.y = p.py = v;
+          p.z = p.pz = 0;
+        }
         p.vx = p.vy = p.vz = 0;
       }
     }

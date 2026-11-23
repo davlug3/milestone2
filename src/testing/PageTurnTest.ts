@@ -67,6 +67,7 @@ export function startPageTurnTest(
     dt: 1 / 120,
     iterations: 12,
     bendStiffness: 1.0,
+    longRangeBend: true,
     plane: "xz",
     groundY: restY - 0.004,
   });
@@ -83,9 +84,9 @@ export function startPageTurnTest(
     foreEdgeIndices,
     gutterX: -width / 2,
     restY,
-    width, // arc radius = page width -> smooth semicircle
+    width, // arc radius = page width
     duration: turnDuration,
-    liftScale: 1.0,
+    liftScale: 0.6, // < 1 => real curl
   });
   controller.seedZ(sim.particles);
   controller.setProgress(0);

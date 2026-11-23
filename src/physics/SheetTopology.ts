@@ -29,6 +29,10 @@ export function createSheetTopology(options: {
   height: number;
   /** Bending constraint stiffness (0..1). Defaults to a soft 0.35. */
   bendStiffness?: number;
+  /** Add 3- and 4-cell bending links to spread curvature (smoother curl). */
+  longRangeBend?: boolean;
+  /** Stiffness for the long-range links. Defaults to half of bendStiffness. */
+  longRangeBendStiffness?: number;
   /**
    * Orientation of the flat rest sheet:
    *   'xy' (default): sheet in the XY plane at z=0 (vertical, for drop tests).
@@ -108,6 +112,30 @@ export function createSheetTopology(options: {
         constraints.push(
           createDistanceConstraint(idx(c, r), idx(c, r + 2), bendY, bendStiffness),
         );
+      }
+    }
+  }
+
+  // Long-range bending constraints (3- and 4-cell spans). Two-step bending
+  // alone lets curvature concentrate into a couple of cells (a sharp buckle).
+  // Adding longer-range links resists localized folding and spreads the bend
+  // across many cells, producing a smooth, paper-like curl instead of a crease.
+  if (options.longRangeBend) {
+    const lrStiffness = options.longRangeBendStiffness ?? bendStiffness * 0.5;
+    for (let span = 3; span <= 4; span++) {
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          if (c < cols - span) {
+            constraints.push(
+              createDistanceConstraint(idx(c, r), idx(c + span, r), dx * span, lrStiffness),
+            );
+          }
+          if (r < rows - span) {
+            constraints.push(
+              createDistanceConstraint(idx(c, r), idx(c, r + span), dy * span, lrStiffness),
+            );
+          }
+        }
       }
     }
   }

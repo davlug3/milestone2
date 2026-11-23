@@ -153,12 +153,15 @@ export function startBookDemo(container: HTMLElement): () => void {
     }
   }
 
-  // Spine strip at the gutter (x=0).
+  // Spine strip at the gutter (x=0). Its top is kept at the page-block top
+  // (CT+PBT) so it never pokes up into the turning pages (which caused the
+  // spine/binding penetration). The page spine edge rests just above it.
+  const spineTop = CT + PBT;
   const spine = new THREE.Mesh(
-    new THREE.BoxGeometry(0.006, CT + PBT + CT, H),
+    new THREE.BoxGeometry(0.006, spineTop, H),
     materials.spine,
   );
-  spine.position.set(0, (CT + PBT + CT) / 2, 0);
+  spine.position.set(0, spineTop / 2, 0);
   spine.castShadow = true;
   scene.add(spine);
 
@@ -193,6 +196,7 @@ export function startBookDemo(container: HTMLElement): () => void {
       dt: FIXED_DT,
       iterations: 12,
       bendStiffness: 1.0,
+      longRangeBend: true, // spread curvature -> smooth curl, no sharp buckle
       plane: "xz",
       // Land on the destination (left) stack top, just under rest height.
       groundY: restBase - 0.0005 + i * 0.0007,
@@ -210,9 +214,9 @@ export function startBookDemo(container: HTMLElement): () => void {
       foreEdgeIndices,
       gutterX: -W / 2, // local spine x
       restY: pageRestY,
-      width: W, // arc radius = page width (smooth semicircle)
+      width: W, // arc radius = page width
       duration: win.dur,
-      liftScale: 1.0,
+      liftScale: 0.6, // < 1 => real curl (not a rigid flat flip)
     });
     controller.seedZ(sim.particles);
     controller.setProgress(0);

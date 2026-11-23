@@ -21,6 +21,7 @@ export class PaperSimulation {
     bendStiffness?: number;
     plane?: "xy" | "xz";
     groundY?: number | null;
+    longRangeBend?: boolean;
   }) {
     this.plane = options.plane ?? "xy";
     this.topology = createSheetTopology({
@@ -29,6 +30,7 @@ export class PaperSimulation {
       width: options.width,
       height: options.height,
       bendStiffness: options.bendStiffness,
+      longRangeBend: options.longRangeBend,
       plane: this.plane,
     });
     this.solver = new XPBDSolver({

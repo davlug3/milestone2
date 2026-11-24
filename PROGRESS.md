@@ -1,7 +1,7 @@
 # Progress
 
 Current milestone: 6 (cover, spine, endpapers) — complete
-Last completed task: Bound spine — pages attach to a cloth plane between the cover hinges; the plane's front edge follows the front cover hinge through the swing; text block is a wedge, cloth mull added, spine edge stays on the binding through the turn; binding plane is now a visible ochre cloth slab bounded by both covers
+Last completed task: Bound spine — pages attach to a cloth plane between the cover hinges; the plane's front edge follows the front cover hinge through the swing; text block is a wedge, cloth mull added, spine edge stays on the binding through the turn; binding plane is a visible ochre cloth slab with page-stock tabs showing every spine edge glued to it
 Current blocker: none
 Build status: PASS (tsc + vite build)
 Test status: PASS (sim, page metrics stretch 1.18x dihedral 35.9deg penetration 0, 8-page stacking 0mm interpenetration, cover + C-shell bounds PASS, spine plane follows the front cover PASS, spine PASS, paper/spine clearance PASS, demo 0 errors)

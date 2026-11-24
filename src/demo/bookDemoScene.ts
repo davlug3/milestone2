@@ -289,6 +289,23 @@ export function startBookDemo(container: HTMLElement): () => void {
     g.translate(0, 0, -depth / 2);
     return g;
   };
+  // A page's inner edge is GLUED onto the binding cloth, not just touching its
+  // border. These short page-stock tabs lie flat on the cloth at each sheet's
+  // spine height so the bound edge is visible from above.
+  const BIND_TAB = 0.009;
+  function addBindingTab(
+    x0: number,
+    x1: number,
+    spineY: number,
+    material: THREE.Material,
+  ): void {
+    const g = new THREE.BoxGeometry(x1 - x0, 0.00009, H * 0.97);
+    const m = new THREE.Mesh(g, material);
+    m.position.set((x0 + x1) / 2, spineY, 0);
+    m.name = "binding-tab";
+    m.receiveShadow = true;
+    scene.add(m);
+  }
   for (let i = 0; i < NUM_STATIC; i++) {
     const sheetIndex = NUM_TURNS + i; // 8..14
     const stackY = restBase + (NUM_SHEETS - 1 - sheetIndex) * sheetVStep;
@@ -300,6 +317,24 @@ export function startBookDemo(container: HTMLElement): () => void {
     m.name = "static-sheet";
     m.receiveShadow = true;
     scene.add(m);
+    // Right stack: the tab runs from the back hinge onto the cloth.
+    addBindingTab(
+      -BIND_TAB,
+      0.001,
+      spineY - sheetVStep * 0.4,
+      i % 2 === 0 ? materials.paper : materials.paperEdge,
+    );
+  }
+  // Left stack: pages land at the front hinge, so their glued tabs lie on the
+  // cloth from there toward the back hinge.
+  for (let k = 0; k < NUM_TURNS; k++) {
+    const spineY = spineFanY(BOOK_DIMENSIONS, k);
+    addBindingTab(
+      -SPINE_PANEL_W - 0.001,
+      -SPINE_PANEL_W + BIND_TAB,
+      spineY - sheetVStep * 0.4,
+      k === 0 || k === NUM_TURNS - 1 ? materials.endpaper : materials.paper,
+    );
   }
 
   // Inner hollow lining: the cloth spine plane between the two cover hinges.
@@ -308,7 +343,9 @@ export function startBookDemo(container: HTMLElement): () => void {
   // It is a distinct binding cloth (not endpaper) so the bound line stays
   // visible between the page stacks. The unit box is re-transformed every frame
   // in `updateCover`.
-  const hollowGeo = new THREE.BoxGeometry(1, 1, H * 0.99);
+  // Span the full book height so the binding cloth cannot end short of the
+  // boards at head/tail.
+  const hollowGeo = new THREE.BoxGeometry(1, 1, H * 1.005);
   const hollowLining = new THREE.Mesh(hollowGeo, materials.spineCloth);
   hollowLining.name = "hollow-lining";
   hollowLining.castShadow = true;
@@ -605,9 +642,9 @@ export function startBookDemo(container: HTMLElement): () => void {
     const dx = edges.front.x - edges.back.x;
     const dy = edges.front.y - edges.back.y;
     const len = Math.max(1e-6, Math.hypot(dx, dy));
-    // Extend slightly past both cover hinges so the cloth tucks under the
-    // pastedown linings and there is no visible gap at the cover boundary.
-    const overlap = 0.003;
+    // Tuck well past both cover hinges so the cloth's raw edge is hidden under
+    // the pastedown creases and it reads as bound to the boards, not abutting.
+    const overlap = 0.008;
     const ux = dx / len;
     const uy = dy / len;
     const bx = edges.back.x - ux * overlap;
@@ -621,7 +658,8 @@ export function startBookDemo(container: HTMLElement): () => void {
     // the pages are glued to. It extends AWAY from the pages (below the open
     // plane), so the binding face stays flush with the page undersides.
     const thickness = 0.002;
-    const gap = 0.00002;
+    // Flush with the cover lining top: no height step at the bound edge.
+    const gap = 0;
     hollowLining.position.set(
       (bx + fx) / 2 + nx * (thickness / 2 + gap),
       (by + fy) / 2 + ny * (thickness / 2 + gap),

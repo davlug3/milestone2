@@ -1,7 +1,7 @@
 # Progress
 
 Current milestone: 6 (cover, spine, endpapers) — complete
-Last completed task: Open-book length corrected to 2L+T via a moving hinge (spine panel), landed pages shifted with the cover; clearance test still passes
+Last completed task: Inner hollow lining bridges the T-wide open joint and bounds both page stacks' inner edges (no see-through); clearance still clean
 Current blocker: none
 Build status: PASS (tsc + vite build)
 Test status: PASS (sim, page metrics stretch 1.15x dihedral 29.7deg penetration 0, 8-page stacking 0mm interpenetration, cover + curved gutter PASS, spine PASS, paper/spine clearance PASS, demo 0 errors)

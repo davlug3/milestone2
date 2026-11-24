@@ -19,6 +19,8 @@ import {
   gutterBinding,
   gutterBindingS,
   gutterParticleFloorY,
+  gutterSurfaceY,
+  liningTopY,
 } from "../book/gutterRig";
 import {
   headbandGeometry,
@@ -246,6 +248,41 @@ export function startBookDemo(container: HTMLElement): () => void {
     m.receiveShadow = true;
     scene.add(m);
   }
+
+  // Inner hollow lining: bridges the T-wide joint between the landed pages'
+  // inner edge (front joint, x = -T) and the right block (x = BLOCK_INNER_X).
+  // Without it the open book shows straight through the spine panel to the
+  // table. Its top follows the gutter profile (lining top at the ends, dipping
+  // to the board top in the middle), so both page stacks' inner edges end on
+  // this one surface. Material is endpaper when open, spine cloth when closed.
+  const jointSurfaceY = (x: number): number => {
+    if (x <= -GUTTER_HALF || x >= GUTTER_HALF) return liningTopY(BOOK_DIMENSIONS);
+    return gutterSurfaceY(x, BOOK_DIMENSIONS, 1);
+  };
+  const hollowShape = new THREE.Shape();
+  const hollowX0 = -SPINE_PANEL_W - 0.0005;
+  const hollowX1 = BLOCK_INNER_X + 0.0005;
+  const hollowSegments = 64;
+  for (let i = 0; i <= hollowSegments; i++) {
+    const x = hollowX0 + ((hollowX1 - hollowX0) * i) / hollowSegments;
+    if (i === 0) hollowShape.moveTo(x, jointSurfaceY(x));
+    else hollowShape.lineTo(x, jointSurfaceY(x));
+  }
+  hollowShape.lineTo(hollowX1, CT);
+  hollowShape.lineTo(hollowX0, CT);
+  hollowShape.closePath();
+  const hollowDepth = H * 0.99;
+  const hollowGeo = new THREE.ExtrudeGeometry(hollowShape, {
+    depth: hollowDepth,
+    bevelEnabled: false,
+    curveSegments: 1,
+  });
+  hollowGeo.translate(0, 0, -hollowDepth / 2);
+  const hollowLining = new THREE.Mesh(hollowGeo, materials.endpaper);
+  hollowLining.name = "hollow-lining";
+  hollowLining.castShadow = true;
+  hollowLining.receiveShadow = true;
+  scene.add(hollowLining);
 
   // Hollow spine cover: a curved ribbon from the back cover's lower edge to the
   // front cover's hinge edge. It stays convex while the text block's spine
@@ -514,6 +551,8 @@ export function startBookDemo(container: HTMLElement): () => void {
     coverPivot.rotation.z = pose.angle;
     // The hollow cover-spine ribbon stays convex while the cover opens.
     updateSpineCover(u);
+    // The joint reads as cloth while closed and as endpaper once opened.
+    hollowLining.material = u >= 0.5 ? materials.endpaper : materials.spine;
   }
   updateCover(0);
 
@@ -668,6 +707,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     ui.remove();
     for (const pg of pages) pg.geo.dispose();
     spineCoverGeo.dispose();
+    hollowGeo.dispose();
     headbandGeo.dispose();
     renderer.dispose();
   };

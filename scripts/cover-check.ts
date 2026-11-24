@@ -32,6 +32,7 @@ import {
   openCoverSurface,
   openCoverTopAt,
 } from "../src/book/coverRig";
+import { spineCoverGeometry } from "../src/book/spineRig";
 import {
   LINING_INSET,
   gutterBinding,
@@ -45,6 +46,7 @@ const H = BOOK_DIMENSIONS.height;
 const CT = BOOK_DIMENSIONS.coverThickness;
 const PBT = 0.022;
 const SPINE_PANEL_W = 2 * CT + PBT; // case spine width = closed thickness
+const SPINE_TURN_IN = 0.003; // cloth turn-in onto the boards
 const blockTop = CT + PBT;
 const cols = 25;
 const rows = 33;
@@ -328,6 +330,56 @@ if (!(spineY < landY - 1e-4)) {
 }
 if (spread > 0.0015) {
   fail(`landed page is not smooth enough (spread ${spread * 1000}mm)`);
+}
+
+// --- Spine shell (C-section) ---------------------------------------------
+for (const u of [0, 0.25, 0.5, 0.75, 1]) {
+  const geo = spineCoverGeometry(u, BOOK_DIMENSIONS, closedCenterY, OPEN_CENTER_Y, SPINE_PANEL_W, SPINE_TURN_IN);
+  const pos = geo.getAttribute("position");
+  const pose = coverPose(u, closedCenterY, OPEN_CENTER_Y, HINGE_DROP_START, SPINE_PANEL_W);
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    if (!Number.isFinite(x + y + z)) fail(`spine shell NaN at u=${u}`);
+    // The front turn-in lies 0.1 mm under the opened cover (hidden by the
+    // table); allow that tolerance, not a visible dip.
+    if (y < -0.0002) fail(`spine shell below table at u=${u}: y=${y}`);
+    // Never enter the back board interior (overlap eps is allowed).
+    if (x > 0.0002 && x < W - 1e-6 && y > 0.0002 && y < CT - 1e-5) {
+      fail(`spine shell enters back board at u=${u} (${(x * 1000).toFixed(2)},${(y * 1000).toFixed(2)})mm`);
+    }
+    // Never enter the page block.
+    if (x > BLOCK_INNER_X + 1e-6 && x < W - 1e-6 && y > CT + 1e-5 && y < blockTop - 1e-5) {
+      fail(`spine shell enters block at u=${u}`);
+    }
+    // Never enter the front board interior while raised.
+    if (u <= 0.55) {
+      const c = Math.cos(pose.angle), s = Math.sin(pose.angle);
+      const lx = (x - pose.hingeX) * c + (y - pose.hingeY) * s;
+      const ly = -(x - pose.hingeX) * s + (y - pose.hingeY) * c;
+      if (lx > 0.0002 && lx < W - 1e-6 && ly > -CT / 2 + 1e-5 && ly < CT / 2 - 1e-5) {
+        fail(`spine shell enters front board at u=${u}`);
+      }
+    }
+  }
+  if (u === 1) {
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (let i = 0; i < pos.count; i++) {
+      minX = Math.min(minX, pos.getX(i));
+      maxX = Math.max(maxX, pos.getX(i));
+      minY = Math.min(minY, pos.getY(i));
+      maxY = Math.max(maxY, pos.getY(i));
+    }
+    if (!approx(minX, -SPINE_PANEL_W - SPINE_TURN_IN, 0.0002)) fail(`open shell minX ${(minX * 1000).toFixed(2)}mm`);
+    if (!approx(maxX, SPINE_TURN_IN, 0.0002)) fail(`open shell maxX ${(maxX * 1000).toFixed(2)}mm`);
+    if (minY < -0.0002) fail(`open shell minY ${(minY * 1000).toFixed(2)}mm`);
+    if (!approx(maxY, CT, 0.0002)) fail(`open shell maxY ${(maxY * 1000).toFixed(2)}mm`);
+  }
+  if (u === 0) {
+    let minX = Infinity;
+    for (let i = 0; i < pos.count; i++) minX = Math.min(minX, pos.getX(i));
+    if (!(minX <= -0.01)) fail(`closed shell not bulged outward (minX ${(minX * 1000).toFixed(2)}mm)`);
+  }
+  geo.dispose();
 }
 
 console.log("PASS: cover opens, gutter is curved, and the page rests on the cover");

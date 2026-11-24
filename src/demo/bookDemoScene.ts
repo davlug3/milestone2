@@ -70,6 +70,9 @@ const PBT = 0.022;
 // Case spine panel width: the closed book thickness. Open, it lies flat
 // between the boards, so the open book is 2 * width + SPINE_PANEL_W long.
 const SPINE_PANEL_W = 2 * CT + PBT;
+// How far the spine cloth turns in onto the boards' outer faces (hides the
+// board bevel at the hinge, so the case reads as one continuous surface).
+const SPINE_TURN_IN = 0.003;
 const NUM_TURNS = 8;
 const NUM_STATIC = 7;
 const NUM_SHEETS = NUM_TURNS + NUM_STATIC;
@@ -268,8 +271,11 @@ export function startBookDemo(container: HTMLElement): () => void {
     if (i === 0) hollowShape.moveTo(x, jointSurfaceY(x));
     else hollowShape.lineTo(x, jointSurfaceY(x));
   }
-  hollowShape.lineTo(hollowX1, CT);
-  hollowShape.lineTo(hollowX0, CT);
+  // Sit just inside the spine shell's inner face: the lining's top is the
+  // visible bound line, its lower edge is hidden in the panel (and the strip
+  // never collapses to zero thickness where the gutter dips to CT).
+  hollowShape.lineTo(hollowX1, CT - 0.0005);
+  hollowShape.lineTo(hollowX0, CT - 0.0005);
   hollowShape.closePath();
   const hollowDepth = H * 0.99;
   const hollowGeo = new THREE.ExtrudeGeometry(hollowShape, {
@@ -293,6 +299,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     closedCenterY,
     OPEN_COVER_CENTER_Y,
     SPINE_PANEL_W,
+    SPINE_TURN_IN,
   );
   const spineCover = new THREE.Mesh(spineCoverGeo, materials.spine);
   spineCover.name = "spine-cover";
@@ -307,16 +314,18 @@ export function startBookDemo(container: HTMLElement): () => void {
       closedCenterY,
       OPEN_COVER_CENTER_Y,
       SPINE_PANEL_W,
+      SPINE_TURN_IN,
     );
   }
   updateSpineCover(0);
 
-  // Headbands at the head and tail of the spine.
-  const headbandGeo = headbandGeometry();
+  // Headbands: cords at the head and tail of the text-block spine. The block
+  // is cut back to BLOCK_INNER_X, so the band runs vertically on that face;
+  // the case hides it while closed and it shows in the open joint.
+  const headbandGeo = headbandGeometry(0.0015, PBT);
   for (const z of [-H / 2 + 0.0015, H / 2 - 0.0015]) {
     const hb = new THREE.Mesh(headbandGeo, materials.headband);
-    hb.rotation.z = Math.PI / 2;
-    hb.position.set(0.0025, blockTop, z);
+    hb.position.set(BLOCK_INNER_X - 0.0008, CT + PBT / 2, z);
     hb.castShadow = true;
     scene.add(hb);
   }
@@ -539,6 +548,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     const u = clamp01(
       (t - TIMELINE.coverStart) / (TIMELINE.coverEnd - TIMELINE.coverStart),
     );
+    const jointOpen = u * u * (3 - 2 * u);
     const pose = coverPose(
       u,
       closedCenterY,
@@ -553,6 +563,17 @@ export function startBookDemo(container: HTMLElement): () => void {
     updateSpineCover(u);
     // The joint reads as cloth while closed and as endpaper once opened.
     hollowLining.material = u >= 0.5 ? materials.endpaper : materials.spine;
+    // Closed, there is no T-wide joint to fill: shrink the lining toward the
+    // block's inner face so it stays tucked inside the case instead of lying
+    // under the closed spine and peeking out beside it. Opening it back to the
+    // full joint keeps the two page stacks' bound line continuous.
+    const liningClosedX0 = BLOCK_INNER_X - 0.0002;
+    const liningWidth = hollowX1 - hollowX0;
+    const scaleX =
+      (hollowX1 - (liningClosedX0 + (hollowX0 - liningClosedX0) * jointOpen)) /
+      liningWidth;
+    hollowLining.scale.x = scaleX;
+    hollowLining.position.x = hollowX1 * (1 - scaleX);
   }
   updateCover(0);
 

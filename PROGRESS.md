@@ -1,11 +1,11 @@
 # Progress
 
 Current milestone: 6 (cover, spine, endpapers) — complete
-Last completed task: Inner hollow lining bridges the T-wide open joint and bounds both page stacks' inner edges (no see-through); clearance still clean
+Last completed task: Solid board-thick C-section case spine with cloth turn-in onto both boards; closed hollow lining tucks under the case instead of peeking out; headbands moved into the open joint
 Current blocker: none
 Build status: PASS (tsc + vite build)
-Test status: PASS (sim, page metrics stretch 1.15x dihedral 29.7deg penetration 0, 8-page stacking 0mm interpenetration, cover + curved gutter PASS, spine PASS, paper/spine clearance PASS, demo 0 errors)
-Visual inspection: PASS (closed spine from two angles, opening at t=1.4/2.0, open gutter/left edge at t=3.0, flyleaf lift/landing at t=4.1/6.2 plus default-camera t=0/4.1/30 and the static `?test=book` scene; software WebGL 2, 1280x800 and 1024x640)
+Test status: PASS (sim, page metrics stretch 1.15x dihedral 29.7deg penetration 0, 8-page stacking 0mm interpenetration, cover + C-shell bounds PASS, spine PASS, paper/spine clearance PASS, demo 0 errors)
+Visual inspection: PASS (closed spine from three angles incl. table level, mid-turn t=2.3 joint bridge, open joint t=30 low/3q/top; lining hidden/visible A-B at t=0; software WebGL 2, 1400x900 and 1200x800)
 
 ## Completed
 

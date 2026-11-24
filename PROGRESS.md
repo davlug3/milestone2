@@ -1,11 +1,11 @@
 # Progress
 
 Current milestone: 6 (cover, spine, endpapers) — complete
-Last completed task: Solid board-thick C-section case spine with cloth turn-in onto both boards; closed hollow lining tucks under the case instead of peeking out; headbands moved into the open joint
+Last completed task: Bound spine — pages attach to a cloth plane between the cover hinges; the plane's front edge follows the front cover hinge through the swing; text block is a wedge, cloth mull added, spine edge stays on the binding through the turn
 Current blocker: none
 Build status: PASS (tsc + vite build)
-Test status: PASS (sim, page metrics stretch 1.15x dihedral 29.7deg penetration 0, 8-page stacking 0mm interpenetration, cover + C-shell bounds PASS, spine PASS, paper/spine clearance PASS, demo 0 errors)
-Visual inspection: PASS (closed spine from three angles incl. table level, mid-turn t=2.3 joint bridge, open joint t=30 low/3q/top; lining hidden/visible A-B at t=0; software WebGL 2, 1400x900 and 1200x800)
+Test status: PASS (sim, page metrics stretch 1.18x dihedral 35.9deg penetration 0, 8-page stacking 0mm interpenetration, cover + C-shell bounds PASS, spine plane follows the front cover PASS, spine PASS, paper/spine clearance PASS, demo 0 errors)
+Visual inspection: PARTIAL (closed, opening u=0.25/0.5/0.75/1.0, open front/gutter, mid-turn captured at 1200x900 and checked via luminance maps; this model cannot view images, so fine detail is user-verifiable at /tmp/opencode/probe/*.png)
 
 ## Completed
 

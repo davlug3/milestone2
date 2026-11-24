@@ -12,10 +12,11 @@ import { clamp01, smootherstep } from "./easing";
  * uniform roll about a single axis.
  *
  * Geometry (sheet in the XZ plane, gutter at local x = gutterX):
- *   - spine edge (x = gutterX) starts at (gutterX, restY). When `spineTargetX`
- *     and `landSpineY` are given, it moves to its own binding point in the
- *     gutter and settles there as the sheet crosses, so a landed sheet curves
- *     up from the gutter to the stack instead of being flat all the way in.
+ *   - spine edge (x = gutterX) starts at `spineRestY` (its height on the spine
+ *     binding plane, which may be lower than the fore-edge `restY`). It stays
+ *     on that binding through the crossing and settles to `landSpineY` at its
+ *     own point in the gutter, so a landed sheet curves up from the binding to
+ *     the stack instead of being flat all the way in.
  *   - fore-edge starts at (gutterX + width, restY) on the right
  *   - fore-edge sweeps over the top and descends to landY on the left
  *     (gutterX - width, landY), where landY is the destination surface height
@@ -40,10 +41,17 @@ export interface PageTurnConfig {
   gutterX: number;
   /** Rest height (y) of the sheet at the spine/gutter. */
   restY: number;
+  /**
+   * Rest height (y) of the pinned spine edge. Defaults to `restY`. Set this
+   * lower than `restY` when the sheet is bound on the spine plane and ramps up
+   * to the stack: the spine edge stays on the binding while the fore-edge rests
+   * at the stack height.
+   */
+  spineRestY?: number;
   /** Final fore-edge height (y) on the destination side (e.g. lower stack). */
   landY: number;
   /** Final height (y) of the spine edge on the destination side. Defaults to
-   * `restY` (spine stays at its starting height).
+   * `spineRestY` (the spine stays at its binding height).
    */
   landSpineY?: number;
   /**
@@ -96,7 +104,7 @@ export class PageTurnController {
     this.cfg = cfg;
     this.targets = cfg.foreEdgeIndices.map(() => ({ x: 0, y: 0, z: 0 }));
     this.spineTargetX = cfg.gutterX;
-    this.spineTargetY = cfg.restY;
+    this.spineTargetY = cfg.spineRestY ?? cfg.restY;
     this.setProgress(0);
   }
 
@@ -128,13 +136,14 @@ export class PageTurnController {
     // Spine-panel landing shift: the whole sheet follows the front board left
     // as it settles (0 for a zero-width spine).
     const shift = (c.landOffsetX ?? 0) * settleK;
+    const spineRestY = c.spineRestY ?? c.restY;
     if (c.landSpineY !== undefined) {
       const targetX = c.spineTargetX ?? c.gutterX;
       this.spineTargetX = c.gutterX + (targetX - c.gutterX) * settleK + shift;
-      this.spineTargetY = c.restY + (c.landSpineY - c.restY) * settleK;
+      this.spineTargetY = spineRestY + (c.landSpineY - spineRestY) * settleK;
     } else {
       this.spineTargetX = c.gutterX + shift;
-      this.spineTargetY = c.restY;
+      this.spineTargetY = spineRestY;
     }
 
     for (let i = 0; i < this.targets.length; i++) {

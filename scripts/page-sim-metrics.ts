@@ -16,10 +16,11 @@ import { PageTurnController } from "../src/animation/PageTurnController";
 import { BOOK_DIMENSIONS } from "../src/config/bookConfig";
 import { openCoverSurface } from "../src/book/coverRig";
 import {
-  LINING_INSET,
-  gutterBinding,
-  gutterParticleFloorY,
-} from "../src/book/gutterRig";
+  bindingFloorY,
+  fanIndex,
+  rightSheetY,
+  spineFanY,
+} from "../src/book/spineBinding";
 
 const W = Number(process.env.W ?? 0.24);
 const H = Number(process.env.H ?? 0.31);
@@ -39,6 +40,7 @@ const DUR = Number(process.env.DUR ?? 2.5);
 const SETTLE = Number(process.env.SETTLE ?? 1.0);
 const CT = BOOK_DIMENSIONS.coverThickness;
 const PBT = 0.022;
+const SPINE_PANEL_W = 2 * CT + PBT;
 const blockTop = CT + PBT;
 const gutterX = -W / 2;
 const restY = Number(process.env.RESTY ?? blockTop + 0.0005);
@@ -50,24 +52,17 @@ const COVER_GAP = 0.00005;
 const COVER_FLOOR = OPEN_COVER.topY + PAGE_SHELL_HALF + COVER_GAP;
 const landY = Number(process.env.LANDY ?? COVER_FLOOR + 0.0002);
 const DT = 1 / 120;
-
-// Curved gutter (mirrors the demo).
-const GUTTER_HALF = BOOK_DIMENSIONS.width * LINING_INSET;
-const BLOCK_INNER_X = 0.005;
-const BINDING = gutterBinding(0.5, BOOK_DIMENSIONS);
+const NUM_SHEETS = 15;
+// Bottom sheet: the lowest right-stack page and the first to land.
+const spineRestY = spineFanY(BOOK_DIMENSIONS, fanIndex(NUM_SHEETS - 1, NUM_SHEETS));
+const landSpineY = spineFanY(BOOK_DIMENSIONS, 0);
 
 function clamp01(x: number) {
   return x < 0 ? 0 : x > 1 ? 1 : x;
 }
 
-const groundHeight = (x: number, _z: number): number => {
-  const worldX = x + W / 2;
-  if (worldX >= BLOCK_INNER_X) return blockTop;
-  if (worldX >= -GUTTER_HALF && worldX <= GUTTER_HALF) {
-    return gutterParticleFloorY(worldX, BOOK_DIMENSIONS, 1);
-  }
-  return COVER_FLOOR;
-};
+const groundHeight = (x: number, _z: number): number =>
+  bindingFloorY(x + W / 2, BOOK_DIMENSIONS, blockTop, COVER_FLOOR);
 
 const sim = new PaperSimulation({
   cols: COLS,
@@ -83,7 +78,9 @@ const sim = new PaperSimulation({
   plane: "xz",
   groundHeight,
 });
-for (const p of sim.particles) p.y = p.py = restY;
+for (const p of sim.particles) {
+  p.y = p.py = rightSheetY(p.x + W / 2, spineRestY, restY);
+}
 const foreEdge: number[] = [];
 const spineEdge: number[] = [];
 for (let r = 0; r < ROWS; r++) {
@@ -96,10 +93,12 @@ const controller = new PageTurnController({
   spineIndices: spineEdge,
   gutterX,
   restY,
+  spineRestY,
   landY,
-  landSpineY: BINDING.y,
-  spineTargetX: BINDING.x - W / 2,
+  landSpineY,
+  spineTargetX: gutterX,
   landSpineStart: 0.5,
+  landOffsetX: -SPINE_PANEL_W,
   width: W,
   duration: DUR,
   liftScale: LIFTSCALE,

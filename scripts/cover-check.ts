@@ -1,19 +1,20 @@
 /**
- * Cover opening + curved gutter + page/cover collision check (headless).
+ * Cover opening + bound spine + page/cover collision check (headless).
  *
  * 1. Cover kinematics
  *    - hinged at the spine: closed at one end, flat on the left at the other
  *    - monotonic swing; never below the table; never inside the page block
  *
- * 2. Curved gutter
- *    - the gutter curve starts/ends at the covers' inner lining edges
- *    - it dips to the board top in the middle
- *    - each sheet's binding point is unique and ordered along the curve
+ * 2. Bound spine
+ *    - the cloth plane is flat at the cover lining height between the hinges
+ *    - the text-block wedge starts at the cloth at the spine and reaches the
+ *      flat block top over BIND_RAMP
+ *    - the sheets fan out from the spine plane in stack order
  *
  * 3. Page landing
  *    - one page turns exactly like the demo (right-stack height, open-cover
- *      floor, curved gutter binding) and comes to rest on the cover
- *    - its spine edge is at its own gutter binding point
+ *      floor, bound spine) and comes to rest on the cover
+ *    - its spine edge lands at the front cover hinge at its binding height
  *    - its fore-edge is at the stack height
  *    - the sheet is curved (spine edge below the stack height)
  *    - no part of the page goes below the book surface
@@ -34,12 +35,15 @@ import {
 } from "../src/book/coverRig";
 import { spineCoverGeometry } from "../src/book/spineRig";
 import {
-  LINING_INSET,
-  gutterBinding,
-  gutterBindingS,
-  gutterParticleFloorY,
-  gutterSurfaceY,
-} from "../src/book/gutterRig";
+  BIND_RAMP,
+  bindingFloorY,
+  blockRampY,
+  fanIndex,
+  rightSheetY,
+  spineClothTopY,
+  spineFanY,
+  spinePlaneEdges,
+} from "../src/book/spineBinding";
 
 const W = BOOK_DIMENSIONS.width;
 const H = BOOK_DIMENSIONS.height;
@@ -71,11 +75,13 @@ const landY = COVER_FLOOR + 0.0002;
 const topSheetY = restY;
 const closedCenterY = topSheetY + 0.0005 + CT / 2;
 
-// Curved gutter (mirrors the demo).
-const GUTTER_HALF = W * LINING_INSET;
-const BLOCK_INNER_X = 0.005;
-const blockLeftLocal = BLOCK_INNER_X - W / 2;
-const BINDING = gutterBinding(0.5, BOOK_DIMENSIONS);
+// Spine binding (mirrors the demo): the top sheet binds highest on the spine
+// plane and lands first, i.e. at the bottom of the left stack.
+const SPINE_REST_Y = spineFanY(BOOK_DIMENSIONS, fanIndex(0, NUM_SHEETS));
+const LAND_SPINE_Y = spineFanY(BOOK_DIMENSIONS, 0);
+const SPINE_CLOTH_Y = spineClothTopY(BOOK_DIMENSIONS);
+const blockLeftLocal = gutterX;
+const belowSpineY = spineFanY(BOOK_DIMENSIONS, fanIndex(1, NUM_SHEETS));
 
 const DUR = 2.5;
 const SETTLE = 0.5;
@@ -111,7 +117,7 @@ for (let i = 0; i <= ix; i++) {
 }
 
 const block = {
-  x0: BLOCK_INNER_X,
+  x0: 0,
   x1: W,
   y0: CT,
   y1: blockTop,
@@ -176,40 +182,68 @@ if (!approx(topInside, expectedTop)) fail(`open cover top ${topInside}`);
 if (topOutsideX !== 0 || topOutsideZ !== 0) fail("cover footprint leaks outside board");
 if (!approx(OPEN_COVER.topY, expectedTop)) fail("openCoverSurface topY");
 
-// --- 3. Curved gutter ------------------------------------------------------
-const edgeY = gutterSurfaceY(-GUTTER_HALF, BOOK_DIMENSIONS, 1);
-const edgeYRight = gutterSurfaceY(GUTTER_HALF, BOOK_DIMENSIONS, 1);
-const middleY = gutterSurfaceY(0, BOOK_DIMENSIONS, 1);
-if (!approx(edgeY, expectedTop)) fail(`gutter left edge ${edgeY} != lining top`);
-if (!approx(edgeYRight, expectedTop)) fail(`gutter right edge ${edgeYRight} != lining top`);
-if (!(middleY < edgeY - 1e-6)) fail("gutter does not dip in the middle");
-
-const bindingXs: number[] = [];
-for (let k = 0; k < 8; k++) {
-  const b = gutterBinding(gutterBindingS(k, 8), BOOK_DIMENSIONS);
-  bindingXs.push(b.x);
+// --- 3. Spine binding plane -----------------------------------------------
+// The cloth plane spans the two cover hinges and is flat at the lining height.
+if (!approx(SPINE_CLOTH_Y, expectedTop)) {
+  fail(`spine cloth ${SPINE_CLOTH_Y} != lining top`);
 }
-for (let k = 1; k < bindingXs.length; k++) {
-  if (!(bindingXs[k] > bindingXs[k - 1])) fail("gutter binding x not increasing");
+if (!(SPINE_REST_Y > SPINE_CLOTH_Y)) fail("spine binding is not above the cloth");
+// The text-block wedge starts at the cloth height at the spine and reaches the
+// flat block top at BIND_RAMP.
+if (!approx(blockRampY(0, BOOK_DIMENSIONS, blockTop), SPINE_CLOTH_Y)) {
+  fail("block ramp does not start at the cloth");
 }
-// The curve is symmetric, so y values repeat about the middle; uniqueness is
-// in the (x, y) pair, which the increasing-x check already guarantees.
+if (!approx(blockRampY(BIND_RAMP, BOOK_DIMENSIONS, blockTop), blockTop)) {
+  fail("block ramp does not reach the block top");
+}
+// The sheets fan out from the spine plane in stack order: the top sheet binds
+// highest, the bottom sheet lowest.
+for (let k = 1; k < 8; k++) {
+  const above = spineFanY(BOOK_DIMENSIONS, fanIndex(k - 1, NUM_SHEETS));
+  const below = spineFanY(BOOK_DIMENSIONS, fanIndex(k, NUM_SHEETS));
+  if (!(below < above)) fail("spine fan is not ordered");
+}
+// The plane's front edge is the FRONT COVER's inner lining point at its moving
+// hinge, so the plane is bounded by the cover at every opening angle.
+for (const u of [0, 0.25, 0.5, 0.75, 1]) {
+  const edges = spinePlaneEdges(
+    u,
+    BOOK_DIMENSIONS,
+    closedCenterY,
+    OPEN_CENTER_Y,
+    SPINE_PANEL_W,
+  );
+  const pose = coverPose(
+    u,
+    closedCenterY,
+    OPEN_CENTER_Y,
+    HINGE_DROP_START,
+    SPINE_PANEL_W,
+  );
+  const off = BOOK_DIMENSIONS.coverThickness * 0.6;
+  const expectedFrontX = pose.hingeX + off * Math.sin(pose.angle);
+  const expectedFrontY = pose.hingeY - off * Math.cos(pose.angle);
+  if (!approx(edges.back.x, 0, 1e-9) || !approx(edges.back.y, SPINE_CLOTH_Y, 1e-9)) {
+    fail(`spine plane back edge is not on the back lining at u=${u}`);
+  }
+  if (
+    !approx(edges.front.x, expectedFrontX, 1e-9) ||
+    !approx(edges.front.y, expectedFrontY, 1e-9)
+  ) {
+    fail(`spine plane front edge does not follow the front cover at u=${u}`);
+  }
+}
 
 // --- 4. Page landing on the cover -----------------------------------------
 const hf = new Heightfield({ width: W, height: H, nx: 110, nz: 110 });
-hf.setBase((x) => {
-  const worldX = x + W / 2;
-  if (worldX >= BLOCK_INNER_X) return blockTop;
-  if (worldX >= -GUTTER_HALF && worldX <= GUTTER_HALF) {
-    return gutterParticleFloorY(worldX, BOOK_DIMENSIONS, 1);
-  }
-  return COVER_FLOOR;
-});
+hf.setBase((x) => bindingFloorY(x + W / 2, BOOK_DIMENSIONS, blockTop, COVER_FLOOR));
 
-const groundHeight = (x: number, z: number): number =>
-  x >= blockLeftLocal
-    ? Math.max(belowRestY, hf.heightAt(x, z))
-    : hf.heightAt(x, z);
+const groundHeight = (x: number, z: number): number => {
+  const h = hf.heightAt(x, z);
+  if (x < blockLeftLocal) return h;
+  const below = rightSheetY(x + W / 2, belowSpineY, belowRestY) + 0.00025;
+  return Math.max(below, h);
+};
 
 const sim = new PaperSimulation({
   cols,
@@ -224,7 +258,9 @@ const sim = new PaperSimulation({
   plane: "xz",
   groundHeight,
 });
-for (const p of sim.particles) p.y = p.py = restY;
+for (const p of sim.particles) {
+  p.y = p.py = rightSheetY(p.x + W / 2, SPINE_REST_Y, restY);
+}
 
 const spineIndices: number[] = [];
 const foreEdgeIndices: number[] = [];
@@ -238,9 +274,10 @@ const controller = new PageTurnController({
   spineIndices,
   gutterX,
   restY,
+  spineRestY: SPINE_REST_Y,
   landY,
-  landSpineY: Math.max(BINDING.y, COVER_FLOOR),
-  spineTargetX: BINDING.x - W / 2,
+  landSpineY: LAND_SPINE_Y,
+  spineTargetX: gutterX,
   landSpineStart: 0.5,
   landOffsetX: -SPINE_PANEL_W,
   width: W,
@@ -265,10 +302,10 @@ for (let s = 0; s <= steps; s++) {
   for (const p of sim.particles) {
     const worldX = p.x + W / 2;
     let surface: number;
-    if (worldX >= BLOCK_INNER_X) {
+    if (worldX >= BIND_RAMP) {
       surface = blockTop;
-    } else if (worldX >= -GUTTER_HALF && worldX <= GUTTER_HALF) {
-      surface = gutterSurfaceY(worldX, BOOK_DIMENSIONS, 1);
+    } else if (worldX >= 0) {
+      surface = blockRampY(worldX, BOOK_DIMENSIONS, blockTop);
     } else {
       surface = OPEN_COVER.topY;
     }
@@ -302,12 +339,12 @@ const spread = maxY - minY;
 console.log(
   `cover: lowestY=${(worstLowest * 1000).toFixed(2)}mm ` +
     `boardInBlock=${boardInBlock} topY=${(expectedTop * 1000).toFixed(2)}mm ` +
-    `gutterEdge=${(edgeY * 1000).toFixed(3)}mm gutterMid=${(middleY * 1000).toFixed(3)}mm`,
+    `spineCloth=${(SPINE_CLOTH_Y * 1000).toFixed(3)}mm bindRamp=${(BIND_RAMP * 1000).toFixed(1)}mm`,
 );
 console.log(
   `page: belowSurface=${worstBelowSurface === Infinity ? "none" : `${(worstBelowSurface * 1000).toFixed(3)}mm`} ` +
     `spine=(${(spineX * 1000).toFixed(3)},${(spineY * 1000).toFixed(3)})mm ` +
-    `binding=(${(BINDING.x * 1000).toFixed(3)},${(BINDING.y * 1000).toFixed(3)})mm ` +
+    `binding=(0.000,${(SPINE_REST_Y * 1000).toFixed(3)})mm ` +
     `foreEdgeY=${(foreY * 1000).toFixed(3)}mm spread=${(spread * 1000).toFixed(2)}mm nan=${nan}`,
 );
 
@@ -315,12 +352,11 @@ if (nan) fail("NaN particle");
 if (worstBelowSurface < -1e-6) {
   fail(`page sinks into the book by ${-worstBelowSurface * 1000}mm`);
 }
-if (!approx(spineX, BINDING.x - SPINE_PANEL_W, 1e-9)) {
-  fail(`spine edge x ${spineX} != shifted binding x ${BINDING.x - SPINE_PANEL_W}`);
+if (!approx(spineX, -SPINE_PANEL_W, 1e-9)) {
+  fail(`spine edge x ${spineX} != front hinge ${-SPINE_PANEL_W}`);
 }
-const landSpineY = Math.max(BINDING.y, COVER_FLOOR);
-if (!approx(spineY, landSpineY, 1e-9)) {
-  fail(`spine edge y ${spineY} != landing spine y ${landSpineY}`);
+if (!approx(spineY, LAND_SPINE_Y, 1e-9)) {
+  fail(`spine edge y ${spineY} != landing spine y ${LAND_SPINE_Y}`);
 }
 if (!approx(foreY, landY, 1e-9)) {
   fail(`fore-edge did not settle to landY (${foreY} vs ${landY})`);
@@ -348,7 +384,7 @@ for (const u of [0, 0.25, 0.5, 0.75, 1]) {
       fail(`spine shell enters back board at u=${u} (${(x * 1000).toFixed(2)},${(y * 1000).toFixed(2)})mm`);
     }
     // Never enter the page block.
-    if (x > BLOCK_INNER_X + 1e-6 && x < W - 1e-6 && y > CT + 1e-5 && y < blockTop - 1e-5) {
+    if (x > 0.0001 && x < W - 1e-6 && y > CT + 1e-5 && y < blockTop - 1e-5) {
       fail(`spine shell enters block at u=${u}`);
     }
     // Never enter the front board interior while raised.
@@ -382,4 +418,4 @@ for (const u of [0, 0.25, 0.5, 0.75, 1]) {
   geo.dispose();
 }
 
-console.log("PASS: cover opens, gutter is curved, and the page rests on the cover");
+console.log("PASS: cover opens, the spine is bound, and the page rests on the cover");

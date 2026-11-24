@@ -21,11 +21,12 @@ import { Heightfield } from "../src/physics/Heightfield";
 import { BOOK_DIMENSIONS } from "../src/config/bookConfig";
 import { openCoverSurface } from "../src/book/coverRig";
 import {
-  LINING_INSET,
-  gutterBinding,
-  gutterBindingS,
-  gutterParticleFloorY,
-} from "../src/book/gutterRig";
+  bindingFloorY,
+  blockRampY,
+  fanIndex,
+  rightSheetY,
+  spineFanY,
+} from "../src/book/spineBinding";
 
 const W = BOOK_DIMENSIONS.width;
 const H = BOOK_DIMENSIONS.height;
@@ -33,9 +34,6 @@ const CT = BOOK_DIMENSIONS.coverThickness;
 const PBT = 0.022;
 const SPINE_PANEL_W = 2 * CT + PBT;
 const blockTop = CT + PBT;
-const GUTTER_HALF = W * LINING_INSET;
-const BLOCK_INNER_X = 0.005;
-const BLOCK_ROUND_R = 0.0025;
 const BLOCK_WIDTH = W - 0.004;
 const BLOCK_DEPTH = H * 0.97;
 
@@ -58,7 +56,7 @@ const DT = 1 / 120;
 const DUR = 2.5;
 const SETTLE = 0.5;
 const gutterX = -W / 2;
-const blockLeftLocal = BLOCK_INNER_X - W / 2;
+const blockLeftLocal = gutterX;
 
 const topSheetY = restBase + (NUM_SHEETS - 1) * vStep;
 const closedCenterY = topSheetY + 0.0005 + CT / 2;
@@ -74,11 +72,7 @@ function fail(msg: string): never {
  * (surface + shell + gap), or the open-cover particle floor.
  */
 function floorAt(worldX: number): number {
-  if (worldX >= BLOCK_INNER_X) return blockTop;
-  if (worldX >= -GUTTER_HALF && worldX <= GUTTER_HALF) {
-    return gutterParticleFloorY(worldX, BOOK_DIMENSIONS, 1);
-  }
-  return COVER_FLOOR_Y;
+  return bindingFloorY(worldX, BOOK_DIMENSIONS, blockTop, COVER_FLOOR_Y);
 }
 
 interface TurnReport {
@@ -93,15 +87,17 @@ function runTurn(k: number): TurnReport {
   const restY = restBase + (NUM_SHEETS - 1 - k) * vStep;
   const landY = landBase + k * landStep;
   const belowRestY = restBase + (NUM_SHEETS - 1 - (k + 1)) * vStep;
-  const belowFloorY = belowRestY + 0.00025;
+  const belowSpineY = spineFanY(BOOK_DIMENSIONS, fanIndex(k + 1, NUM_SHEETS));
 
   const hf = new Heightfield({ width: W, height: H, nx: 110, nz: 110 });
   hf.setBase((x) => floorAt(x + W / 2));
 
-  const groundHeight = (x: number, z: number): number =>
-    x >= blockLeftLocal
-      ? Math.max(belowFloorY, hf.heightAt(x, z))
-      : hf.heightAt(x, z);
+  const groundHeight = (x: number, z: number): number => {
+    const h = hf.heightAt(x, z);
+    if (x < blockLeftLocal) return h;
+    const below = rightSheetY(x + W / 2, belowSpineY, belowRestY) + 0.00025;
+    return Math.max(below, h);
+  };
 
   const sim = new PaperSimulation({
     cols,
@@ -116,7 +112,10 @@ function runTurn(k: number): TurnReport {
     plane: "xz",
     groundHeight,
   });
-  for (const p of sim.particles) p.y = p.py = restY;
+  const spineRestY = spineFanY(BOOK_DIMENSIONS, fanIndex(k, NUM_SHEETS));
+  for (const p of sim.particles) {
+    p.y = p.py = rightSheetY(p.x + W / 2, spineRestY, restY);
+  }
 
   const spineIndices: number[] = [];
   const foreEdgeIndices: number[] = [];
@@ -125,15 +124,15 @@ function runTurn(k: number): TurnReport {
     foreEdgeIndices.push(r * cols + (cols - 1));
   }
 
-  const binding = gutterBinding(gutterBindingS(k, NUM_TURNS), BOOK_DIMENSIONS);
   const controller = new PageTurnController({
     foreEdgeIndices,
     spineIndices,
     gutterX,
     restY,
+    spineRestY,
     landY,
-    landSpineY: Math.max(binding.y, COVER_FLOOR_Y),
-    spineTargetX: binding.x - W / 2,
+    landSpineY: spineFanY(BOOK_DIMENSIONS, k),
+    spineTargetX: gutterX,
     landSpineStart: 0.5,
     landOffsetX: -SPINE_PANEL_W,
     width: W,
@@ -173,20 +172,22 @@ function runTurn(k: number): TurnReport {
           `${(p.y * 1000).toFixed(2)},${(p.z * 1000).toFixed(2)})mm`;
       }
 
-      // Depth inside the text block's solid (if any). The particle must be
-      // strictly inside all three extents for this to count.
+      // Depth inside the text block's solid (if any). The block is a wedge: its
+      // top follows the binding ramp, so a particle is inside when it is below
+      // that surface (and above the board / inside the fore-edge).
+      const blockSurface = blockRampY(worldX, BOOK_DIMENSIONS, blockTop);
       if (
-        worldX > BLOCK_INNER_X + 1e-6 &&
+        worldX > 1e-6 &&
         worldX < BLOCK_WIDTH - 1e-6 &&
         p.y > CT + 1e-6 &&
-        p.y < blockTop - 1e-6 &&
+        p.y < blockSurface - 1e-6 &&
         Math.abs(p.z) < BLOCK_DEPTH / 2 - 1e-6
       ) {
         const depth = Math.min(
-          worldX - BLOCK_INNER_X,
+          worldX,
           BLOCK_WIDTH - worldX,
           p.y - CT,
-          blockTop - p.y,
+          blockSurface - p.y,
         );
         worstInsideBlock = Math.min(worstInsideBlock, depth);
       }

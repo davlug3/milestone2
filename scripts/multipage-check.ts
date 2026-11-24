@@ -20,11 +20,11 @@ import { Heightfield } from "../src/physics/Heightfield";
 import { BOOK_DIMENSIONS } from "../src/config/bookConfig";
 import { openCoverSurface } from "../src/book/coverRig";
 import {
-  LINING_INSET,
-  gutterBinding,
-  gutterBindingS,
-  gutterParticleFloorY,
-} from "../src/book/gutterRig";
+  bindingFloorY,
+  fanIndex,
+  rightSheetY,
+  spineFanY,
+} from "../src/book/spineBinding";
 
 const W = BOOK_DIMENSIONS.width;
 const H = BOOK_DIMENSIONS.height;
@@ -57,30 +57,24 @@ const bakeMinX = gutterX - 0.04; // gutter strip is left free (natural fan)
 const bakeTop = 0.0006;
 const PAGES = Number(process.env.PAGES ?? 8);
 
-// Curved gutter (mirrors the demo).
-const GUTTER_HALF = W * LINING_INSET;
-const BLOCK_INNER_X = 0.005;
-const blockLeftLocal = BLOCK_INNER_X - W / 2;
+// Spine binding (mirrors the demo).
+const blockLeftLocal = gutterX;
 
 const hf = new Heightfield({ width: W, height: H, nx: 110, nz: 110 });
-hf.setBase((x) => {
-  const worldX = x + W / 2;
-  if (worldX >= BLOCK_INNER_X) return blockTop;
-  if (worldX >= -GUTTER_HALF && worldX <= GUTTER_HALF) {
-    return gutterParticleFloorY(worldX, BOOK_DIMENSIONS, 1);
-  }
-  return COVER_FLOOR;
-});
+hf.setBase((x) => bindingFloorY(x + W / 2, BOOK_DIMENSIONS, blockTop, COVER_FLOOR));
 
 interface Settled {
   particles: { x: number; y: number; z: number; pinned: boolean }[];
 }
 
 function makePage(restY: number, landY: number, belowRestY: number, k: number) {
-  const groundHeight = (x: number, z: number): number =>
-    x >= blockLeftLocal
-      ? Math.max(belowRestY, hf.heightAt(x, z))
-      : hf.heightAt(x, z);
+  const belowSpineY = spineFanY(BOOK_DIMENSIONS, fanIndex(k + 1, NUM_SHEETS));
+  const groundHeight = (x: number, z: number): number => {
+    const h = hf.heightAt(x, z);
+    if (x < blockLeftLocal) return h;
+    const below = rightSheetY(x + W / 2, belowSpineY, belowRestY) + 0.00025;
+    return Math.max(below, h);
+  };
   const sim = new PaperSimulation({
     cols,
     rows,
@@ -94,22 +88,25 @@ function makePage(restY: number, landY: number, belowRestY: number, k: number) {
     plane: "xz",
     groundHeight,
   });
-  for (const p of sim.particles) p.y = p.py = restY;
+  const spineRestY = spineFanY(BOOK_DIMENSIONS, fanIndex(k, NUM_SHEETS));
+  for (const p of sim.particles) {
+    p.y = p.py = rightSheetY(p.x + W / 2, spineRestY, restY);
+  }
   const spine: number[] = [];
   const fe: number[] = [];
   for (let r = 0; r < rows; r++) {
     spine.push(r * cols + 0);
     fe.push(r * cols + (cols - 1));
   }
-  const binding = gutterBinding(gutterBindingS(k, PAGES), BOOK_DIMENSIONS);
   const ctrl = new PageTurnController({
     foreEdgeIndices: fe,
     spineIndices: spine,
     gutterX,
     restY,
+    spineRestY,
     landY,
-    landSpineY: Math.max(binding.y, COVER_FLOOR),
-    spineTargetX: binding.x - W / 2,
+    landSpineY: spineFanY(BOOK_DIMENSIONS, k),
+    spineTargetX: gutterX,
     landSpineStart: 0.5,
     landOffsetX: -SPINE_PANEL_W,
     width: W,

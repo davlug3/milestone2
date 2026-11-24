@@ -15,13 +15,16 @@ import {
   openCoverSurface,
 } from "../book/coverRig";
 import {
-  LINING_INSET,
-  gutterBinding,
-  gutterBindingS,
-  gutterParticleFloorY,
-  gutterSurfaceY,
-  liningTopY,
-} from "../book/gutterRig";
+  BIND_RAMP,
+  bindingFloorY,
+  blockRampY,
+  fanIndex,
+  rightSheetY,
+  spineClothTopY,
+  spineFanY,
+  spinePlaneEdges,
+  spinePlaneY,
+} from "../book/spineBinding";
 import {
   headbandGeometry,
   spineCoverGeometry,
@@ -41,19 +44,14 @@ import {
  *    its hinge line stays at the top of the block until past vertical, then
  *    settles to the table. No centre-line slide, no hop, no clipping through
  *    the page block or the table.
- *  - The gutter is a CURVE, not a straight hinge line. The text block is
- *    rounded and backed (morphing spine profile) and the cover spine is a
- *    hollow convex ribbon; the block's spine throws up as the cover opens,
- *    leaving the hollow. Each sheet binds at its own point along that curve,
- *    so landed sheets' inner edges fan along the gutter instead of meeting at
- *    one sharp x = 0 line.
- *  - Pages collide with the OPEN COVER, not just a magic floor: the cover's
- *    inner lining is the destination surface, with a half-shell clearance.
- *  - The whole FORE-EDGE is driven along a smooth 2D arc (per-row lead + lift
- *    variation), so the page curls in both directions, not as a cylinder.
- *  - The pinned SPINE edge moves to its own gutter binding point and settles
- *    there, so a landed sheet curves up from the gutter to its stack instead of
- *    cantilevering from the old stack height.
+ *  - The gutter is a BOUND SPINE, not a trough. The pages are bound to a
+ *    horizontal cloth plane between the two cover hinges (world x = 0 and
+ *    x = -SPINE_PANEL_W). Every sheet's inner edge starts on that plane and
+ *    ramps up to its own height in the stack, so the text block fans out of a
+ *    continuous bound line instead of loose sheets floating beside a gap.
+ *  - The pinned SPINE edge stays on the binding plane through the crossing and
+ *    settles at the front hinge on the left, so a landed sheet curves up from
+ *    the binding to its stack instead of cantilevering from the old height.
  *  - Long-range bending links distribute curvature (smooth curl, no crease).
  *  - Page-to-page collision via a heightfield: a shared Heightfield stores the
  *    top surface of everything below. Each landed sheet is baked into it (outer
@@ -82,6 +80,13 @@ const blockTop = CT + PBT;
 const sheetVStep = 0.0003; // right-stack spacing (exaggerated for visibility)
 const restBase = blockTop + 0.0004;
 
+// --- Spine binding ---------------------------------------------------------
+// The pages are bound on a cloth plane between the two cover hinges. A sheet's
+// inner edge sits on this plane at `spineFanY` and ramps up to its stack height
+// over BIND_RAMP. See src/book/spineBinding.ts.
+const SPINE_Y = spinePlaneY(BOOK_DIMENSIONS);
+const SPINE_CLOTH_Y = spineClothTopY(BOOK_DIMENSIONS);
+
 // --- Cover geometry / collision -------------------------------------------
 // The open front cover lies flat on the left; its inner lining is the top
 // surface that landing pages must rest on.
@@ -105,15 +110,7 @@ const landStep = 0.0008;
 const TURN_DUR = 2.5;
 const SETTLE_DUR = 0.5;
 
-// --- Gutter (curved spine hollow) ------------------------------------------
-// The gutter curve runs between the covers' inner lining edges. The right-hand
-// page block is set back from the spine so a turned sheet has room to curve up
-// from its gutter binding point to its stack instead of meeting a vertical wall.
-const GUTTER_HALF = W * LINING_INSET; // 3.6 mm
-const BLOCK_INNER_X = 0.005; // right block's inner face (world x)
-const BLOCK_ROUND_R = 0.0025; // rounded inner-top edge of the right block
-const STATIC_INNER_X = BLOCK_INNER_X + BLOCK_ROUND_R; // static sheets start here
-
+// --- Timeline --------------------------------------------------------------
 interface TurnWindow {
   start: number;
   dur: number;
@@ -204,25 +201,23 @@ export function startBookDemo(container: HTMLElement): () => void {
   backCover.position.set(W / 2, CT / 2, 0);
   scene.add(backCover);
 
-  // Text block: flat-backed with a rounded inner-top edge. It is deliberately
-  // cut back to BLOCK_INNER_X below the top: a page bound in the gutter dives
-  // to ~2.7 mm and ramps up to the stack (~24.5 mm) within the first grid cell,
-  // so any block solid in x = 0..5 mm at mid heights would be cut by the paper.
-  // The rounded spine anatomy lives in the cover-spine ribbon outside this gap.
+  // Text block: a wedge whose top follows the spine binding ramp. At the spine
+  // (x = 0) the top is the cloth height; it rises to the flat block top over
+  // BIND_RAMP. This is the surface the page stack sits on, so there is no
+  // vertical wall in the gutter for a turning page to cut through.
   const topSheetY = restBase + (NUM_SHEETS - 1) * sheetVStep;
   const coverBottom = topSheetY + 0.0005;
   const closedCenterY = coverBottom + CT / 2;
   const blockDepth = H * 0.97;
   const blockWidth = W - 0.004; // 4 mm fore-edge square under the cover
   const blockShape = new THREE.Shape();
-  blockShape.moveTo(BLOCK_INNER_X, CT);
-  blockShape.lineTo(BLOCK_INNER_X, blockTop - BLOCK_ROUND_R);
-  blockShape.quadraticCurveTo(
-    BLOCK_INNER_X,
-    blockTop,
-    BLOCK_INNER_X + BLOCK_ROUND_R,
-    blockTop,
-  );
+  blockShape.moveTo(0, CT);
+  blockShape.lineTo(0, SPINE_CLOTH_Y);
+  const rampSegments = 24;
+  for (let i = 1; i <= rampSegments; i++) {
+    const x = (BIND_RAMP * i) / rampSegments;
+    blockShape.lineTo(x, blockRampY(x, BOOK_DIMENSIONS, blockTop));
+  }
   blockShape.lineTo(blockWidth, blockTop);
   blockShape.lineTo(blockWidth, CT);
   blockShape.closePath();
@@ -238,52 +233,80 @@ export function startBookDemo(container: HTMLElement): () => void {
   rightBlock.receiveShadow = true;
   scene.add(rightBlock);
 
-  // Static (never-turning) sheets sit on the block's flat top, starting at the
-  // end of its rounded inner edge.
-  const staticWidth = blockWidth - STATIC_INNER_X;
-  const sheetGeo = new THREE.BoxGeometry(staticWidth, sheetVStep * 0.9, H * 0.97);
+  // Cloth mull: a thin cloth layer on the text-block ramp. It is the visible
+  // binding the pages emerge from and hides the paper wedge in the gutter.
+  const mullShape = new THREE.Shape();
+  const mullSegments = 24;
+  const mullTop = (x: number): number =>
+    blockRampY(x, BOOK_DIMENSIONS, blockTop) + 0.00002;
+  const mullBottom = (x: number): number =>
+    blockRampY(x, BOOK_DIMENSIONS, blockTop) - 0.0002;
+  for (let i = 0; i <= mullSegments; i++) {
+    const x = (BIND_RAMP * i) / mullSegments;
+    if (i === 0) mullShape.moveTo(x, mullTop(x));
+    else mullShape.lineTo(x, mullTop(x));
+  }
+  for (let i = mullSegments; i >= 0; i--) {
+    const x = (BIND_RAMP * i) / mullSegments;
+    mullShape.lineTo(x, mullBottom(x));
+  }
+  mullShape.closePath();
+  const mullGeo = new THREE.ExtrudeGeometry(mullShape, {
+    depth: H * 0.99,
+    bevelEnabled: false,
+    curveSegments: 1,
+  });
+  mullGeo.translate(0, 0, -(H * 0.99) / 2);
+  const mull = new THREE.Mesh(mullGeo, materials.spine);
+  mull.name = "spine-mull";
+  mull.receiveShadow = true;
+  scene.add(mull);
+
+  // Static (never-turning) sheets: thin curved sheets that start on the spine
+  // binding and fan up to their own stack heights, so the closed block reads as
+  // pages bound at the spine rather than a solid slab.
+  const staticSheetGeo = (stackY: number, spineY: number): THREE.ExtrudeGeometry => {
+    const half = (sheetVStep * 0.9) / 2;
+    const segs = 24;
+    const shape = new THREE.Shape();
+    for (let i = 0; i <= segs; i++) {
+      const x = (W * i) / segs;
+      const y = rightSheetY(x, spineY, stackY) - half;
+      if (i === 0) shape.moveTo(x, y);
+      else shape.lineTo(x, y);
+    }
+    for (let i = segs; i >= 0; i--) {
+      const x = (W * i) / segs;
+      shape.lineTo(x, rightSheetY(x, spineY, stackY) + half);
+    }
+    shape.closePath();
+    const depth = H * 0.97;
+    const g = new THREE.ExtrudeGeometry(shape, {
+      depth,
+      bevelEnabled: false,
+      curveSegments: 1,
+    });
+    g.translate(0, 0, -depth / 2);
+    return g;
+  };
   for (let i = 0; i < NUM_STATIC; i++) {
     const sheetIndex = NUM_TURNS + i; // 8..14
-    const y = restBase + (NUM_SHEETS - 1 - sheetIndex) * sheetVStep;
-    const m = new THREE.Mesh(sheetGeo, i % 2 === 0 ? materials.paper : materials.paperEdge);
-    m.position.set(STATIC_INNER_X + staticWidth / 2, y, 0);
+    const stackY = restBase + (NUM_SHEETS - 1 - sheetIndex) * sheetVStep;
+    const spineY = spineFanY(BOOK_DIMENSIONS, fanIndex(sheetIndex, NUM_SHEETS));
+    const m = new THREE.Mesh(
+      staticSheetGeo(stackY, spineY),
+      i % 2 === 0 ? materials.paper : materials.paperEdge,
+    );
     m.name = "static-sheet";
     m.receiveShadow = true;
     scene.add(m);
   }
 
-  // Inner hollow lining: bridges the T-wide joint between the landed pages'
-  // inner edge (front joint, x = -T) and the right block (x = BLOCK_INNER_X).
-  // Without it the open book shows straight through the spine panel to the
-  // table. Its top follows the gutter profile (lining top at the ends, dipping
-  // to the board top in the middle), so both page stacks' inner edges end on
-  // this one surface. Material is endpaper when open, spine cloth when closed.
-  const jointSurfaceY = (x: number): number => {
-    if (x <= -GUTTER_HALF || x >= GUTTER_HALF) return liningTopY(BOOK_DIMENSIONS);
-    return gutterSurfaceY(x, BOOK_DIMENSIONS, 1);
-  };
-  const hollowShape = new THREE.Shape();
-  const hollowX0 = -SPINE_PANEL_W - 0.0005;
-  const hollowX1 = BLOCK_INNER_X + 0.0005;
-  const hollowSegments = 64;
-  for (let i = 0; i <= hollowSegments; i++) {
-    const x = hollowX0 + ((hollowX1 - hollowX0) * i) / hollowSegments;
-    if (i === 0) hollowShape.moveTo(x, jointSurfaceY(x));
-    else hollowShape.lineTo(x, jointSurfaceY(x));
-  }
-  // Sit just inside the spine shell's inner face: the lining's top is the
-  // visible bound line, its lower edge is hidden in the panel (and the strip
-  // never collapses to zero thickness where the gutter dips to CT).
-  hollowShape.lineTo(hollowX1, CT - 0.0005);
-  hollowShape.lineTo(hollowX0, CT - 0.0005);
-  hollowShape.closePath();
-  const hollowDepth = H * 0.99;
-  const hollowGeo = new THREE.ExtrudeGeometry(hollowShape, {
-    depth: hollowDepth,
-    bevelEnabled: false,
-    curveSegments: 1,
-  });
-  hollowGeo.translate(0, 0, -hollowDepth / 2);
+  // Inner hollow lining: the cloth spine plane between the two cover hinges.
+  // Its front edge is the FRONT COVER's inner lining point at the hinge, so the
+  // plane follows the cover as it opens (vertical when closed, flat when open).
+  // The unit box is re-transformed every frame in `updateCover`.
+  const hollowGeo = new THREE.BoxGeometry(1, 1, H * 0.99);
   const hollowLining = new THREE.Mesh(hollowGeo, materials.endpaper);
   hollowLining.name = "hollow-lining";
   hollowLining.castShadow = true;
@@ -319,13 +342,13 @@ export function startBookDemo(container: HTMLElement): () => void {
   }
   updateSpineCover(0);
 
-  // Headbands: cords at the head and tail of the text-block spine. The block
-  // is cut back to BLOCK_INNER_X, so the band runs vertically on that face;
+  // Headbands: cords at the head and tail of the text-block spine. The block's
+  // inner face is now the spine at x = 0, so the band sits just in the joint;
   // the case hides it while closed and it shows in the open joint.
   const headbandGeo = headbandGeometry(0.0015, PBT);
   for (const z of [-H / 2 + 0.0015, H / 2 - 0.0015]) {
     const hb = new THREE.Mesh(headbandGeo, materials.headband);
-    hb.position.set(BLOCK_INNER_X - 0.0008, CT + PBT / 2, z);
+    hb.position.set(-0.0008, CT + PBT / 2, z);
     hb.castShadow = true;
     scene.add(hb);
   }
@@ -345,21 +368,14 @@ export function startBookDemo(container: HTMLElement): () => void {
   // --- Heightfield (shared collision surface) ------------------------------
   const heightfield = new Heightfield({ width: W, height: H, nx: 110, nz: 110 });
   const gutterX = -W / 2; // local x of the spine
-  const blockLeftLocal = BLOCK_INNER_X - W / 2;
+  // The right-hand stack starts at the spine (x = 0). Pages there must stay
+  // above the sheet below them.
+  const blockLeftLocal = gutterX;
   const bakeMinX = gutterX - 0.04; // leave a 4cm gutter strip free (natural fan)
   function resetHeightfield(): void {
     heightfield.setBase((x) => {
       const worldX = x + W / 2;
-      // The block top covers the whole right side; the previous upper limit at
-      // blockWidth pushed the page fore-edge down to the cover floor, sinking
-      // the last 4 mm of every sheet into the block.
-      if (worldX >= BLOCK_INNER_X) return blockTop;
-      if (worldX >= -GUTTER_HALF && worldX <= GUTTER_HALF) {
-        // Curved spine hollow (particle-centre floor).
-        return gutterParticleFloorY(worldX, BOOK_DIMENSIONS, 1);
-      }
-      // Cover linings on either side of the hollow.
-      return COVER_FLOOR_Y;
+      return bindingFloorY(worldX, BOOK_DIMENSIONS, blockTop, COVER_FLOOR_Y);
     });
   }
   resetHeightfield();
@@ -376,17 +392,22 @@ export function startBookDemo(container: HTMLElement): () => void {
     const restY = restBase + (NUM_SHEETS - 1 - k) * sheetVStep;
     const landY = landBase + k * landStep; // first turned lands lowest
 
-    // Top of whatever is directly beneath this sheet on the right (the next
-    // sheet down, or the top static sheet). The pages rest `sheetVStep` apart,
-    // but `belowRestY` is the *mid-surface* of the sheet below, so clamp a
-    // shell thickness higher: otherwise a turning page can lie flush with the
-    // page underneath and z-fight (obvious once the flyleaf is tinted).
+    // Surface of whatever is directly beneath this sheet on the right (the next
+    // sheet down, or the top static sheet). The sheet below is itself bound on
+    // the spine plane, so its surface is a ramp, not a flat height. Clamp a
+    // shell thickness above it so the turning page cannot lie flush with it.
     const belowRestY = restBase + (NUM_SHEETS - 1 - (k + 1)) * sheetVStep;
-    const belowFloorY = belowRestY + 0.00025;
-    const groundHeight = (x: number, z: number): number =>
-      x >= blockLeftLocal
-        ? Math.max(belowFloorY, heightfield.heightAt(x, z))
-        : heightfield.heightAt(x, z);
+    const belowSpineY = spineFanY(
+      BOOK_DIMENSIONS,
+      fanIndex(k + 1, NUM_SHEETS),
+    );
+    const groundHeight = (x: number, z: number): number => {
+      const h = heightfield.heightAt(x, z);
+      if (x < blockLeftLocal) return h;
+      const worldX = x + W / 2;
+      const below = rightSheetY(worldX, belowSpineY, belowRestY) + 0.00025;
+      return Math.max(below, h);
+    };
 
     const sim = new PaperSimulation({
       cols,
@@ -401,7 +422,14 @@ export function startBookDemo(container: HTMLElement): () => void {
       plane: "xz",
       groundHeight,
     });
-    for (const p of sim.particles) p.y = p.py = restY;
+    // The sheet is bound on the spine plane: its inner edge starts at the
+    // binding height for its place in the closed stack and ramps up to the
+    // fore-edge stack height over BIND_RAMP.
+    const spineRestY = spineFanY(BOOK_DIMENSIONS, fanIndex(k, NUM_SHEETS));
+    for (const p of sim.particles) {
+      const worldX = p.x + W / 2;
+      p.y = p.py = rightSheetY(worldX, spineRestY, restY);
+    }
 
     const spineIndices: number[] = [];
     const foreEdgeIndices: number[] = [];
@@ -410,20 +438,22 @@ export function startBookDemo(container: HTMLElement): () => void {
       foreEdgeIndices.push(r * cols + (cols - 1));
     }
 
-    // Each sheet binds at its own point along the curved gutter. The binding
-    // point is in world space; the controller works in the sheet's local space
-    // (the mesh is offset by W/2).
-    const sK = gutterBindingS(k, NUM_TURNS);
-    const binding = gutterBinding(sK, BOOK_DIMENSIONS);
+    // On the left the sheet binds at the front cover hinge; the first sheet
+    // turned is the bottom of the left stack, so its fan index is k.
+    const landSpineY = spineFanY(BOOK_DIMENSIONS, k);
 
     const controller = new PageTurnController({
       foreEdgeIndices,
       spineIndices,
       gutterX,
       restY,
+      spineRestY,
       landY,
-      landSpineY: Math.max(binding.y, COVER_FLOOR_Y),
-      spineTargetX: binding.x - W / 2,
+      landSpineY,
+      // Local x of the spine is `gutterX`; the landing shift moves the whole
+      // sheet left by the spine panel, so the spine edge lands at the front
+      // cover hinge (world x = -SPINE_PANEL_W).
+      spineTargetX: gutterX,
       landSpineStart: 0.5,
       landOffsetX: -SPINE_PANEL_W,
       width: W,
@@ -548,7 +578,6 @@ export function startBookDemo(container: HTMLElement): () => void {
     const u = clamp01(
       (t - TIMELINE.coverStart) / (TIMELINE.coverEnd - TIMELINE.coverStart),
     );
-    const jointOpen = u * u * (3 - 2 * u);
     const pose = coverPose(
       u,
       closedCenterY,
@@ -563,17 +592,41 @@ export function startBookDemo(container: HTMLElement): () => void {
     updateSpineCover(u);
     // The joint reads as cloth while closed and as endpaper once opened.
     hollowLining.material = u >= 0.5 ? materials.endpaper : materials.spine;
-    // Closed, there is no T-wide joint to fill: shrink the lining toward the
-    // block's inner face so it stays tucked inside the case instead of lying
-    // under the closed spine and peeking out beside it. Opening it back to the
-    // full joint keeps the two page stacks' bound line continuous.
-    const liningClosedX0 = BLOCK_INNER_X - 0.0002;
-    const liningWidth = hollowX1 - hollowX0;
-    const scaleX =
-      (hollowX1 - (liningClosedX0 + (hollowX0 - liningClosedX0) * jointOpen)) /
-      liningWidth;
-    hollowLining.scale.x = scaleX;
-    hollowLining.position.x = hollowX1 * (1 - scaleX);
+    // The spine plane is bounded by the FRONT COVER: its front edge is the
+    // cover's inner lining point at the moving hinge. Build a thin slab whose
+    // page-facing face is the plane and which extends away from the pages.
+    const edges = spinePlaneEdges(
+      u,
+      BOOK_DIMENSIONS,
+      closedCenterY,
+      OPEN_COVER_CENTER_Y,
+      SPINE_PANEL_W,
+    );
+    const dx = edges.front.x - edges.back.x;
+    const dy = edges.front.y - edges.back.y;
+    const len = Math.max(1e-6, Math.hypot(dx, dy));
+    // Extend slightly past both cover hinges so the cloth tucks under the
+    // pastedown linings and there is no visible gap at the cover boundary.
+    const overlap = 0.003;
+    const ux = dx / len;
+    const uy = dy / len;
+    const bx = edges.back.x - ux * overlap;
+    const by = edges.back.y - uy * overlap;
+    const fx = edges.front.x + ux * overlap;
+    const fy = edges.front.y + uy * overlap;
+    const fullLen = len + overlap * 2;
+    const nx = -dy / len; // local +Y (points away from the pages)
+    const ny = dx / len;
+    const thickness = 0.0008;
+    // Sit just below the page-facing plane to avoid z-fighting with linings.
+    const inset = 0.00015;
+    hollowLining.position.set(
+      (bx + fx) / 2 + nx * (thickness / 2 - inset),
+      (by + fy) / 2 + ny * (thickness / 2 - inset),
+      0,
+    );
+    hollowLining.rotation.z = Math.atan2(dy, dx);
+    hollowLining.scale.set(fullLen, thickness, 1);
   }
   updateCover(0);
 
@@ -668,9 +721,20 @@ export function startBookDemo(container: HTMLElement): () => void {
         openCenterY: OPEN_COVER_CENTER_Y,
         topY: OPEN_COVER.topY,
         floorY: COVER_FLOOR_Y,
-        gutterHalf: GUTTER_HALF,
-        blockInnerX: BLOCK_INNER_X,
-        bindings: pages.map((_, k) => gutterBinding(gutterBindingS(k, NUM_TURNS), BOOK_DIMENSIONS)),
+        spinePlaneY: SPINE_Y,
+        spineClothY: SPINE_CLOTH_Y,
+        bindRamp: BIND_RAMP,
+        spinePlane: spinePlaneEdges(
+          u,
+          BOOK_DIMENSIONS,
+          closedCenterY,
+          OPEN_COVER_CENTER_Y,
+          SPINE_PANEL_W,
+        ),
+        bindings: pages.map((_, k) => ({
+          right: { x: 0, y: spineFanY(BOOK_DIMENSIONS, fanIndex(k, NUM_SHEETS)) },
+          left: { x: -SPINE_PANEL_W, y: spineFanY(BOOK_DIMENSIONS, k) },
+        })),
       };
     },
     /** Current spine cover bounds + text-block morph (debug/validation aid). */

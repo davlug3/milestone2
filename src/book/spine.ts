@@ -7,12 +7,12 @@ import {
   spineCrossSection,
   spineNormal,
   spineProtrusion,
-} from "./spineRig";
+} from "./caseSpineRig";
 
 /**
  * Deformable spine shell.
  *
- * The cross-section comes from `spineRig` (a quadratic Bezier from the back
+ * The cross-section comes from `caseSpineRig` (a quadratic Bezier from the back
  * board's edge to the front board's outer hinge corner). This module gives it
  * thickness (cloth + board) and a Z extent, and rebuilds the vertices as the
  * cover opens so the spine visibly rounds when closed and tucks into the

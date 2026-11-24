@@ -1,186 +1,172 @@
+import * as THREE from "three";
 import type { BookDimensions } from "../config/bookConfig";
 import { clamp01, smootherstep } from "../animation/easing";
 
 /**
- * Spine (case) cross-section for the animated hardcover.
+ * Case-binding anatomy helpers.
  *
- * A real case-bound spine is a curved strip of board+cloth that wraps from the
- * back board's edge around the outside of the book to the front board's edge.
- * It is not a rigid rectangular bar: when the book is closed the strip bulges
- * outward around the page block; as the front cover swings open the strip rolls
- * with it and finally tucks in under the opened cover, following the spine
- * hollow.
+ * A hardcover text block is rounded and backed:
+ *   - the spine is a convex arc (the "round"),
+ *   - the outer leaves flare into ~45 degree shoulders that carry the boards,
+ *   - the boards sit outside the text block with a joint gap.
  *
- * The cross-section is modelled as a quadratic Bezier in WORLD X/Y:
+ * When the book opens, the text block's spine "throws up": the round flattens
+ * and can go slightly concave, while the cover spine stays convex. The hollow
+ * is the gap between the two.
  *
- *   P0 = back board's top-left edge              (fixed)
- *   P2 = front board's OUTER hinge corner        (moves with the cover)
- *   P1 = chord midpoint + outward normal * offset
- *
- * The Bezier's midpoint protrudes half the control offset from the chord, so
- * `spineProtrusion` is the visible bulge depth. Protrusion goes to zero near
- * the end of the opening, where the strip would otherwise fold inside the
- * opened board; the result is a flush ribbon hidden in the spine hollow.
- *
- * Everything here is pure math (metres, world X/Y) so it can be validated
- * headlessly; the mesh builder lives in `spine.ts`.
+ * Coordinates are world metres: X = width (spine at x=0), Y = up, Z = height.
  */
 
-export interface SpinePose {
-  /** Normalized cover-opening progress in [0, 1]. */
-  u: number;
-  /** World Y of the cover hinge line. */
-  hingeY: number;
-  /** Cover rotation about the spine axis. 0 = closed, PI = open flat. */
-  angle: number;
-}
+export const SPINE_BULGE = 0.008; // text-block round (8 mm)
+export const SHOULDER_W = 0.008; // backing shoulder width (8 mm)
+export const SPINE_CONCAVE = 0.003; // text-block throw-up at full open (3 mm)
+export const SPINE_COVER_BULGE = 0.012; // cover spine outside the text block
+export const SPINE_COVER_T = 0.0025; // cover board/spine thickness
+export const HEADBAND_R = 0.0015;
 
-export interface Point2 {
+export interface Pt2 {
   x: number;
   y: number;
 }
 
-/** How far the closed spine bulges beyond its chord (m). */
-export function closedProtrusion(dims: BookDimensions): number {
-  return dims.coverThickness * 1.6;
+/** Closed/open text-block profile (world XY), including the rounded spine. */
+export function textBlockProfile(
+  flex: number,
+  dims: BookDimensions,
+  blockTop: number,
+  yBot: number,
+  shoulderW: number = SHOULDER_W,
+): Pt2[] {
+  const t = clamp01(flex);
+  // +SPINE_BULGE when closed, -SPINE_CONCAVE when open (concave throw-up).
+  const bulge = SPINE_BULGE * (1 - t) - SPINE_CONCAVE * t;
+  // The shoulder is at the BOTTOM of the text block, where it meets the
+  // board; the spine itself stays exposed above it (no top overhang).
+  const yShoulder = yBot + shoulderW;
+  const pts: Pt2[] = [];
+  const N = 14;
+  for (let i = 0; i <= N; i++) {
+    const k = i / N;
+    pts.push({
+      x: -bulge * Math.sin(Math.PI * k),
+      y: yShoulder + (blockTop - yShoulder) * k,
+    });
+  }
+  // Flat top (front cover sits here), fore-edge, bottom, and the 45 degree
+  // shoulder back to the spine's bottom.
+  pts.push({ x: dims.width, y: blockTop });
+  pts.push({ x: dims.width, y: yBot });
+  pts.push({ x: shoulderW, y: yBot });
+  return pts;
 }
 
-/**
- * Visible bulge depth at opening progress u.
- *
- * Fully bulged when closed, then eased away from u=0.70 and flat by u=0.88.
- * The strip's chord shrinks to zero (and flips direction) at about u=0.90 as
- * the hinge drops past the back board's top edge; flattening before that point
- * keeps the strip from folding into the back board / flipping its normal.
- */
-export function spineProtrusion(dims: BookDimensions, u: number): number {
+/** Extruded text-block geometry for a given flex (0 = closed, 1 = open). */
+export function textBlockGeometry(
+  flex: number,
+  dims: BookDimensions,
+  blockTop: number,
+  depth: number,
+): THREE.ExtrudeGeometry {
+  const pts = textBlockProfile(flex, dims, blockTop, dims.coverThickness);
+  const shape = new THREE.Shape();
+  shape.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i].x, pts[i].y);
+  shape.closePath();
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth,
+    bevelEnabled: false,
+    steps: 1,
+    curveSegments: 1,
+  });
+  geo.translate(0, 0, -depth / 2);
+  return geo;
+}
+
+/** Cover-spine arc from the back cover edge to the front cover edge. */
+export function spineCoverArc(
+  u: number,
+  dims: BookDimensions,
+  closedCenterY: number,
+  openCenterY: number,
+): Pt2[] {
   const t = clamp01(u);
-  const tuck = smootherstep(clamp01((t - 0.7) / 0.18));
-  return closedProtrusion(dims) * (1 - tuck);
+  const drop = smootherstep(clamp01((t - 0.55) / 0.45));
+  const hingeY = closedCenterY + (openCenterY - closedCenterY) * drop;
+  // Back cover bottom edge -> front cover top edge at the hinge.
+  const y0 = 0;
+  const y1 = hingeY + dims.coverThickness / 2;
+  const bulge =
+    SPINE_COVER_BULGE * (1 - smootherstep(t)) +
+    (SPINE_COVER_T * 0.5) * smootherstep(t);
+  const pts: Pt2[] = [];
+  const N = 16;
+  for (let i = 0; i <= N; i++) {
+    const k = i / N;
+    pts.push({
+      x: -bulge * Math.sin(Math.PI * k),
+      y: y0 + (y1 - y0) * k,
+    });
+  }
+  return pts;
 }
 
-/** Back-board attachment point (top-left edge of the back board). */
-export function spineBackPoint(dims: BookDimensions, originX = 0): Point2 {
-  return { x: originX, y: dims.coverThickness };
-}
-
-/**
- * Front-board attachment point: the outer hinge corner of the cover, i.e. the
- * hinge-line point offset by half the board thickness along the board's outer
- * normal. Rotating (0, +CT/2) by `angle` (about Z) and adding the hinge.
- */
-export function spineFrontPoint(
+/** Ribbon geometry for the cover spine (two z ends). */
+export function spineCoverGeometry(
+  u: number,
   dims: BookDimensions,
-  pose: SpinePose,
-  originX = 0,
-): Point2 {
-  const half = dims.coverThickness * 0.5;
-  return {
-    x: originX - Math.sin(pose.angle) * half,
-    y: pose.hingeY + Math.cos(pose.angle) * half,
-  };
-}
-
-/** Bezier control point (chord midpoint pushed out along the outward normal). */
-export function spineControlPoint(
-  dims: BookDimensions,
-  pose: SpinePose,
-  originX = 0,
-): Point2 {
-  const a = spineBackPoint(dims, originX);
-  const b = spineFrontPoint(dims, pose, originX);
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const len = Math.hypot(dx, dy);
-  const protrusion = spineProtrusion(dims, pose.u);
-  // Outward normal of the chord (left of the back->front direction). For a
-  // closed book this is -X (away from the page block).
-  const nx = len > 1e-9 ? -dy / len : -1;
-  const ny = len > 1e-9 ? dx / len : 0;
-  // A quadratic Bezier's midpoint sits half the control offset off the chord.
-  const offset = protrusion * 2;
-  return {
-    x: (a.x + b.x) * 0.5 + nx * offset,
-    y: (a.y + b.y) * 0.5 + ny * offset,
-  };
-}
-
-/** Point on the spine centre-line at parameter t in [0, 1] (0 = back edge). */
-export function spinePoint(
-  dims: BookDimensions,
-  pose: SpinePose,
-  t: number,
-  originX = 0,
-): Point2 {
-  const p0 = spineBackPoint(dims, originX);
-  const p1 = spineControlPoint(dims, pose, originX);
-  const p2 = spineFrontPoint(dims, pose, originX);
-  const s = clamp01(t);
-  const w0 = (1 - s) * (1 - s);
-  const w1 = 2 * (1 - s) * s;
-  const w2 = s * s;
-  return {
-    x: w0 * p0.x + w1 * p1.x + w2 * p2.x,
-    y: w0 * p0.y + w1 * p1.y + w2 * p2.y,
-  };
-}
-
-/** Outward 2D normal of the centre-line at parameter t. */
-export function spineNormal(
-  dims: BookDimensions,
-  pose: SpinePose,
-  t: number,
-  originX = 0,
-): Point2 {
-  const s = clamp01(t);
-  const p0 = spineBackPoint(dims, originX);
-  const p1 = spineControlPoint(dims, pose, originX);
-  const p2 = spineFrontPoint(dims, pose, originX);
-  // d/dt of the quadratic Bezier.
-  const dx = 2 * (1 - s) * (p1.x - p0.x) + 2 * s * (p2.x - p1.x);
-  const dy = 2 * (1 - s) * (p1.y - p0.y) + 2 * s * (p2.y - p1.y);
-  const len = Math.hypot(dx, dy);
-  if (len < 1e-12) return { x: -1, y: 0 };
-  return { x: -dy / len, y: dx / len };
-}
-
-/** Sampled cross-section from the back attachment (t=0) to the front (t=1). */
-export function spineCrossSection(
-  dims: BookDimensions,
-  pose: SpinePose,
-  samples: number,
-  originX = 0,
-): Point2[] {
-  const n = Math.max(2, samples);
-  const out: Point2[] = [];
+  closedCenterY: number,
+  openCenterY: number,
+): THREE.BufferGeometry {
+  const pts = spineCoverArc(u, dims, closedCenterY, openCenterY);
+  const z0 = -dims.height / 2;
+  const z1 = dims.height / 2;
+  const n = pts.length;
+  const positions = new Float32Array(n * 2 * 3);
   for (let i = 0; i < n; i++) {
-    out.push(spinePoint(dims, pose, i / (n - 1), originX));
+    positions[i * 6 + 0] = pts[i].x;
+    positions[i * 6 + 1] = pts[i].y;
+    positions[i * 6 + 2] = z0;
+    positions[(n + i) * 3 + 0] = pts[i].x;
+    positions[(n + i) * 3 + 1] = pts[i].y;
+    positions[(n + i) * 3 + 2] = z1;
   }
-  return out;
+  const indices: number[] = [];
+  for (let i = 0; i < n - 1; i++) {
+    const a = i;
+    const b = i + 1;
+    const c = n + i;
+    const d = n + i + 1;
+    indices.push(a, c, d, a, d, b);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
 }
 
-/** Chord length between the two attachment points. */
-export function spineChord(
+/** Update an existing cover-spine ribbon for a new opening progress. */
+export function updateSpineCoverGeometry(
+  geo: THREE.BufferGeometry,
+  u: number,
   dims: BookDimensions,
-  pose: SpinePose,
-  originX = 0,
-): number {
-  const a = spineBackPoint(dims, originX);
-  const b = spineFrontPoint(dims, pose, originX);
-  return Math.hypot(b.x - a.x, b.y - a.y);
+  closedCenterY: number,
+  openCenterY: number,
+): void {
+  const pts = spineCoverArc(u, dims, closedCenterY, openCenterY);
+  const pos = geo.getAttribute("position") as THREE.BufferAttribute;
+  const n = pts.length;
+  const z0 = -dims.height / 2;
+  const z1 = dims.height / 2;
+  for (let i = 0; i < n; i++) {
+    pos.setXYZ(i, pts[i].x, pts[i].y, z0);
+    pos.setXYZ(n + i, pts[i].x, pts[i].y, z1);
+  }
+  pos.needsUpdate = true;
+  geo.computeVertexNormals();
 }
 
-/** Bounding box of a sampled cross-section. */
-export function spineBounds(points: Point2[]) {
-  let minX = Infinity;
-  let maxX = -Infinity;
-  let minY = Infinity;
-  let maxY = -Infinity;
-  for (const p of points) {
-    if (p.x < minX) minX = p.x;
-    if (p.x > maxX) maxX = p.x;
-    if (p.y < minY) minY = p.y;
-    if (p.y > maxY) maxY = p.y;
-  }
-  return { minX, maxX, minY, maxY };
+/** Cylinder used for a headband at one end of the spine. */
+export function headbandGeometry(radius: number = HEADBAND_R, length = 0.005): THREE.CylinderGeometry {
+  return new THREE.CylinderGeometry(radius, radius, length, 10, 1, true);
 }

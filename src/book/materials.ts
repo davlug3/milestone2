@@ -49,7 +49,13 @@ export function createBookMaterials() {
     side: THREE.DoubleSide,
   });
 
-  return { cover, endpaper, endpaperHinge, paper, paperEdge, spine };
+  const headband = new THREE.MeshStandardMaterial({
+    color: 0x7a2e2a, // muted headband red
+    roughness: 0.85,
+    metalness: 0.0,
+  });
+
+  return { cover, endpaper, endpaperHinge, paper, paperEdge, spine, headband };
 }
 
 export type BookMaterials = ReturnType<typeof createBookMaterials>;

@@ -2,14 +2,13 @@ import * as THREE from "three";
 import { BOOK_DIMENSIONS } from "../config/bookConfig";
 import { createBookMaterials } from "../book/materials";
 import { createCover } from "../book/cover";
-import { createSpineRig } from "../book/spine";
 import { addStudioLighting } from "../rendering/lighting";
 import { PaperSimulation } from "../physics/PaperSimulation";
 import { ThickSheetGeometry } from "../paper/ThickSheetGeometry";
 import { createPaperMaterial } from "../paper/PaperMaterial";
 import { PageTurnController } from "../animation/PageTurnController";
 import { Heightfield } from "../physics/Heightfield";
-import { clamp01 } from "../animation/easing";
+import { clamp01, smootherstep } from "../animation/easing";
 import {
   coverPose,
   openCoverSurface,
@@ -19,8 +18,13 @@ import {
   gutterBinding,
   gutterBindingS,
   gutterParticleFloorY,
-  gutterSurfaceY,
 } from "../book/gutterRig";
+import {
+  headbandGeometry,
+  spineCoverGeometry,
+  textBlockGeometry,
+  updateSpineCoverGeometry,
+} from "../book/spineRig";
 
 /**
  * Animated hardcover book demo with a play/pause button.
@@ -35,11 +39,12 @@ import {
  *    its hinge line stays at the top of the block until past vertical, then
  *    settles to the table. No centre-line slide, no hop, no clipping through
  *    the page block or the table.
- *  - The gutter is a CURVE, not a straight hinge line. A solid plinth fills
- *    the gap between the covers' inner lining edges and its top dips into the
- *    spine hollow; the dip forms as the cover opens. Each sheet binds at its
- *    own point along that curve, so the landed sheets' inner edges fan along
- *    the gutter instead of meeting at one sharp x = 0 line.
+ *  - The gutter is a CURVE, not a straight hinge line. The text block is
+ *    rounded and backed (morphing spine profile) and the cover spine is a
+ *    hollow convex ribbon; the block's spine throws up as the cover opens,
+ *    leaving the hollow. Each sheet binds at its own point along that curve,
+ *    so landed sheets' inner edges fan along the gutter instead of meeting at
+ *    one sharp x = 0 line.
  *  - Pages collide with the OPEN COVER, not just a magic floor: the cover's
  *    inner lining is the destination surface, with a half-shell clearance.
  *  - The whole FORE-EDGE is driven along a smooth 2D arc (per-row lead + lift
@@ -187,37 +192,29 @@ export function startBookDemo(container: HTMLElement): () => void {
   backCover.position.set(W / 2, CT / 2, 0);
   scene.add(backCover);
 
-  // Right page block with a rounded inner-top edge. It is set back from the
-  // spine (BLOCK_INNER_X) and its inner-top corner is rounded (BLOCK_ROUND_R),
-  // so the gutter is a curve rather than a vertical wall. Extruded along Z.
-  const blockShape = new THREE.Shape();
-  blockShape.moveTo(BLOCK_INNER_X, CT);
-  blockShape.lineTo(BLOCK_INNER_X, blockTop - BLOCK_ROUND_R);
-  blockShape.quadraticCurveTo(
-    BLOCK_INNER_X,
-    blockTop,
-    BLOCK_INNER_X + BLOCK_ROUND_R,
-    blockTop,
-  );
-  blockShape.lineTo(W, blockTop);
-  blockShape.lineTo(W, CT);
-  blockShape.closePath();
+  // Text block: rounded and backed. The profile has a convex spine (the
+  // "round"), ~45 degree shoulders, and a flat top. A morph target flattens
+  // and slightly concaves the spine as the cover opens (the "throw-up").
+  const topSheetY = restBase + (NUM_SHEETS - 1) * sheetVStep;
+  const coverBottom = topSheetY + 0.0005;
+  const closedCenterY = coverBottom + CT / 2;
   const blockDepth = H * 0.97;
-  const blockGeo = new THREE.ExtrudeGeometry(blockShape, {
-    depth: blockDepth,
-    bevelEnabled: false,
-    curveSegments: 16,
-  });
-  blockGeo.translate(0, 0, -blockDepth / 2);
+  const blockWidth = W - 0.004; // 4 mm fore-edge square under the cover
+  const blockDims = { ...BOOK_DIMENSIONS, width: blockWidth };
+  const blockGeo = textBlockGeometry(0, blockDims, blockTop, blockDepth);
+  const blockOpen = textBlockGeometry(1, blockDims, blockTop, blockDepth);
+  blockGeo.morphAttributes.position = [
+    blockOpen.getAttribute("position") as THREE.BufferAttribute,
+  ];
   const rightBlock = new THREE.Mesh(blockGeo, materials.paperEdge);
   rightBlock.name = "right-block";
   rightBlock.castShadow = true;
   rightBlock.receiveShadow = true;
   scene.add(rightBlock);
 
-  // Static (never-turning) sheets sit on the block's flat top, starting at the
-  // end of its rounded inner edge.
-  const staticWidth = W - STATIC_INNER_X;
+  // Static (never-turning) sheets sit on the block's flat top, starting behind
+  // the shoulder.
+  const staticWidth = blockWidth - STATIC_INNER_X;
   const sheetGeo = new THREE.BoxGeometry(staticWidth, sheetVStep * 0.9, H * 0.97);
   for (let i = 0; i < NUM_STATIC; i++) {
     const sheetIndex = NUM_TURNS + i; // 8..14
@@ -229,50 +226,45 @@ export function startBookDemo(container: HTMLElement): () => void {
     scene.add(m);
   }
 
-  // Curved gutter plinth: fills the gap between the covers' inner lining edges
-  // with a solid whose top follows the gutter curve. Only the top 0.25 mm is
-  // visible (the rest is hidden inside the cover boards). Its dip animates with
-  // the cover opening, so the gutter visibly forms as the book opens. The top
-  // face is endpaper stock; the sides are spine cloth, so the joint reads as
-  // cloth wrapping the case rather than a beige block under the spine.
-  const plinthGeo = new THREE.BoxGeometry(2 * GUTTER_HALF, CT, H, 24, 1, 1);
-  const plinthPos = plinthGeo.attributes.position;
-  const plinthBase = new Float32Array(plinthPos.count);
-  for (let i = 0; i < plinthBase.length; i++) plinthBase[i] = plinthPos.getY(i);
-  // BoxGeometry material groups: +x, -x, +y, -y, +z, -z.
-  const plinthMaterials = [
-    materials.spine,
-    materials.spine,
-    materials.endpaper,
-    materials.spine,
-    materials.spine,
-    materials.spine,
-  ];
-  const plinth = new THREE.Mesh(plinthGeo, plinthMaterials);
-  plinth.name = "gutter-plinth";
-  plinth.position.y = CT / 2;
-  plinth.castShadow = true;
-  plinth.receiveShadow = true;
-  scene.add(plinth);
-  function updatePlinth(u: number): void {
-    for (let i = 0; i < plinthBase.length; i++) {
-      if (plinthBase[i] > 0) {
-        const worldX = plinthPos.getX(i);
-        plinthPos.setY(i, gutterSurfaceY(worldX, BOOK_DIMENSIONS, u) - CT / 2);
-      }
-    }
-    plinthPos.needsUpdate = true;
-    plinthGeo.computeVertexNormals();
+  // Hollow spine cover: a curved ribbon from the back cover's lower edge to the
+  // front cover's hinge edge. It stays convex while the text block's spine
+  // throws up inside it, leaving the hollow.
+  const spineCoverGeo = spineCoverGeometry(
+    0,
+    BOOK_DIMENSIONS,
+    closedCenterY,
+    OPEN_COVER_CENTER_Y,
+  );
+  const spineCover = new THREE.Mesh(spineCoverGeo, materials.spine);
+  spineCover.name = "spine-cover";
+  spineCover.castShadow = true;
+  spineCover.receiveShadow = true;
+  scene.add(spineCover);
+  function updateSpineCover(u: number): void {
+    updateSpineCoverGeometry(
+      spineCoverGeo,
+      u,
+      BOOK_DIMENSIONS,
+      closedCenterY,
+      OPEN_COVER_CENTER_Y,
+    );
   }
-  updatePlinth(0);
+  updateSpineCover(0);
+
+  // Headbands at the head and tail of the spine.
+  const headbandGeo = headbandGeometry();
+  for (const z of [-H / 2 + 0.0015, H / 2 - 0.0015]) {
+    const hb = new THREE.Mesh(headbandGeo, materials.headband);
+    hb.rotation.z = Math.PI / 2;
+    hb.position.set(0.0025, blockTop, z);
+    hb.castShadow = true;
+    scene.add(hb);
+  }
 
   // Front cover: a rigid board hinged on the spine (x=0). The board is offset
   // +W/2 inside the pivot, so the pivot line is the book's hinge and rotation
   // alone opens the cover. Its hinge height is animated separately (see
   // coverPose) to model the hinge rolling down the spine as it goes flat.
-  const topSheetY = restBase + (NUM_SHEETS - 1) * sheetVStep;
-  const coverBottom = topSheetY + 0.0005;
-  const closedCenterY = coverBottom + CT / 2;
   const frontCover = createCover(BOOK_DIMENSIONS, materials, "front");
   frontCover.position.x = W / 2;
   const coverPivot = new THREE.Group();
@@ -280,16 +272,6 @@ export function startBookDemo(container: HTMLElement): () => void {
   coverPivot.position.set(0, closedCenterY, 0);
   coverPivot.add(frontCover);
   scene.add(coverPivot);
-
-  // Spine: a curved case strip that wraps from the back board's edge around to
-  // the front board's outer hinge corner. It rounds when the book is closed and
-  // rolls inward as the cover opens, tucking into the spine hollow. Rebuilt
-  // from the same cover pose that drives the hinge, so it never detaches.
-  const spineRig = createSpineRig(BOOK_DIMENSIONS, materials, {
-    originX: 0,
-    thickness: 0.0008,
-  });
-  scene.add(spineRig.mesh);
 
   // --- Heightfield (shared collision surface) ------------------------------
   const heightfield = new Heightfield({ width: W, height: H, nx: 110, nz: 110 });
@@ -299,7 +281,7 @@ export function startBookDemo(container: HTMLElement): () => void {
   function resetHeightfield(): void {
     heightfield.setBase((x) => {
       const worldX = x + W / 2;
-      if (worldX >= BLOCK_INNER_X) return blockTop;
+      if (worldX >= BLOCK_INNER_X && worldX <= blockWidth) return blockTop;
       if (worldX >= -GUTTER_HALF && worldX <= GUTTER_HALF) {
         // Curved spine hollow (particle-centre floor).
         return gutterParticleFloorY(worldX, BOOK_DIMENSIONS, 1);
@@ -496,16 +478,12 @@ export function startBookDemo(container: HTMLElement): () => void {
     const pose = coverPose(u, closedCenterY, OPEN_COVER_CENTER_Y);
     coverPivot.position.y = pose.hingeY;
     coverPivot.rotation.z = pose.angle;
-    // The spine follows the hinge: rounded when closed, rolling into the
-    // hollow as the cover opens, flush when flat.
-    spineRig.update({ u, hingeY: pose.hingeY, angle: pose.angle });
-    // The gutter hollow forms as the cover opens.
-    updatePlinth(u);
-    // While the book is closed the joint reads as spine cloth; once the cover
-    // is up, the exposed gutter floor changes to endpaper stock. Without this
-    // the beige top of the joint peeks out beside the closed spine.
-    const plinthMats = plinth.material as THREE.Material[];
-    plinthMats[2] = u >= 0.5 ? materials.endpaper : materials.spine;
+    // The text block's spine throws up (flattens/concaves) as the cover opens,
+   	// and the hollow spine cover stays convex.
+    if (rightBlock.morphTargetInfluences) {
+      rightBlock.morphTargetInfluences[0] = smootherstep(u);
+    }
+    updateSpineCover(u);
   }
   updateCover(0);
 
@@ -599,20 +577,21 @@ export function startBookDemo(container: HTMLElement): () => void {
         bindings: pages.map((_, k) => gutterBinding(gutterBindingS(k, NUM_TURNS), BOOK_DIMENSIONS)),
       };
     },
-    /** Current spine cross-section bounds + bulge (debug/validation aid). */
+    /** Current spine cover bounds + text-block morph (debug/validation aid). */
     spine: () => {
       const u = clamp01(
         (time - TIMELINE.coverStart) / (TIMELINE.coverEnd - TIMELINE.coverStart),
       );
-      const pose = coverPose(u, closedCenterY, OPEN_COVER_CENTER_Y);
+      spineCoverGeo.computeBoundingBox();
+      const box = spineCoverGeo.boundingBox;
       return {
         u,
-        ...spineRig.bounds(),
-        protrusion: spineRig.protrusion(),
-        front: {
-          x: -Math.sin(pose.angle) * CT * 0.5,
-          y: pose.hingeY + Math.cos(pose.angle) * CT * 0.5,
-        },
+        minX: box ? box.min.x : 0,
+        maxX: box ? box.max.x : 0,
+        minY: box ? box.min.y : 0,
+        maxY: box ? box.max.y : 0,
+        protrusion: box ? Math.max(0, -box.min.x) : 0,
+        blockMorph: rightBlock.morphTargetInfluences?.[0] ?? 0,
       };
     },
     /** Per-page particle bounds in world space (debug/validation aid). */
@@ -653,7 +632,8 @@ export function startBookDemo(container: HTMLElement): () => void {
     window.removeEventListener("resize", onResize);
     ui.remove();
     for (const pg of pages) pg.geo.dispose();
-    spineRig.mesh.geometry.dispose();
+    spineCoverGeo.dispose();
+    headbandGeo.dispose();
     renderer.dispose();
   };
 }

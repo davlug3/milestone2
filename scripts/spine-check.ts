@@ -39,7 +39,7 @@ import {
   spineCrossSection,
   spineFrontPoint,
   spineProtrusion,
-} from "../src/book/spineRig";
+} from "../src/book/caseSpineRig";
 
 const W = BOOK_DIMENSIONS.width;
 const H = BOOK_DIMENSIONS.height;

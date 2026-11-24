@@ -10,6 +10,7 @@ import { PageTurnController } from "../animation/PageTurnController";
 import { Heightfield } from "../physics/Heightfield";
 import { clamp01 } from "../animation/easing";
 import {
+  HINGE_DROP_START,
   coverPose,
   openCoverSurface,
 } from "../book/coverRig";
@@ -64,6 +65,9 @@ const W = BOOK_DIMENSIONS.width;
 const H = BOOK_DIMENSIONS.height;
 const CT = BOOK_DIMENSIONS.coverThickness;
 const PBT = 0.022;
+// Case spine panel width: the closed book thickness. Open, it lies flat
+// between the boards, so the open book is 2 * width + SPINE_PANEL_W long.
+const SPINE_PANEL_W = 2 * CT + PBT;
 const NUM_TURNS = 8;
 const NUM_STATIC = 7;
 const NUM_SHEETS = NUM_TURNS + NUM_STATIC;
@@ -77,7 +81,11 @@ const restBase = blockTop + 0.0004;
 // The open front cover lies flat on the left; its inner lining is the top
 // surface that landing pages must rest on.
 const OPEN_COVER_CENTER_Y = CT / 2;
-const OPEN_COVER = openCoverSurface(BOOK_DIMENSIONS, OPEN_COVER_CENTER_Y);
+const OPEN_COVER = openCoverSurface(
+  BOOK_DIMENSIONS,
+  OPEN_COVER_CENTER_Y,
+  SPINE_PANEL_W,
+);
 const PAGE_SHELL_HALF = 0.000125; // particle mid-surface to page face
 const COVER_CONTACT_GAP = 0.00005;
 // Particle-centre floor on the open cover (page underside just touches it).
@@ -247,6 +255,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     BOOK_DIMENSIONS,
     closedCenterY,
     OPEN_COVER_CENTER_Y,
+    SPINE_PANEL_W,
   );
   const spineCover = new THREE.Mesh(spineCoverGeo, materials.spine);
   spineCover.name = "spine-cover";
@@ -260,6 +269,7 @@ export function startBookDemo(container: HTMLElement): () => void {
       BOOK_DIMENSIONS,
       closedCenterY,
       OPEN_COVER_CENTER_Y,
+      SPINE_PANEL_W,
     );
   }
   updateSpineCover(0);
@@ -366,9 +376,10 @@ export function startBookDemo(container: HTMLElement): () => void {
       gutterX,
       restY,
       landY,
-      landSpineY: binding.y,
+      landSpineY: Math.max(binding.y, COVER_FLOOR_Y),
       spineTargetX: binding.x - W / 2,
       landSpineStart: 0.5,
+      landOffsetX: -SPINE_PANEL_W,
       width: W,
       duration: win.dur,
       liftScale: 0.6,
@@ -491,7 +502,14 @@ export function startBookDemo(container: HTMLElement): () => void {
     const u = clamp01(
       (t - TIMELINE.coverStart) / (TIMELINE.coverEnd - TIMELINE.coverStart),
     );
-    const pose = coverPose(u, closedCenterY, OPEN_COVER_CENTER_Y);
+    const pose = coverPose(
+      u,
+      closedCenterY,
+      OPEN_COVER_CENTER_Y,
+      HINGE_DROP_START,
+      SPINE_PANEL_W,
+    );
+    coverPivot.position.x = pose.hingeX;
     coverPivot.position.y = pose.hingeY;
     coverPivot.rotation.z = pose.angle;
     // The hollow cover-spine ribbon stays convex while the cover opens.
@@ -575,7 +593,13 @@ export function startBookDemo(container: HTMLElement): () => void {
       const u = clamp01(
         (time - TIMELINE.coverStart) / (TIMELINE.coverEnd - TIMELINE.coverStart),
       );
-      const pose = coverPose(u, closedCenterY, OPEN_COVER_CENTER_Y);
+      const pose = coverPose(
+        u,
+        closedCenterY,
+        OPEN_COVER_CENTER_Y,
+        HINGE_DROP_START,
+        SPINE_PANEL_W,
+      );
       return {
         u,
         angle: pose.angle,

@@ -58,6 +58,13 @@ export interface PageTurnConfig {
    * once the page is on the destination side. Default 0.5.
    */
   landSpineStart?: number;
+  /**
+   * Extra X shift (negative, world) applied to the page as it lands. Used for
+   * the spine panel: when open, the front cover sits `panelWidth` further left,
+   * and the landed page must follow it (fore-edge stays flush with the board).
+   * Default 0 (no shift).
+   */
+  landOffsetX?: number;
   /** Page width: gutter to fore-edge distance (m). Also the arc radius. */
   width: number;
   /** Turn duration (seconds) over which the sweep runs. */
@@ -116,14 +123,17 @@ export class PageTurnController {
     // moves to its own point in the gutter once the sheet is on that side. This
     // keeps the mid-turn sheet smooth (no fold over the block edge) while
     // letting a landed page curve up from the gutter to its stack.
+    const start = c.landSpineStart ?? 0.5;
+    const settleK = smootherstep(clamp01((base - start) / (1 - start)));
+    // Spine-panel landing shift: the whole sheet follows the front board left
+    // as it settles (0 for a zero-width spine).
+    const shift = (c.landOffsetX ?? 0) * settleK;
     if (c.landSpineY !== undefined) {
-      const start = c.landSpineStart ?? 0.5;
-      const k = smootherstep(clamp01((base - start) / (1 - start)));
       const targetX = c.spineTargetX ?? c.gutterX;
-      this.spineTargetX = c.gutterX + (targetX - c.gutterX) * k;
-      this.spineTargetY = c.restY + (c.landSpineY - c.restY) * k;
+      this.spineTargetX = c.gutterX + (targetX - c.gutterX) * settleK + shift;
+      this.spineTargetY = c.restY + (c.landSpineY - c.restY) * settleK;
     } else {
-      this.spineTargetX = c.gutterX;
+      this.spineTargetX = c.gutterX + shift;
       this.spineTargetY = c.restY;
     }
 
@@ -141,7 +151,7 @@ export class PageTurnController {
       const edge = (2 * rz - 1) * (2 * rz - 1); // 0 at center, 1 at edges
       const liftMod = 1 + liftVar * edge;
 
-      const tx = c.gutterX + c.width * cos;
+      const tx = c.gutterX + c.width * cos + shift;
       // Descend gradually from restY (spine) to landY (fore-edge final).
       const descent = (c.landY - c.restY) * (phi / Math.PI);
       const ty = c.restY + descent + c.width * liftScale * liftMod * sin;

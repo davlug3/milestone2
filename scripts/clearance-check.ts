@@ -31,6 +31,7 @@ const W = BOOK_DIMENSIONS.width;
 const H = BOOK_DIMENSIONS.height;
 const CT = BOOK_DIMENSIONS.coverThickness;
 const PBT = 0.022;
+const SPINE_PANEL_W = 2 * CT + PBT;
 const blockTop = CT + PBT;
 const GUTTER_HALF = W * LINING_INSET;
 const BLOCK_INNER_X = 0.005;
@@ -131,9 +132,10 @@ function runTurn(k: number): TurnReport {
     gutterX,
     restY,
     landY,
-    landSpineY: binding.y,
+    landSpineY: Math.max(binding.y, COVER_FLOOR_Y),
     spineTargetX: binding.x - W / 2,
     landSpineStart: 0.5,
+    landOffsetX: -SPINE_PANEL_W,
     width: W,
     duration: DUR,
     liftScale: 0.6,

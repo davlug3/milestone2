@@ -30,6 +30,7 @@ const W = BOOK_DIMENSIONS.width;
 const H = BOOK_DIMENSIONS.height;
 const CT = BOOK_DIMENSIONS.coverThickness;
 const PBT = 0.022;
+const SPINE_PANEL_W = 2 * CT + PBT;
 const blockTop = CT + PBT;
 const cols = 25;
 const rows = 33;
@@ -41,7 +42,11 @@ const restBase = blockTop + 0.0004;
 
 // Open-cover collision surface (mirrors the demo).
 const OPEN_CENTER_Y = CT / 2;
-const OPEN_COVER = openCoverSurface(BOOK_DIMENSIONS, OPEN_CENTER_Y);
+const OPEN_COVER = openCoverSurface(
+  BOOK_DIMENSIONS,
+  OPEN_CENTER_Y,
+  SPINE_PANEL_W,
+);
 const PAGE_SHELL_HALF = 0.000125;
 const COVER_GAP = 0.00005;
 const COVER_FLOOR = OPEN_COVER.topY + PAGE_SHELL_HALF + COVER_GAP;
@@ -103,9 +108,10 @@ function makePage(restY: number, landY: number, belowRestY: number, k: number) {
     gutterX,
     restY,
     landY,
-    landSpineY: binding.y,
+    landSpineY: Math.max(binding.y, COVER_FLOOR),
     spineTargetX: binding.x - W / 2,
     landSpineStart: 0.5,
+    landOffsetX: -SPINE_PANEL_W,
     width: W,
     duration: 2.5,
     liftScale: 0.6,

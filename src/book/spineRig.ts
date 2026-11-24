@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import type { BookDimensions } from "../config/bookConfig";
 import { clamp01, smootherstep } from "../animation/easing";
+import { HINGE_DROP_START, coverPose } from "./coverRig";
 
 /**
  * Case-binding anatomy helpers.
@@ -88,13 +89,20 @@ export function spineCoverArc(
   dims: BookDimensions,
   closedCenterY: number,
   openCenterY: number,
+  hingeTravel = 0,
 ): Pt2[] {
   const t = clamp01(u);
-  const drop = smootherstep(clamp01((t - 0.55) / 0.45));
-  const hingeY = closedCenterY + (openCenterY - closedCenterY) * drop;
-  // Back cover bottom edge -> front cover top edge at the hinge.
+  const pose = coverPose(
+    t,
+    closedCenterY,
+    openCenterY,
+    HINGE_DROP_START,
+    hingeTravel,
+  );
+  // Back cover bottom edge -> front cover top edge at the (moving) hinge.
   const y0 = 0;
-  const y1 = hingeY + dims.coverThickness / 2;
+  const y1 = pose.hingeY + dims.coverThickness / 2;
+  const x1 = pose.hingeX;
   const bulge =
     SPINE_COVER_BULGE * (1 - smootherstep(t)) +
     (SPINE_COVER_T * 0.5) * smootherstep(t);
@@ -103,7 +111,7 @@ export function spineCoverArc(
   for (let i = 0; i <= N; i++) {
     const k = i / N;
     pts.push({
-      x: -bulge * Math.sin(Math.PI * k),
+      x: x1 * k - bulge * Math.sin(Math.PI * k),
       y: y0 + (y1 - y0) * k,
     });
   }
@@ -116,8 +124,9 @@ export function spineCoverGeometry(
   dims: BookDimensions,
   closedCenterY: number,
   openCenterY: number,
+  hingeTravel = 0,
 ): THREE.BufferGeometry {
-  const pts = spineCoverArc(u, dims, closedCenterY, openCenterY);
+  const pts = spineCoverArc(u, dims, closedCenterY, openCenterY, hingeTravel);
   const z0 = -dims.height / 2;
   const z1 = dims.height / 2;
   const n = pts.length;
@@ -152,8 +161,9 @@ export function updateSpineCoverGeometry(
   dims: BookDimensions,
   closedCenterY: number,
   openCenterY: number,
+  hingeTravel = 0,
 ): void {
-  const pts = spineCoverArc(u, dims, closedCenterY, openCenterY);
+  const pts = spineCoverArc(u, dims, closedCenterY, openCenterY, hingeTravel);
   const pos = geo.getAttribute("position") as THREE.BufferAttribute;
   const n = pts.length;
   const z0 = -dims.height / 2;

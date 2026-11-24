@@ -25,6 +25,7 @@ import { PageTurnController } from "../src/animation/PageTurnController";
 import { Heightfield } from "../src/physics/Heightfield";
 import { BOOK_DIMENSIONS } from "../src/config/bookConfig";
 import {
+  HINGE_DROP_START,
   LINING_PROTRUSION,
   coverLowestY,
   coverPose,
@@ -43,6 +44,7 @@ const W = BOOK_DIMENSIONS.width;
 const H = BOOK_DIMENSIONS.height;
 const CT = BOOK_DIMENSIONS.coverThickness;
 const PBT = 0.022;
+const SPINE_PANEL_W = 2 * CT + PBT; // case spine width = closed thickness
 const blockTop = CT + PBT;
 const cols = 25;
 const rows = 33;
@@ -55,7 +57,11 @@ const restY = restBase + (NUM_SHEETS - 1) * vStep;
 const belowRestY = restBase + (NUM_SHEETS - 2) * vStep;
 
 const OPEN_CENTER_Y = CT / 2;
-const OPEN_COVER = openCoverSurface(BOOK_DIMENSIONS, OPEN_CENTER_Y);
+const OPEN_COVER = openCoverSurface(
+  BOOK_DIMENSIONS,
+  OPEN_CENTER_Y,
+  SPINE_PANEL_W,
+);
 const PAGE_SHELL_HALF = 0.000125;
 const COVER_GAP = 0.00005;
 const COVER_FLOOR = OPEN_COVER.topY + PAGE_SHELL_HALF + COVER_GAP;
@@ -111,14 +117,20 @@ const block = {
 
 for (let s = 0; s <= 400; s++) {
   const u = s / 400;
-  const pose = coverPose(u, closedCenterY, OPEN_CENTER_Y);
+  const pose = coverPose(
+    u,
+    closedCenterY,
+    OPEN_CENTER_Y,
+    HINGE_DROP_START,
+    SPINE_PANEL_W,
+  );
   worstLowest = Math.min(worstLowest, coverLowestY(pose, BOOK_DIMENSIONS));
 
   const cos = Math.cos(pose.angle);
   const sin = Math.sin(pose.angle);
   for (const q of localPts) {
-    // Cover-group point (q.x + W/2, q.y) rotated about the spine.
-    const x = (q.x + W / 2) * cos - q.y * sin;
+    // Cover-group point (q.x + W/2, q.y) rotated about the (moving) spine.
+    const x = pose.hingeX + (q.x + W / 2) * cos - q.y * sin;
     const y = pose.hingeY + (q.x + W / 2) * sin + q.y * cos;
     if (
       x >= block.x0 - 1e-9 &&
@@ -136,20 +148,27 @@ for (let s = 0; s <= 400; s++) {
   prevHinge = pose.hingeY;
 }
 
-const closed = coverPose(0, closedCenterY, OPEN_CENTER_Y);
-const open = coverPose(1, closedCenterY, OPEN_CENTER_Y);
+const closed = coverPose(0, closedCenterY, OPEN_CENTER_Y, HINGE_DROP_START, SPINE_PANEL_W);
+const open = coverPose(1, closedCenterY, OPEN_CENTER_Y, HINGE_DROP_START, SPINE_PANEL_W);
 if (!approx(closed.angle, 0)) fail(`closed angle ${closed.angle}`);
 if (!approx(closed.hingeY, closedCenterY, 1e-12)) fail("closed hinge height");
+if (!approx(closed.hingeX, 0, 1e-12)) fail("closed hinge x");
 if (!approx(open.angle, Math.PI, 1e-12)) fail(`open angle ${open.angle}`);
 if (!approx(open.hingeY, OPEN_CENTER_Y, 1e-12)) fail("open hinge height");
+if (!approx(open.hingeX, -SPINE_PANEL_W, 1e-12)) fail(`open hinge x ${open.hingeX}`);
+const openSpan = W - OPEN_COVER.x0;
+const expectedSpan = 2 * W + SPINE_PANEL_W;
+if (!approx(openSpan, expectedSpan, 1e-9)) {
+  fail(`open span ${(openSpan * 1000).toFixed(2)}mm != 2L+T ${(expectedSpan * 1000).toFixed(2)}mm`);
+}
 if (worstLowest < -1e-9) fail(`cover goes below table by ${-worstLowest * 1000}mm`);
 if (boardInBlock > 0) fail(`${boardInBlock} cover samples inside the page block`);
 if (nonMonotonic > 0) fail(`${nonMonotonic} non-monotonic cover samples`);
 
 // --- 2. Open-cover surface -------------------------------------------------
-const topInside = openCoverTopAt(-W / 2, 0, BOOK_DIMENSIONS, OPEN_CENTER_Y);
-const topOutsideX = openCoverTopAt(0.05, 0, BOOK_DIMENSIONS, OPEN_CENTER_Y);
-const topOutsideZ = openCoverTopAt(-W / 2, H, BOOK_DIMENSIONS, OPEN_CENTER_Y);
+const topInside = openCoverTopAt(-W / 2, 0, BOOK_DIMENSIONS, OPEN_CENTER_Y, SPINE_PANEL_W);
+const topOutsideX = openCoverTopAt(0.05, 0, BOOK_DIMENSIONS, OPEN_CENTER_Y, SPINE_PANEL_W);
+const topOutsideZ = openCoverTopAt(-W / 2, H, BOOK_DIMENSIONS, OPEN_CENTER_Y, SPINE_PANEL_W);
 const expectedTop = OPEN_CENTER_Y + CT * (0.5 + LINING_PROTRUSION);
 if (!approx(topInside, expectedTop)) fail(`open cover top ${topInside}`);
 if (topOutsideX !== 0 || topOutsideZ !== 0) fail("cover footprint leaks outside board");
@@ -218,9 +237,10 @@ const controller = new PageTurnController({
   gutterX,
   restY,
   landY,
-  landSpineY: BINDING.y,
+  landSpineY: Math.max(BINDING.y, COVER_FLOOR),
   spineTargetX: BINDING.x - W / 2,
   landSpineStart: 0.5,
+  landOffsetX: -SPINE_PANEL_W,
   width: W,
   duration: DUR,
   liftScale: 0.6,
@@ -293,11 +313,12 @@ if (nan) fail("NaN particle");
 if (worstBelowSurface < -1e-6) {
   fail(`page sinks into the book by ${-worstBelowSurface * 1000}mm`);
 }
-if (!approx(spineX, BINDING.x, 1e-9)) {
-  fail(`spine edge x ${spineX} != binding x ${BINDING.x}`);
+if (!approx(spineX, BINDING.x - SPINE_PANEL_W, 1e-9)) {
+  fail(`spine edge x ${spineX} != shifted binding x ${BINDING.x - SPINE_PANEL_W}`);
 }
-if (!approx(spineY, BINDING.y, 1e-9)) {
-  fail(`spine edge y ${spineY} != binding y ${BINDING.y}`);
+const landSpineY = Math.max(BINDING.y, COVER_FLOOR);
+if (!approx(spineY, landSpineY, 1e-9)) {
+  fail(`spine edge y ${spineY} != landing spine y ${landSpineY}`);
 }
 if (!approx(foreY, landY, 1e-9)) {
   fail(`fore-edge did not settle to landY (${foreY} vs ${landY})`);

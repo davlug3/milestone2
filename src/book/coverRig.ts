@@ -26,6 +26,8 @@ export const LINING_PROTRUSION = 0.1;
 export interface CoverPose {
   /** World Y of the hinge (spine) line. */
   hingeY: number;
+  /** World X of the hinge (spine) line. Moves left as the spine panel flattens. */
+  hingeX: number;
   /** Rotation about the spine axis. 0 = closed, PI = open flat on the left. */
   angle: number;
 }
@@ -48,37 +50,46 @@ export const HINGE_DROP_START = 0.55;
  *
  * @param closedCenterY World Y of the board's centre when the book is closed.
  * @param openCenterY   World Y of the board's centre when open flat on the left.
+ * @param dropStart     Progress at which the hinge starts descending.
+ * @param hingeTravel   Spine-panel width: the hinge moves from x = 0 (closed,
+ *                      the panel wrapped around the block) to x = -hingeTravel
+ *                      (open, the panel lying flat between the boards). The
+ *                      open book is therefore 2 * boardWidth + hingeTravel long.
  */
 export function coverPose(
   u: number,
   closedCenterY: number,
   openCenterY: number,
   dropStart: number = HINGE_DROP_START,
+  hingeTravel = 0,
 ): CoverPose {
   const t = clamp01(u);
   const angle = Math.PI * smootherstep(t);
   const drop = smootherstep(clamp01((t - dropStart) / (1 - dropStart)));
   const hingeY = closedCenterY + (openCenterY - closedCenterY) * drop;
-  return { hingeY, angle };
+  // The panel unfolds as the cover passes vertical, so the hinge X rides the
+  // same curve as the hinge Y drop.
+  const hingeX = -hingeTravel * drop;
+  return { hingeY, hingeX, angle };
 }
 
 /**
  * Height and footprint of the fully open front cover.
  *
- * The inner lining is the topmost surface. Its footprint is 97% of the board;
- * treat the whole board footprint as the lining height so a landing page is
- * never pressed into the board's bevel.
+ * With a spine panel of width `hingeTravel`, the open board spans
+ * [-hingeTravel - width, -hingeTravel].
  */
 export function openCoverSurface(
   dims: BookDimensions,
   openCenterY: number,
+  hingeTravel = 0,
 ): OpenCoverSurface {
   return {
     topY:
       openCenterY +
       dims.coverThickness * (0.5 + LINING_PROTRUSION),
-    x0: -dims.width,
-    x1: 0,
+    x0: -hingeTravel - dims.width,
+    x1: -hingeTravel,
     z0: -dims.height / 2,
     z1: dims.height / 2,
   };
@@ -93,8 +104,9 @@ export function openCoverTopAt(
   worldZ: number,
   dims: BookDimensions,
   openCenterY: number,
+  hingeTravel = 0,
 ): number {
-  const s = openCoverSurface(dims, openCenterY);
+  const s = openCoverSurface(dims, openCenterY, hingeTravel);
   if (worldX < s.x0 || worldX > s.x1 || worldZ < s.z0 || worldZ > s.z1) {
     return 0;
   }

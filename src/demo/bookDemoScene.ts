@@ -305,9 +305,11 @@ export function startBookDemo(container: HTMLElement): () => void {
   // Inner hollow lining: the cloth spine plane between the two cover hinges.
   // Its front edge is the FRONT COVER's inner lining point at the hinge, so the
   // plane follows the cover as it opens (vertical when closed, flat when open).
-  // The unit box is re-transformed every frame in `updateCover`.
+  // It is a distinct binding cloth (not endpaper) so the bound line stays
+  // visible between the page stacks. The unit box is re-transformed every frame
+  // in `updateCover`.
   const hollowGeo = new THREE.BoxGeometry(1, 1, H * 0.99);
-  const hollowLining = new THREE.Mesh(hollowGeo, materials.endpaper);
+  const hollowLining = new THREE.Mesh(hollowGeo, materials.spineCloth);
   hollowLining.name = "hollow-lining";
   hollowLining.castShadow = true;
   hollowLining.receiveShadow = true;
@@ -590,8 +592,6 @@ export function startBookDemo(container: HTMLElement): () => void {
     coverPivot.rotation.z = pose.angle;
     // The hollow cover-spine ribbon stays convex while the cover opens.
     updateSpineCover(u);
-    // The joint reads as cloth while closed and as endpaper once opened.
-    hollowLining.material = u >= 0.5 ? materials.endpaper : materials.spine;
     // The spine plane is bounded by the FRONT COVER: its front edge is the
     // cover's inner lining point at the moving hinge. Build a thin slab whose
     // page-facing face is the plane and which extends away from the pages.
@@ -617,12 +617,14 @@ export function startBookDemo(container: HTMLElement): () => void {
     const fullLen = len + overlap * 2;
     const nx = -dy / len; // local +Y (points away from the pages)
     const ny = dx / len;
-    const thickness = 0.0008;
-    // Sit just below the page-facing plane to avoid z-fighting with linings.
-    const inset = 0.00015;
+    // A visible cloth slab, not a hairline: it must read as the bound surface
+    // the pages are glued to. It extends AWAY from the pages (below the open
+    // plane), so the binding face stays flush with the page undersides.
+    const thickness = 0.002;
+    const gap = 0.00002;
     hollowLining.position.set(
-      (bx + fx) / 2 + nx * (thickness / 2 - inset),
-      (by + fy) / 2 + ny * (thickness / 2 - inset),
+      (bx + fx) / 2 + nx * (thickness / 2 + gap),
+      (by + fy) / 2 + ny * (thickness / 2 + gap),
       0,
     );
     hollowLining.rotation.z = Math.atan2(dy, dx);

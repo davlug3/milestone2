@@ -49,13 +49,23 @@ export function createBookMaterials() {
     side: THREE.DoubleSide,
   });
 
+  // The binding cloth: the plane the page inner edges are glued to, spanning
+  // the two cover hinges. Distinct from both the cover cloth and the endpaper
+  // so the bound spine reads as a continuous surface instead of a dark gap.
+  const spineCloth = new THREE.MeshStandardMaterial({
+    color: 0x9a7248, // warm ochre bookbinding cloth
+    roughness: 0.9,
+    metalness: 0.0,
+    side: THREE.DoubleSide,
+  });
+
   const headband = new THREE.MeshStandardMaterial({
     color: 0x7a2e2a, // muted headband red
     roughness: 0.85,
     metalness: 0.0,
   });
 
-  return { cover, endpaper, endpaperHinge, paper, paperEdge, spine, headband };
+  return { cover, endpaper, endpaperHinge, paper, paperEdge, spine, spineCloth, headband };
 }
 
 export type BookMaterials = ReturnType<typeof createBookMaterials>;

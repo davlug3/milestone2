@@ -1,10 +1,10 @@
 # Progress
 
 Current milestone: 6 (cover, spine, endpapers) — complete
-Last completed task: Animated curved spine (tucks into the spine hollow), endpapers + tinted flyleaves, dark cloth joint at the gutter plinth
+Last completed task: Merged case-binding anatomy; cut the text block back to the page zone and fixed the fore-edge heightfield gap so pages clear the block/spine (new test:clearance)
 Current blocker: none
 Build status: PASS (tsc + vite build)
-Test status: PASS (sim, page metrics stretch 1.15x dihedral 29.7deg penetration 0, 8-page stacking 0mm interpenetration, cover + curved gutter PASS, spine PASS, demo 0 errors)
+Test status: PASS (sim, page metrics stretch 1.15x dihedral 29.7deg penetration 0, 8-page stacking 0mm interpenetration, cover + curved gutter PASS, spine PASS, paper/spine clearance PASS, demo 0 errors)
 Visual inspection: PASS (closed spine from two angles, opening at t=1.4/2.0, open gutter/left edge at t=3.0, flyleaf lift/landing at t=4.1/6.2 plus default-camera t=0/4.1/30 and the static `?test=book` scene; software WebGL 2, 1280x800 and 1024x640)
 
 ## Completed

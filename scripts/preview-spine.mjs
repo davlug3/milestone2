@@ -68,6 +68,18 @@ const SHOTS = [
     camera: [-0.06, 0.20, 0.32],
     lookAt: [-0.05, 0.01, 0],
   },
+  {
+    name: "09-turn-gutter",
+    t: 5.0,
+    camera: [-0.05, 0.12, 0.10],
+    lookAt: [0.01, 0.02, 0],
+  },
+  {
+    name: "10-turn-fore-edge",
+    t: 4.8,
+    camera: [0.04, 0.16, 0.20],
+    lookAt: [0.02, 0.03, 0],
+  },
 ];
 
 mkdirSync(OUTPUT_DIR, { recursive: true });
@@ -103,7 +115,7 @@ async function main() {
     );
     await page.waitForTimeout(200);
     const out = `${OUTPUT_DIR}/${shot.name}.png`;
-    await page.screenshot({ path: out });
+    await page.screenshot({ path: out, timeout: 120000 });
     const spine = await page.evaluate(() => window.__demo.spine());
     console.log(
       `${shot.name} t=${shot.t}s -> ${out} ` +

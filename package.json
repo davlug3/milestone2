@@ -12,7 +12,8 @@
     "test:page": "esbuild scripts/page-sim-metrics.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/page-sim-metrics.mjs && node node_modules/.cache/page-sim-metrics.mjs",
     "test:twopage": "esbuild scripts/multipage-check.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/multipage-check.mjs && node node_modules/.cache/multipage-check.mjs",
     "test:cover": "esbuild scripts/cover-check.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/cover-check.mjs && node node_modules/.cache/cover-check.mjs",
-    "test:spine": "esbuild scripts/spine-check.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/spine-check.mjs && node node_modules/.cache/spine-check.mjs"
+    "test:spine": "esbuild scripts/spine-check.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/spine-check.mjs && node node_modules/.cache/spine-check.mjs",
+    "test:clearance": "esbuild scripts/clearance-check.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/clearance-check.mjs && node node_modules/.cache/clearance-check.mjs"
   },
   "dependencies": {
     "three": "^0.180.0"

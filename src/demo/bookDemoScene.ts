@@ -8,7 +8,7 @@ import { ThickSheetGeometry } from "../paper/ThickSheetGeometry";
 import { createPaperMaterial } from "../paper/PaperMaterial";
 import { PageTurnController } from "../animation/PageTurnController";
 import { Heightfield } from "../physics/Heightfield";
-import { clamp01, smootherstep } from "../animation/easing";
+import { clamp01 } from "../animation/easing";
 import {
   coverPose,
   openCoverSurface,
@@ -22,7 +22,6 @@ import {
 import {
   headbandGeometry,
   spineCoverGeometry,
-  textBlockGeometry,
   updateSpineCoverGeometry,
 } from "../book/spineRig";
 
@@ -192,28 +191,42 @@ export function startBookDemo(container: HTMLElement): () => void {
   backCover.position.set(W / 2, CT / 2, 0);
   scene.add(backCover);
 
-  // Text block: rounded and backed. The profile has a convex spine (the
-  // "round"), ~45 degree shoulders, and a flat top. A morph target flattens
-  // and slightly concaves the spine as the cover opens (the "throw-up").
+  // Text block: flat-backed with a rounded inner-top edge. It is deliberately
+  // cut back to BLOCK_INNER_X below the top: a page bound in the gutter dives
+  // to ~2.7 mm and ramps up to the stack (~24.5 mm) within the first grid cell,
+  // so any block solid in x = 0..5 mm at mid heights would be cut by the paper.
+  // The rounded spine anatomy lives in the cover-spine ribbon outside this gap.
   const topSheetY = restBase + (NUM_SHEETS - 1) * sheetVStep;
   const coverBottom = topSheetY + 0.0005;
   const closedCenterY = coverBottom + CT / 2;
   const blockDepth = H * 0.97;
   const blockWidth = W - 0.004; // 4 mm fore-edge square under the cover
-  const blockDims = { ...BOOK_DIMENSIONS, width: blockWidth };
-  const blockGeo = textBlockGeometry(0, blockDims, blockTop, blockDepth);
-  const blockOpen = textBlockGeometry(1, blockDims, blockTop, blockDepth);
-  blockGeo.morphAttributes.position = [
-    blockOpen.getAttribute("position") as THREE.BufferAttribute,
-  ];
+  const blockShape = new THREE.Shape();
+  blockShape.moveTo(BLOCK_INNER_X, CT);
+  blockShape.lineTo(BLOCK_INNER_X, blockTop - BLOCK_ROUND_R);
+  blockShape.quadraticCurveTo(
+    BLOCK_INNER_X,
+    blockTop,
+    BLOCK_INNER_X + BLOCK_ROUND_R,
+    blockTop,
+  );
+  blockShape.lineTo(blockWidth, blockTop);
+  blockShape.lineTo(blockWidth, CT);
+  blockShape.closePath();
+  const blockGeo = new THREE.ExtrudeGeometry(blockShape, {
+    depth: blockDepth,
+    bevelEnabled: false,
+    curveSegments: 16,
+  });
+  blockGeo.translate(0, 0, -blockDepth / 2);
   const rightBlock = new THREE.Mesh(blockGeo, materials.paperEdge);
   rightBlock.name = "right-block";
   rightBlock.castShadow = true;
   rightBlock.receiveShadow = true;
   scene.add(rightBlock);
 
-  // Static (never-turning) sheets sit on the block's flat top, starting behind
-  // the shoulder.
+  // Static (never-turning) sheets sit on the block's flat top, starting at the
+  // end of its rounded inner edge.
   const staticWidth = blockWidth - STATIC_INNER_X;
   const sheetGeo = new THREE.BoxGeometry(staticWidth, sheetVStep * 0.9, H * 0.97);
   for (let i = 0; i < NUM_STATIC; i++) {
@@ -281,7 +294,10 @@ export function startBookDemo(container: HTMLElement): () => void {
   function resetHeightfield(): void {
     heightfield.setBase((x) => {
       const worldX = x + W / 2;
-      if (worldX >= BLOCK_INNER_X && worldX <= blockWidth) return blockTop;
+      // The block top covers the whole right side; the previous upper limit at
+      // blockWidth pushed the page fore-edge down to the cover floor, sinking
+      // the last 4 mm of every sheet into the block.
+      if (worldX >= BLOCK_INNER_X) return blockTop;
       if (worldX >= -GUTTER_HALF && worldX <= GUTTER_HALF) {
         // Curved spine hollow (particle-centre floor).
         return gutterParticleFloorY(worldX, BOOK_DIMENSIONS, 1);
@@ -478,11 +494,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     const pose = coverPose(u, closedCenterY, OPEN_COVER_CENTER_Y);
     coverPivot.position.y = pose.hingeY;
     coverPivot.rotation.z = pose.angle;
-    // The text block's spine throws up (flattens/concaves) as the cover opens,
-   	// and the hollow spine cover stays convex.
-    if (rightBlock.morphTargetInfluences) {
-      rightBlock.morphTargetInfluences[0] = smootherstep(u);
-    }
+    // The hollow cover-spine ribbon stays convex while the cover opens.
     updateSpineCover(u);
   }
   updateCover(0);
@@ -591,7 +603,6 @@ export function startBookDemo(container: HTMLElement): () => void {
         minY: box ? box.min.y : 0,
         maxY: box ? box.max.y : 0,
         protrusion: box ? Math.max(0, -box.min.x) : 0,
-        blockMorph: rightBlock.morphTargetInfluences?.[0] ?? 0,
       };
     },
     /** Per-page particle bounds in world space (debug/validation aid). */

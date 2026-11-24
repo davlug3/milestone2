@@ -290,19 +290,19 @@ export function startBookDemo(container: HTMLElement): () => void {
     return g;
   };
   // A page's inner edge is GLUED onto the binding cloth, not just touching its
-  // border. These short page-stock tabs lie flat on the cloth at each sheet's
-  // spine height so the bound edge is visible from above.
-  const BIND_TAB = 0.009;
-  function addBindingTab(
-    x0: number,
-    x1: number,
-    spineY: number,
+  // border. Each sheet leaves a fine page-edge line on the cloth. The lines are
+  // staggered across the band (one per sheet) so they read as a fanned text
+  // block glued down, with alternating stock shades catching the light.
+  const EDGE_W = 0.0007;
+  function addBoundEdge(
+    x: number,
+    y: number,
     material: THREE.Material,
   ): void {
-    const g = new THREE.BoxGeometry(x1 - x0, 0.00009, H * 0.97);
+    const g = new THREE.BoxGeometry(EDGE_W, 0.0003, H * 0.97);
     const m = new THREE.Mesh(g, material);
-    m.position.set((x0 + x1) / 2, spineY, 0);
-    m.name = "binding-tab";
+    m.position.set(x, y, 0);
+    m.name = "bound-edge";
     m.receiveShadow = true;
     scene.add(m);
   }
@@ -317,22 +317,19 @@ export function startBookDemo(container: HTMLElement): () => void {
     m.name = "static-sheet";
     m.receiveShadow = true;
     scene.add(m);
-    // Right stack: the tab runs from the back hinge onto the cloth.
-    addBindingTab(
-      -BIND_TAB,
-      0.001,
-      spineY - sheetVStep * 0.4,
+    // Right stack: one glued edge per sheet, staggered from the back hinge.
+    addBoundEdge(
+      -0.002 - i * 0.0016,
+      SPINE_CLOTH_Y + 0.0002 + i * 0.00004,
       i % 2 === 0 ? materials.paper : materials.paperEdge,
     );
   }
-  // Left stack: pages land at the front hinge, so their glued tabs lie on the
-  // cloth from there toward the back hinge.
+  // Left stack: pages land at the front hinge; their glued edges fan toward
+  // the back hinge in the same way.
   for (let k = 0; k < NUM_TURNS; k++) {
-    const spineY = spineFanY(BOOK_DIMENSIONS, k);
-    addBindingTab(
-      -SPINE_PANEL_W - 0.001,
-      -SPINE_PANEL_W + BIND_TAB,
-      spineY - sheetVStep * 0.4,
+    addBoundEdge(
+      -SPINE_PANEL_W + 0.002 + k * 0.0014,
+      SPINE_CLOTH_Y + 0.0002 + k * 0.00004,
       k === 0 || k === NUM_TURNS - 1 ? materials.endpaper : materials.paper,
     );
   }

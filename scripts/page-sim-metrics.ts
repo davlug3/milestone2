@@ -98,7 +98,6 @@ const controller = new PageTurnController({
   landSpineY,
   spineTargetX: gutterX,
   landSpineStart: 0.5,
-  landOffsetX: -SPINE_PANEL_W,
   width: W,
   duration: DUR,
   liftScale: LIFTSCALE,

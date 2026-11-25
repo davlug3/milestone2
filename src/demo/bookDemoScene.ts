@@ -18,7 +18,9 @@ import {
   BIND_RAMP,
   bindingFloorY,
   blockRampY,
+  bindingLineX,
   fanIndex,
+  openBindingLineX,
   rightSheetY,
   spineClothTopY,
   spineFanY,
@@ -44,14 +46,20 @@ import {
  *    its hinge line stays at the top of the block until past vertical, then
  *    settles to the table. No centre-line slide, no hop, no clipping through
  *    the page block or the table.
- *  - The gutter is a BOUND SPINE, not a trough. The pages are bound to a
- *    horizontal cloth plane between the two cover hinges (world x = 0 and
- *    x = -SPINE_PANEL_W). Every sheet's inner edge starts on that plane and
- *    ramps up to its own height in the stack, so the text block fans out of a
- *    continuous bound line instead of loose sheets floating beside a gap.
- *  - The pinned SPINE edge stays on the binding plane through the crossing and
- *    settles at the front hinge on the left, so a landed sheet curves up from
- *    the binding to its stack instead of cantilevering from the old height.
+ *  - The gutter is a BOUND SPINE, not a trough. Every sheet, on both sides of
+ *    the open book, is bound on ONE line: the centre of the spine panel
+ *    (world x = -SPINE_PANEL_W / 2). Its inner edge starts on the cloth plane
+ *    there and ramps up to its own height in the stack, so the text block fans
+ *    out of a continuous bound line. The panel itself is covered by the two
+ *    stacks, as on a real book.
+ *  - The binding line is FIXED during page turns. A turning page rotates about
+ *    it and its spine edge never moves in x, only down the small per-sheet fan
+ *    to its place in the left stack. (The old model hinged the right stack at
+ *    x = 0 and the left stack at x = -SPINE_PANEL_W and slid every page 27 mm
+ *    across the spine during the turn, which read as the page flying.)
+ *  - The whole text block (wedge, mull, static sheets, turning sheets) is one
+ *    group that slides to the open binding line at the end of the cover swing,
+ *    after the spine has flattened and before the first page turn.
  *  - Long-range bending links distribute curvature (smooth curl, no crease).
  *  - Page-to-page collision via a heightfield: a shared Heightfield stores the
  *    top surface of everything below. Each landed sheet is baked into it (outer
@@ -74,6 +82,10 @@ const SPINE_TURN_IN = 0.003;
 const NUM_TURNS = 8;
 const NUM_STATIC = 7;
 const NUM_SHEETS = NUM_TURNS + NUM_STATIC;
+// World x of the single binding line once the book is open (constant during
+// every page turn). Sheets are simulated in binding-relative coordinates, so
+// this only positions the text-block group in the world.
+const BIND_X_OPEN = openBindingLineX(SPINE_PANEL_W);
 
 const FIXED_DT = 1 / 120;
 const blockTop = CT + PBT;
@@ -229,11 +241,18 @@ export function startBookDemo(container: HTMLElement): () => void {
     curveSegments: 16,
   });
   blockGeo.translate(0, 0, -blockDepth / 2);
+  // Everything bound on the binding line (wedge, mull, static and turning
+  // sheets) lives in one group, so the whole text block moves as one piece. It
+  // is positioned by `bindingLineX(u)` in `updateCover`.
+  const boundBlock = new THREE.Group();
+  boundBlock.name = "bound-text-block";
+  scene.add(boundBlock);
+
   const rightBlock = new THREE.Mesh(blockGeo, materials.paperEdge);
   rightBlock.name = "right-block";
   rightBlock.castShadow = true;
   rightBlock.receiveShadow = true;
-  scene.add(rightBlock);
+  boundBlock.add(rightBlock);
 
   // Cloth mull: a thin cloth layer on the text-block ramp. It is the visible
   // binding the pages emerge from and hides the paper wedge in the gutter.
@@ -262,7 +281,7 @@ export function startBookDemo(container: HTMLElement): () => void {
   const mull = new THREE.Mesh(mullGeo, materials.spine);
   mull.name = "spine-mull";
   mull.receiveShadow = true;
-  scene.add(mull);
+  boundBlock.add(mull);
 
   // Static (never-turning) sheets: thin curved sheets that start on the spine
   // binding and fan up to their own stack heights, so the closed block reads as
@@ -301,7 +320,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     );
     m.name = "static-sheet";
     m.receiveShadow = true;
-    scene.add(m);
+    boundBlock.add(m);
   }
 
   // Inner hollow lining: the cloth spine plane between the two cover hinges.
@@ -348,14 +367,15 @@ export function startBookDemo(container: HTMLElement): () => void {
   }
   updateSpineCover(0);
 
-  // Headbands: short cords lying ACROSS the spine at the head and tail, seated
-  // in the joint on the binding cloth. The old version stood as a 22 mm vertical
-  // post that poked above the page surface.
+  // Headbands: short cords lying ACROSS the spine at the head and tail ends of
+  // the binding line. The text block now covers the whole spine panel, so they
+  // sit just beyond the head/tail of the sheets (z) instead of inside them,
+  // where they would cut through the pages.
   const headbandGeo = headbandGeometry(0.0009, 0.008);
-  for (const z of [-H / 2 + 0.0015, H / 2 - 0.0015]) {
+  for (const z of [-H / 2 - 0.0012, H / 2 + 0.0012]) {
     const hb = new THREE.Mesh(headbandGeo, materials.headband);
     hb.rotation.z = Math.PI / 2; // cylinder axis along X
-    hb.position.set(-0.006, SPINE_CLOTH_Y + 0.0006, z);
+    hb.position.set(BIND_X_OPEN, SPINE_CLOTH_Y + 0.0006, z);
     hb.castShadow = true;
     scene.add(hb);
   }
@@ -457,12 +477,11 @@ export function startBookDemo(container: HTMLElement): () => void {
       spineRestY,
       landY,
       landSpineY,
-      // Local x of the spine is `gutterX`; the landing shift moves the whole
-      // sheet left by the spine panel, so the spine edge lands at the front
-      // cover hinge (world x = -SPINE_PANEL_W).
+      // Single binding line: the spine edge keeps x = gutterX for the whole
+      // turn (no landing offset), so the page rotates about a fixed line and
+      // never slides across the spine. Only its height changes, down the fan.
       spineTargetX: gutterX,
       landSpineStart: 0.5,
-      landOffsetX: -SPINE_PANEL_W,
       width: W,
       duration: win.dur,
       liftScale: 0.45,
@@ -493,8 +512,8 @@ export function startBookDemo(container: HTMLElement): () => void {
           : `turning-page-${k}`;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    mesh.position.x = W / 2; // gutter at world x=0
-    scene.add(mesh);
+    mesh.position.x = W / 2; // binding line at the group's x
+    boundBlock.add(mesh);
     geo.update(sim.particles);
 
     const maxSteps = Math.ceil((win.dur + win.settle) / FIXED_DT);
@@ -595,6 +614,9 @@ export function startBookDemo(container: HTMLElement): () => void {
     coverPivot.position.x = pose.hingeX;
     coverPivot.position.y = pose.hingeY;
     coverPivot.rotation.z = pose.angle;
+    // The text block slides to the open binding line at the end of the cover
+    // swing (u > 0.8, after the spine strip has flattened) and stays there.
+    boundBlock.position.x = bindingLineX(u, SPINE_PANEL_W);
     // The hollow cover-spine ribbon stays convex while the cover opens.
     updateSpineCover(u);
     // Closed, the binding plane is hidden inside the case. Showing it there
@@ -742,9 +764,13 @@ export function startBookDemo(container: HTMLElement): () => void {
           OPEN_COVER_CENTER_Y,
           SPINE_PANEL_W,
         ),
+        bindingLineX: boundBlock.position.x,
         bindings: pages.map((_, k) => ({
-          right: { x: 0, y: spineFanY(BOOK_DIMENSIONS, fanIndex(k, NUM_SHEETS)) },
-          left: { x: -SPINE_PANEL_W, y: spineFanY(BOOK_DIMENSIONS, k) },
+          right: {
+            x: BIND_X_OPEN,
+            y: spineFanY(BOOK_DIMENSIONS, fanIndex(k, NUM_SHEETS)),
+          },
+          left: { x: BIND_X_OPEN, y: spineFanY(BOOK_DIMENSIONS, k) },
         })),
       };
     },
@@ -771,7 +797,7 @@ export function startBookDemo(container: HTMLElement): () => void {
         let minY = Infinity, maxY = -Infinity;
         let minZ = Infinity, maxZ = -Infinity;
         for (const p of pg.sim.particles) {
-          const wx = p.x + W / 2; // mesh offset
+          const wx = p.x + W / 2 + boundBlock.position.x; // world x
           if (wx < minX) minX = wx;
           if (wx > maxX) maxX = wx;
           if (p.y < minY) minY = p.y;
@@ -784,7 +810,7 @@ export function startBookDemo(container: HTMLElement): () => void {
           stepped: pg.stepped,
           restY: pg.restY,
           landY: pg.landY,
-          spineX: spine.x + W / 2,
+          spineX: spine.x + W / 2 + boundBlock.position.x,
           spineY: spine.y,
           minX,
           maxX,

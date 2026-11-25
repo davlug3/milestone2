@@ -13,10 +13,15 @@ import { HINGE_DROP_START, coverPose } from "./coverRig";
  *   - the front cover hinge, at world x = -spinePanelWidth (open book)
  *
  * A cloth mull rises from this plane and the text block fans out of it: every
- * sheet's inner edge starts on the spine plane and ramps up to its own height
- * in the stack. That is the "pages bound perpendicularly to the spine plane"
- * look: a continuous bound line instead of loose sheets floating beside a
- * gutter trough.
+ * sheet's inner edge starts on the plane and ramps up to its own height in the
+ * stack. All sheets, on BOTH sides of the open book, are bound on ONE line, the
+ * centre of the spine panel (`openBindingLineX`). The panel is wider than the
+ * bound line: it is covered by the two page stacks, as on a real book, instead
+ * of showing as a bare strip between two separately hinged stacks.
+ *
+ * All binding-relative functions below take x measured FROM the binding line.
+ * The demo moves the binding line (and the text block with it) with
+ * `bindingLineX` while the cover opens; it is fixed during page turns.
  *
  * All functions are in world metres. X = width, Y = up, Z = head-to-tail.
  */
@@ -41,6 +46,39 @@ export const BIND_RAMP = 0.07;
  */
 function bindingCurve(t: number): number {
   return smootherstep(clamp01(t));
+}
+
+/**
+ * Cover-opening progress at which the text block starts sliding from the
+ * closed spine to the open binding line. The case spine has flattened by then
+ * (see `spineRig`), so the block never clips the curved spine strip.
+ */
+export const BIND_SLIDE_START = 0.8;
+
+/**
+ * World x of the SINGLE binding line when the book is open flat: the centre of
+ * the spine panel, which spans [-hingeTravel, 0]. Both page stacks hinge on
+ * this one line. It must never move while a page is turning, otherwise the
+ * page slides sideways across the spine ("flies").
+ */
+export function openBindingLineX(hingeTravel: number): number {
+  return -hingeTravel / 2;
+}
+
+/**
+ * World x of the binding line during cover opening at progress `u`.
+ *
+ * Closed: 0 (the text block sits against the closed spine). It slides to the
+ * open binding line only at the end of the cover swing, before the first page
+ * turn, and is constant afterwards. All binding-relative page geometry
+ * (`blockRampY`, `rightSheetY`, the page simulation) is expressed relative to
+ * this line, so moving one group by this x moves the whole text block.
+ */
+export function bindingLineX(u: number, hingeTravel: number): number {
+  const t = smootherstep(
+    clamp01((u - BIND_SLIDE_START) / (1 - BIND_SLIDE_START)),
+  );
+  return openBindingLineX(hingeTravel) * t;
 }
 
 /** Top of the cloth covering the spine plane (cover lining height). */

@@ -14,7 +14,8 @@
  * 3. Page landing
  *    - one page turns exactly like the demo (right-stack height, open-cover
  *      floor, bound spine) and comes to rest on the cover
- *    - its spine edge lands at the front cover hinge at its binding height
+ *    - its spine edge stays on the single binding line for the WHOLE turn (it
+ *      never slides in x) and lands at its own fan height there
  *    - its fore-edge is at the stack height
  *    - the sheet is curved (spine edge below the stack height)
  *    - no part of the page goes below the book surface
@@ -36,9 +37,12 @@ import {
 import { spineCoverGeometry } from "../src/book/spineRig";
 import {
   BIND_RAMP,
+  BIND_SLIDE_START,
   bindingFloorY,
+  bindingLineX,
   blockRampY,
   fanIndex,
+  openBindingLineX,
   rightSheetY,
   spineClothTopY,
   spineFanY,
@@ -182,6 +186,40 @@ if (!approx(topInside, expectedTop)) fail(`open cover top ${topInside}`);
 if (topOutsideX !== 0 || topOutsideZ !== 0) fail("cover footprint leaks outside board");
 if (!approx(OPEN_COVER.topY, expectedTop)) fail("openCoverSurface topY");
 
+// --- 2b. Single binding line ------------------------------------------------
+// Both page stacks hinge on one line, the centre of the open spine panel. It
+// is at the closed spine until the cover has nearly finished opening, then
+// slides monotonically to the panel centre, before the first page turn.
+const openBind = openBindingLineX(SPINE_PANEL_W);
+if (!approx(openBind, -SPINE_PANEL_W / 2, 1e-12)) fail("open binding line is not the panel centre");
+if (!approx(bindingLineX(0, SPINE_PANEL_W), 0, 1e-12)) fail("closed binding line must be at x = 0");
+if (!approx(bindingLineX(BIND_SLIDE_START, SPINE_PANEL_W), 0, 1e-12)) fail("binding line moves before BIND_SLIDE_START");
+if (!approx(bindingLineX(1, SPINE_PANEL_W), openBind, 1e-12)) fail("open binding line x");
+{
+  let prev = 0;
+  let worstStep = 0;
+  for (let i = 0; i <= 1000; i++) {
+    const x = bindingLineX(i / 1000, SPINE_PANEL_W);
+    if (x > prev + 1e-12) fail(`binding line moves right at u=${i / 1000}`);
+    worstStep = Math.max(worstStep, Math.abs(x - prev));
+    prev = x;
+  }
+  // The block slides over the last 20% of the swing (0.44 s of 2.2 s): the
+  // per-sample step must stay small, i.e. a smooth ease, not a jump.
+  if (worstStep > 0.0005) fail(`binding line jumps ${(worstStep * 1000).toFixed(2)}mm per 0.1% of the swing`);
+}
+// The page stacks cover the whole spine panel and are symmetric about it: the
+// panel is [-T, 0], the stacks start at the binding line and run away from it.
+const rightForeEdgeX = openBind + W;
+const leftForeEdgeX = openBind - W;
+const backBoardOuter = W; // back board spans [0, W]
+const rightInsetMm = backBoardOuter - rightForeEdgeX;
+const leftInsetMm = leftForeEdgeX - OPEN_COVER.x0;
+if (!approx(rightInsetMm, leftInsetMm, 1e-9)) {
+  fail(`open book is not symmetric: right inset ${(rightInsetMm * 1000).toFixed(2)}mm, left inset ${(leftInsetMm * 1000).toFixed(2)}mm`);
+}
+if (!(openBind <= 0 && openBind >= -SPINE_PANEL_W)) fail("binding line is outside the spine panel");
+
 // --- 3. Spine binding plane -----------------------------------------------
 // The cloth plane spans the two cover hinges and is flat at the lining height.
 if (!approx(SPINE_CLOTH_Y, expectedTop)) {
@@ -279,7 +317,6 @@ const controller = new PageTurnController({
   landSpineY: LAND_SPINE_Y,
   spineTargetX: gutterX,
   landSpineStart: 0.5,
-  landOffsetX: -SPINE_PANEL_W,
   width: W,
   duration: DUR,
   liftScale: 0.6,
@@ -293,12 +330,19 @@ controller.apply(sim.particles);
 
 // Track book-surface penetration at every step, not just at the end.
 let worstBelowSurface = Infinity;
+// Regression guard for the "flying page" bug: the pinned spine edge must stay
+// on the single binding line (binding-relative x = 0) at EVERY step. The old
+// landing offset slid the whole sheet 27 mm sideways across the spine.
+let spineDriftX = 0;
 const steps = Math.round((DUR + SETTLE) / DT);
 for (let s = 0; s <= steps; s++) {
   const progress = Math.min((s * DT) / DUR, 1);
   controller.setProgress(progress);
   controller.apply(sim.particles);
   sim.step();
+  for (const si of spineIndices) {
+    spineDriftX = Math.max(spineDriftX, Math.abs(sim.particles[si].x + W / 2));
+  }
   for (const p of sim.particles) {
     const worldX = p.x + W / 2;
     let surface: number;
@@ -344,6 +388,7 @@ console.log(
 console.log(
   `page: belowSurface=${worstBelowSurface === Infinity ? "none" : `${(worstBelowSurface * 1000).toFixed(3)}mm`} ` +
     `spine=(${(spineX * 1000).toFixed(3)},${(spineY * 1000).toFixed(3)})mm ` +
+    `maxSpineDriftX=${(spineDriftX * 1000).toFixed(4)}mm ` +
     `binding=(0.000,${(SPINE_REST_Y * 1000).toFixed(3)})mm ` +
     `foreEdgeY=${(foreY * 1000).toFixed(3)}mm spread=${(spread * 1000).toFixed(2)}mm nan=${nan}`,
 );
@@ -352,8 +397,11 @@ if (nan) fail("NaN particle");
 if (worstBelowSurface < -1e-6) {
   fail(`page sinks into the book by ${-worstBelowSurface * 1000}mm`);
 }
-if (!approx(spineX, -SPINE_PANEL_W, 1e-9)) {
-  fail(`spine edge x ${spineX} != front hinge ${-SPINE_PANEL_W}`);
+if (!approx(spineX, 0, 1e-9)) {
+  fail(`spine edge x ${spineX} is not on the binding line`);
+}
+if (spineDriftX > 1e-9) {
+  fail(`spine edge slid ${(spineDriftX * 1000).toFixed(3)}mm in x during the turn (page "flies" across the spine)`);
 }
 if (!approx(spineY, LAND_SPINE_Y, 1e-9)) {
   fail(`spine edge y ${spineY} != landing spine y ${LAND_SPINE_Y}`);

@@ -67,10 +67,10 @@ export interface PageTurnConfig {
    */
   landSpineStart?: number;
   /**
-   * Extra X shift (negative, world) applied to the page as it lands. Used for
-   * the spine panel: when open, the front cover sits `panelWidth` further left,
-   * and the landed page must follow it (fore-edge stays flush with the board).
-   * Default 0 (no shift).
+   * Extra X shift applied to the WHOLE sheet (spine edge and fore-edge arc
+   * centre) as it lands. Default 0, and it should stay 0 for a bound book: a
+   * non-zero value moves the pivot line mid-turn, so the page slides sideways
+   * across the spine instead of rotating about a fixed binding line.
    */
   landOffsetX?: number;
   /** Page width: gutter to fore-edge distance (m). Also the arc radius. */

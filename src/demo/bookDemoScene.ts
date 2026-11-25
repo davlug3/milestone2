@@ -155,6 +155,8 @@ interface PageInstance {
 export function startBookDemo(container: HTMLElement): () => void {
   loadingStage("Initializing WebGL renderer…");
   // --- Renderer / scene / camera ------------------------------------------
+  const query=new URLSearchParams(location.search);
+  const compact=!query.has("export")&&!query.has("geometry-export")&&(query.has("lite")||matchMedia("(pointer: coarse), (max-width: 720px)").matches);
   const renderer = new THREE.WebGLRenderer({
     antialias: true,
     preserveDrawingBuffer: new URLSearchParams(location.search).has('export'),
@@ -162,7 +164,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     // is only a hint: browsers without a usable GPU fall back automatically.
     powerPreference: "high-performance",
   });
-  renderer.setPixelRatio(previewPixelRatio(new URLSearchParams(location.search).has('export')));
+  renderer.setPixelRatio(compact?1:previewPixelRatio(query.has('export')));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -189,7 +191,7 @@ export function startBookDemo(container: HTMLElement): () => void {
   camera.fStop = 4.5;
   camera.apertureBlades = 6;
   camera.apertureRotation = 0.15;
-  const trace = new StudioTracer(renderer, scene, camera);
+  const trace = new StudioTracer(renderer, scene, camera,compact);
   const blenderExport = new BlenderExport(scene,camera);
   const geometryOnly = new URLSearchParams(location.search).has("geometry-export");
   let manualCamera = false;
@@ -217,7 +219,7 @@ export function startBookDemo(container: HTMLElement): () => void {
   materials.endpaper.bumpMap = clothTexture;
   materials.endpaper.bumpScale = 0.00004;
   loadingStage("Preparing book and paper textures…");
-  const prints = createPagePrints(materials.paperEdge, renderer.capabilities.getMaxAnisotropy());
+  const prints = createPagePrints(materials.paperEdge, renderer.capabilities.getMaxAnisotropy(),compact,compact?NUM_TURNS+1:Infinity);
 
   const backCover = createCover(BOOK_DIMENSIONS, materials, "back");
   backCover.position.set(W / 2, CT / 2, 0);
@@ -471,9 +473,14 @@ export function startBookDemo(container: HTMLElement): () => void {
   });
   let photoRevision=-1;
   let startupComplete=false;
+  let gpuLost=false;
+  function onContextLost(event:Event){event.preventDefault();gpuLost=true;setPlaying(false);controls.setFrameProgress({phase:"GPU context lost · recovering",ready:false});controls.samples.textContent="Graphics memory limit reached. If recovery stalls, reload in real-time mode.";}
+  function onContextRestored(){gpuLost=false;trace.recover();controls.mode.value="real-time";}
+  renderer.domElement.addEventListener("webglcontextlost",onContextLost);
+  renderer.domElement.addEventListener("webglcontextrestored",onContextRestored);
   loadingStage("Loading printed pages…",0,prints.status().totalFaces);
   function setRenderMode(mode:RenderMode){
-    if(!["real-time","ray-traced","cinematic"].includes(mode))return;
+    if(gpuLost||!["real-time","ray-traced","cinematic"].includes(mode))return;
     setPlaying(false);trace.setMode(mode);controls.mode.value=mode;
   }
   function setPlaying(next:boolean):void{
@@ -637,6 +644,7 @@ export function startBookDemo(container: HTMLElement): () => void {
 
   // --- Main loop -----------------------------------------------------------
   function frame(now: number): void {
+    if(gpuLost||trace.contextLost){controls.setFrameProgress({phase:"GPU context lost · recovering",ready:false});raf=requestAnimationFrame(frame);return;}
     if(playback.tick(now,trace.mode!=="cinematic"||trace.complete,trace.mode==="cinematic"?1/60:undefined)){
       time=playback.time;
       stepPagesTo(time);
@@ -651,6 +659,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     if(revision!==photoRevision){if(!startupComplete)loadingStage("Loading printed pages…",revision,photoState.totalFaces);photoRevision=revision;trace.invalidate();}
     if(!geometryOnly)trace.draw(playback.playing && trace.mode==="ray-traced");
     if(!startupComplete&&revision>=photoState.totalFaces){startupComplete=true;loadingReady();if(photoState.failedFaces)console.warn("[book] Some printed pages use placeholders:",photoState.failedFaces);}
+    if(trace.contextLost){controls.setFrameProgress({phase:"GPU context lost · recovering",ready:false});raf=requestAnimationFrame(frame);return;}
     controls.mode.value=trace.mode;
     const raster=trace.mode==="real-time"||(playback.playing&&trace.mode==="ray-traced");
     controls.setFrameProgress(raster?{phase:trace.mode==="ray-traced"?"Real-time playback · pause to trace":"Frame render · Real-time",ready:true}:{phase:trace.complete?"Frame complete":trace.phase,samples:trace.samples,target:trace.goal});
@@ -854,6 +863,8 @@ export function startBookDemo(container: HTMLElement): () => void {
     scene.environment = null;
     trace.dispose();
     environment.dispose();
+    renderer.domElement.removeEventListener("webglcontextlost",onContextLost);
+    renderer.domElement.removeEventListener("webglcontextrestored",onContextRestored);
     renderer.dispose();
   };
 }

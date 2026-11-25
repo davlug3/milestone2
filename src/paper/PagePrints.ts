@@ -6,8 +6,10 @@ const WIDTH = 512;
 const HEIGHT = 660;
 
 /** Shared image cache and a unique, UV-stable printed layout for every face. */
-export function createPagePrints(edge: THREE.Material, anisotropy: number) {
+export function createPagePrints(edge: THREE.Material, anisotropy: number, compact=false, printedSheets=Infinity) {
   const grain=createPaperGrain();
+  const scale=compact?.5:1;
+  const blank=new THREE.MeshPhysicalMaterial({color:0xf4efe4,roughness:.82,bumpMap:grain.bump,bumpScale:.000035});
   const images = new Map<number, Promise<HTMLImageElement | null>>();
   const textures: THREE.CanvasTexture[] = [];
   const materials: THREE.MeshStandardMaterial[] = [];
@@ -41,9 +43,10 @@ export function createPagePrints(edge: THREE.Material, anisotropy: number) {
   }
   function face(page: number) {
     const canvas = document.createElement("canvas");
-    canvas.width = WIDTH;
-    canvas.height = HEIGHT;
+    canvas.width = Math.round(WIDTH*scale);
+    canvas.height = Math.round(HEIGHT*scale);
     const ctx = canvas.getContext("2d")!;
+    ctx.scale(scale,scale);
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.anisotropy = Math.min(8, anisotropy);
@@ -74,12 +77,13 @@ export function createPagePrints(edge: THREE.Material, anisotropy: number) {
     return material;
   }
   return {
-    sheet(index: number): THREE.Material[] { return [face(index*2+1),face(index*2+2),edge]; },
+    sheet(index: number): THREE.Material[] { return index<printedSheets?[face(index*2+1),face(index*2+2),edge]:[blank,blank,edge]; },
     status: () => ({ totalFaces: textures.length, loadedFaces, failedFaces }),
     dispose() {
       disposed = true;
       textures.forEach(t => t.dispose());
       materials.forEach(m => m.dispose());
+      blank.dispose();
       grain.bump.dispose();grain.roughness.dispose();
       images.clear();
     }

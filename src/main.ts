@@ -1,3 +1,4 @@
+import { loadingStage, loadingReady, loadingFailed } from "./playback/loading";
 import * as THREE from "three";
 import { createBook } from "./book/createBook";
 import { addStudioLighting } from "./rendering/lighting";
@@ -21,6 +22,9 @@ const freezeParam = params.get("t");
 const freezeTime =
   freezeParam !== null && freezeParam !== "" ? Number(freezeParam) : undefined;
 
+loadingStage("Initializing graphics…");
+// Give the browser a paint before expensive synchronous WebGL setup.
+requestAnimationFrame(()=>requestAnimationFrame(()=>{try {
 if (testName === "paper-drop") {
   startPaperDropTest(container);
 } else if (testName === "paper-edge") {
@@ -33,6 +37,8 @@ if (testName === "paper-drop") {
   // Default: animated book demo with a play button.
   startBookDemo(container);
 }
+if(testName)loadingReady();
+} catch(error){loadingFailed(error);throw error;}}));
 
 /**
  * Milestone 1 — Static book block.

@@ -1,3 +1,4 @@
+import { loadingStage, loadingReady, loadingFailed } from "../../src/playback/loading.ts";
 import { bindPreviewViewport, previewPixelRatio, fitVerticalFov } from "../../src/playback/viewport.ts";
 import { TRACE_QUALITY } from "../../src/rendering/quality.ts";
 import { PlaybackClock, createPlaybackControls } from "../../src/playback/transport.ts";
@@ -7,6 +8,10 @@ import { makeShots,pose,duration,cameraPose,random } from "./pose.js";
 import { shapeFor,printTexture,createPhoto,placePhoto } from "./photoDeform.js";
 const q=new URLSearchParams(location.search),exportMode=q.has("export");
 if(exportMode)document.body.classList.add("export");
+loadingStage("Initializing WebGL renderer…");
+// Paint the HTML loading screen before building procedural textures.
+async function boot(){
+await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
 const renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:exportMode,powerPreference:"high-performance"});
 renderer.setPixelRatio(previewPixelRatio(exportMode));
 renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;
@@ -76,18 +81,26 @@ function resizeScene(w,h){camera.aspect=w/h;camera.fov=exportMode?40:fitVertical
 bindPreviewViewport(renderer.domElement,controls.ui,resizeScene,exportMode);
 if(exportMode)addEventListener("resize",()=>resizeScene(innerWidth,innerHeight));
 async function init(){
-  const response=await fetch("./slides.json");if(!response.ok)throw Error("Missing slides.json; run npm run build or npm run dev");
+  loadingStage("Downloading photo manifest…");
+  const response=await fetch("./slides.json",{signal:AbortSignal.timeout(20000)});if(!response.ok)throw Error("Missing slides.json; run npm run build or npm run dev");
   const manifest=await response.json();if(!manifest.photos.length)throw Error("No photos found");
   shots=makeShots(manifest.photos.length,manifest.config);total=duration(shots);playback.duration=total;controls.sync(playback);
+  loadingStage("Loading photo prints…",0,manifest.photos.length);
   for(let i=0;i<manifest.photos.length;i++){
-    const c=shots[i].config,source=await loader.loadAsync(manifest.photos[i]);
+    const c=shots[i].config;
+    let timer;const source=await Promise.race([loader.loadAsync(manifest.photos[i]),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error("Photo "+(i+1)+" failed to load in time")),20000);})]).finally(()=>clearTimeout(timer));
     const tex=printTexture(source.image,c,renderer.capabilities.getMaxAnisotropy());source.dispose();
     const front=new THREE.MeshPhysicalMaterial({map:tex,roughness:.43,clearcoat:.22,clearcoatRoughness:.46});
     const card=createPhoto(c,shapeFor(c.seed,i),{front,back:paper,edge});
-    scene.add(card);cards.push(card);
+    scene.add(card);cards.push(card);loadingStage("Loading photo prints…",i+1,manifest.photos.length);
   }
+  loadingStage("Rendering first frame…");
+  await new Promise(resolve=>requestAnimationFrame(resolve));
   update(0);
+  loadingReady();
   window.__slideshow={duration:total,count:cards.length,seek:t=>{play(false);update(t);},capture:t=>{play(false);setMode("raster");update(t);return renderer.domElement.toDataURL("image/png");},beginTrace:(t,samples)=>{play(false);setMode("raytrace");target=samples;update(t);},traceStep:()=>{if(mode!=="raytrace")throw Error(traceError||"Ray tracer unavailable");traceDraw();return {samples:traceDirty?0:tracer.samples,target};},traceCapture:()=>{if(mode!=="raytrace"||traceDirty||tracer.samples<target)throw Error("Frame not ready");return renderer.domElement.toDataURL("image/png");},gpu:()=>{const gl=renderer.getContext(),ext=gl.getExtension("WEBGL_debug_renderer_info");return ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER);}};
   if(!exportMode){function tick(now){if(playback.tick(now,mode!=="cinematic"||(!traceDirty&&tracer&&tracer.samples>=target),mode==="cinematic"?1/60:undefined))update(playback.time,true);else if(mode==="cinematic"||(!playback.playing&&mode==="raytrace"))draw();controls.sync(playback);requestAnimationFrame(tick);}requestAnimationFrame(tick);}
 }
-init().catch(e=>{document.querySelector("#error").textContent=String(e);window.__slideshowError=String(e);console.error(e);});
+await init();
+}
+boot().catch(e=>{loadingFailed(e);document.querySelector("#error").textContent=String(e);window.__slideshowError=String(e);console.error(e);});

@@ -17,8 +17,10 @@ export function createPagePrints(edge: THREE.Material, anisotropy: number) {
     if (!pending) {
       pending = new Promise(resolve => {
         const image = new Image();
-        image.onload = () => resolve(image);
-        image.onerror = () => resolve(null);
+        const finish=(value:HTMLImageElement|null)=>{clearTimeout(timer);image.onload=null;image.onerror=null;resolve(value);};
+        const timer=setTimeout(()=>finish(null),20000);
+        image.onload = () => finish(image);
+        image.onerror = () => finish(null);
         image.src = import.meta.env.BASE_URL + "page-photos/" + id + ".jpg";
       });
       images.set(id, pending);

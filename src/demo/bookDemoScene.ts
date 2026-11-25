@@ -1,3 +1,4 @@
+import { loadingStage, loadingReady } from "../playback/loading";
 import { bindPreviewViewport, previewPixelRatio } from "../playback/viewport";
 import { PlaybackClock, createPlaybackControls } from "../playback/transport";
 import * as THREE from "three";
@@ -147,6 +148,7 @@ interface PageInstance {
 }
 
 export function startBookDemo(container: HTMLElement): () => void {
+  loadingStage("Initializing WebGL renderer…");
   // --- Renderer / scene / camera ------------------------------------------
   const renderer = new THREE.WebGLRenderer({
     antialias: true,
@@ -205,6 +207,7 @@ export function startBookDemo(container: HTMLElement): () => void {
   materials.cover.bumpScale = 0.00012;
   materials.endpaper.bumpMap = clothTexture;
   materials.endpaper.bumpScale = 0.00004;
+  loadingStage("Preparing book and paper textures…");
   const prints = createPagePrints(materials.paperEdge, renderer.capabilities.getMaxAnisotropy());
 
   const backCover = createCover(BOOK_DIMENSIONS, materials, "back");
@@ -457,6 +460,8 @@ export function startBookDemo(container: HTMLElement): () => void {
     hidden:geometryOnly||new URLSearchParams(location.search).has("export"),
   });
   let photoRevision=-1;
+  let startupComplete=false;
+  loadingStage("Loading printed pages…",0,prints.status().totalFaces);
   function setRenderMode(mode:RenderMode){
     if(!["real-time","ray-traced","cinematic"].includes(mode))return;
     setPlaying(false);trace.setMode(mode);controls.mode.value=mode;
@@ -629,8 +634,9 @@ export function startBookDemo(container: HTMLElement): () => void {
     controls.sync(playback);
     const photoState=prints.status();
     const revision=photoState.loadedFaces+photoState.failedFaces;
-    if(revision!==photoRevision){photoRevision=revision;trace.invalidate();}
+    if(revision!==photoRevision){if(!startupComplete)loadingStage("Loading printed pages…",revision,photoState.totalFaces);photoRevision=revision;trace.invalidate();}
     if(!geometryOnly)trace.draw(playback.playing && trace.mode==="ray-traced");
+    if(!startupComplete&&revision>=photoState.totalFaces){startupComplete=true;loadingReady();if(photoState.failedFaces)console.warn("[book] Some printed pages use placeholders:",photoState.failedFaces);}
     controls.mode.value=trace.mode;
     controls.samples.textContent=trace.error ? "Ray tracing unavailable: "+trace.error :
       trace.mode==="real-time" ? "" : playback.playing && trace.mode==="ray-traced" ? "Raster playback · pause to trace" :

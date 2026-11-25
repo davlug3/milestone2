@@ -1,5 +1,5 @@
 // Analytic, deterministic 2.5D toss. Units: metres, seconds, radians.
-export const defaults={interval:2.0,flight:.64,settle:.62,hold:2.5,seed:27,width:.205,depth:.145,thickness:.00065};
+export const defaults={interval:2.0,flight:.64,settle:.62,hold:2.5,seed:27,width:.35,depth:.245,thickness:.00065};
 const clamp=x=>Math.max(0,Math.min(1,x));
 const mix=(a,b,t)=>a+(b-a)*t;
 const smooth=x=>{x=clamp(x);return x*x*(3-2*x);};
@@ -9,7 +9,7 @@ export function makeShots(count,config={}){
   // Alternating corners, with the latest print near the centre of attention.
   for(let i=0;i<count;i++){
     const side=i%4,angle=side*Math.PI/2+.25+(r()-.5)*.65;
-    const x=(r()-.5)*.32,z=(r()-.5)*.18;
+    const x=(r()-.5)*.42,z=(r()-.5)*.21;
     const yaw=(r()-.5)*.62;
     const travel=[Math.cos(angle),Math.sin(angle)];
     const overlaps=shots.filter(p=>Math.abs(p.x-x)<c.width*.92&&Math.abs(p.z-z)<c.depth*.92);

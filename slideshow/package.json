@@ -8,11 +8,15 @@
     "build": "node scripts/photos.mjs && vite build",
     "preview": "vite preview",
     "test": "node --test scripts/pose.test.mjs",
-    "photos:download": "node scripts/download.mjs",
-    "render:video": "node scripts/render.mjs"
+    "photos:download": "node scripts/photos.mjs --refresh",
+    "render:video": "node scripts/render.mjs",
+    "photos:sync": "node scripts/photos.mjs"
   },
   "dependencies": {
-    "three": "0.180.0"
+    "three": "0.180.0",
+    "three-gpu-pathtracer": "0.0.24",
+    "three-mesh-bvh": "0.9.2",
+    "xatlas-web": "0.1.0"
   },
   "devDependencies": {
     "vite": "^7.1.0",

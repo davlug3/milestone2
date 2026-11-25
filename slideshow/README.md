@@ -11,7 +11,7 @@ npx playwright install chromium
 npm run dev
 ```
 
-Open the printed Vite URL. Six bundled landscape **illustrations** serve as placeholders until you supply real photos. Put JPG, PNG, WebP or AVIF files in `public/photos/` (numeric filename order), or run `npm run photos:download` for sample photos from Picsum. The manifest is regenerated on dev/build/export; restart dev after changing photos. Configure interval, flight, settle, final hold, seed and print dimensions in `slideshow.config.json`.
+Open the printed Vite URL. The default photo provider prefetches seeded Picsum photographs into `public/photo-cache/`. Local JPG, PNG, WebP or AVIF files in `public/photos/` override remote providers. Set `photos.source` to `urls` and supply `photos.urls` for your own dynamic list, or set `source` to `local` for offline-only use. Failed downloads fall back to bundled illustrations. Run `npm run photos:download` to refresh the cache. The manifest is regenerated on dev/build/export; restart dev after changing photos. Configure interval, flight, settle, final hold, seed and print dimensions in `slideshow.config.json`.
 
 ## Video
 
@@ -27,4 +27,4 @@ npm test
 npm run build
 ```
 
-The renderer uses raster PBR and shadow maps rather than expensive per-frame ray tracing. Print overlap uses approximate layers; real collision, paper flex, motion blur and audio are not implemented.
+Raster PBR is the default. Select Ray-traced in the preview to progressively render the paused pose, or use `npm run render:video -- --mode raytrace --samples 32` for final output. Ray tracing is slower and has no denoiser yet. Print overlap uses approximate layers; real collision, paper flex, motion blur and audio are not implemented.

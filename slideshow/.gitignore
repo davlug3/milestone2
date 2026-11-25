@@ -4,3 +4,5 @@ renders/
 public/photos/*
 !public/photos/.gitkeep
 public/slides.json
+
+public/photo-cache/

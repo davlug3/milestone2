@@ -1,52 +1,60 @@
-import { chromium } from "playwright";
 import { spawn, execFileSync } from "node:child_process";
-import { existsSync, readFileSync, mkdtempSync, rmSync } from "node:fs";
-import { join } from "node:path";
-import { setTimeout as sleep } from "node:timers/promises";
+import { existsSync, readFileSync, mkdtempSync, rmSync, cpSync, copyFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { createInterface } from "node:readline";
 
 export function isWSL(){
   return process.platform==="linux" && (Boolean(process.env.WSL_DISTRO_NAME) || /microsoft/i.test(readFileSync("/proc/version","utf8")));
 }
-
-export async function launchWindowsChrome({headless=false}={}){
+const winPath=p=>execFileSync("wslpath",["-w",p],{encoding:"utf8"}).trim();
+export async function launchWindowsWorker({width,height,headless}){
   const exe=process.env.WINDOWS_CHROME_PATH || [
     "/mnt/c/Program Files/Google/Chrome/Application/chrome.exe",
     "/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
     "/mnt/c/Program Files/Microsoft/Edge/Application/msedge.exe"
   ].find(existsSync);
+  const node=process.env.WINDOWS_NODE_PATH || [
+    "/mnt/c/nvm4w/nodejs/node.exe","/mnt/c/Program Files/nodejs/node.exe"
+  ].find(existsSync) || "node.exe";
   if(!exe)throw Error("Native Windows Chrome/Edge not found. Set WINDOWS_CHROME_PATH to its WSL path.");
-  // Dedicated temporary Windows profile; never use the user's regular browser profile.
   const temp=execFileSync("/mnt/c/Windows/System32/cmd.exe",["/d","/c","echo","%TEMP%"],{encoding:"utf8",stdio:["ignore","pipe","ignore"]}).trim();
-  const tempLinux=execFileSync("wslpath",["-u",temp],{encoding:"utf8"}).trim();
-  const profile=mkdtempSync(join(tempLinux,"book-render-"));
-  const profileWin=execFileSync("wslpath",["-w",profile],{encoding:"utf8"}).trim();
-  const args=[
-    "--user-data-dir="+profileWin,"--remote-debugging-port=0",
-    "--remote-debugging-address=127.0.0.1","--no-first-run","--no-default-browser-check",
-    "--enable-gpu","--ignore-gpu-blocklist","--use-angle=d3d11",
-    "--disable-background-timer-throttling","--disable-renderer-backgrounding","--disable-backgrounding-occluded-windows",
-    ...(headless?["--headless=new"]:[]),"about:blank"
-  ];
-  const child=spawn(exe,args,{stdio:"ignore"});
-  let launchError=null;
-  child.on("error",e=>{launchError=e;});
-  let browser;
-  try{
-    const marker=join(profile,"DevToolsActivePort");
-    for(let i=0;i<120;i++){
-      if(launchError)throw launchError;
-      if(existsSync(marker)){
-        const port=Number(readFileSync(marker,"utf8").split(/\r?\n/)[0]);
-        // WSL2 NAT commonly cannot reach Windows localhost directly. A
-        // Windows-local PowerShell bridge is not needed when mirrored networking
-        // is enabled; otherwise use Windows host IP if Chrome accepts it.
-        try{browser=await chromium.connectOverCDP("http://127.0.0.1:"+port,{timeout:1500});break;}catch{}
-        // CDP is loopback-only. Run a tiny local relay on Windows via Node
-        // only if provided explicitly; never expose remote debugging publicly.
-      }
-      await sleep(250);
+  const root=mkdtempSync(join(execFileSync("wslpath",["-u",temp],{encoding:"utf8"}).trim(),"book-render-"));
+  // Copy the pure-JS Playwright packages to a native Windows directory so
+  // Node and Chrome need neither UNC module resolution nor WSL networking.
+  let child,rl;
+  const pending=new Map();
+  let next=0,closed=false;
+  function rejectAll(e){for(const p of pending.values())p.reject(e);pending.clear();}
+  const cleanup=async()=>{
+    if(!closed&&child){
+      closed=true;
+      child.stdin.end();
+      await Promise.race([new Promise(ok=>child.once("exit",ok)),new Promise(ok=>setTimeout(ok,3000))]);
+      if(child.exitCode===null)child.kill();
     }
-    if(!browser)throw Error("Cannot connect to Windows Chrome CDP from WSL. Enable WSL mirrored networking or use the Windows-local render runner.");
-    return {browser,cleanup:async()=>{await browser.close().catch(()=>{});child.kill();await sleep(500);try{rmSync(profile,{recursive:true,force:true});}catch{}}};
-  }catch(e){child.kill();throw e;}
+    rl?.close();
+    try{rmSync(root,{recursive:true,force:true});}catch{}
+  };
+  try{
+    cpSync(resolve("node_modules/playwright"),join(root,"node_modules/playwright"),{recursive:true,dereference:true});
+    cpSync(resolve("node_modules/playwright-core"),join(root,"node_modules/playwright-core"),{recursive:true,dereference:true});
+    cpSync(resolve("dist"),join(root,"dist"),{recursive:true});
+    copyFileSync(resolve("scripts/lib/windows-render-worker.mjs"),join(root,"worker.mjs"));
+    child=spawn(node,[winPath(join(root,"worker.mjs"))],{cwd:root,stdio:["pipe","pipe","inherit"]});
+    child.on("error",rejectAll);
+    child.on("exit",(code)=>{closed=true;rejectAll(Error("Windows worker exited: "+code));});
+    child.stdin.on("error",rejectAll);
+    rl=createInterface({input:child.stdout,crlfDelay:Infinity});
+    rl.on("line",line=>{
+      try{const r=JSON.parse(line),p=pending.get(r.id);if(!p)return;pending.delete(r.id);if(r.error)p.reject(Error(r.error));else p.resolve(r.result);}
+      catch(e){rejectAll(e);}
+    });
+    const request=(method,args={})=>new Promise((resolve,reject)=>{
+      if(closed){reject(Error("Windows worker closed"));return;}
+      const id=++next;pending.set(id,{resolve,reject});
+      child.stdin.write(JSON.stringify({id,method,args})+"\n");
+    });
+    const info=await request("init",{dist:winPath(join(root,"dist")),exe:winPath(exe),width,height,headless});
+    return {info,frame:args=>request("frame",args),cleanup};
+  }catch(e){await cleanup();throw e;}
 }

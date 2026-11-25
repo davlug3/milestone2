@@ -1,8 +1,10 @@
 import * as THREE from "three";
+import { PhysicalSpotLight } from "three-gpu-pathtracer";
 
 /** Photographic lighting with restrained contrast and environment bounce. */
 export function addStudioLighting(scene: THREE.Scene): void {
-  const key = new THREE.SpotLight(0xffe6cf, 5.4, 4, Math.PI/5, 0.72, 2);
+  const key = new PhysicalSpotLight(0xffe6cf, 5.4, 4, Math.PI/5, 0.72, 2);
+  key.radius = 0.10;
   key.position.set(-0.55,0.82,0.35);
   key.target.position.set(0,0.035,-0.03);
   key.castShadow = true;

@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { StudioTracer, PhysicalCamera, type RenderMode } from "../rendering/studioTracer";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { cameraVerticalFov, cinematicCameraPose, CAMERA_SENSOR_W_MM, CAMERA_FOCAL_MM } from "../rendering/cinematicCamera";
 import { BOOK_DIMENSIONS } from "../config/bookConfig";
@@ -172,14 +173,17 @@ export function startBookDemo(container: HTMLElement): () => void {
 
   // Full-frame 35mm prime; fit the full sensor gate to the viewport.
   const aspect = window.innerWidth / window.innerHeight;
-  const camera = new THREE.PerspectiveCamera(cameraVerticalFov(aspect), aspect, 0.01, 100);
+  const camera = new PhysicalCamera(cameraVerticalFov(aspect), aspect, 0.01, 100);
   camera.filmGauge = CAMERA_SENSOR_W_MM;
+  camera.fStop = 8;
+  const trace = new StudioTracer(renderer, scene, camera);
   let manualCamera = false;
   function updateCamera(t: number): void {
     if (manualCamera) return;
     const pose = cinematicCameraPose(t, TIMELINE.end);
     camera.position.set(...pose.position);
     camera.lookAt(...pose.target);
+    camera.focusDistance = camera.position.distanceTo(new THREE.Vector3(...pose.target));
   }
   updateCamera(0);
 
@@ -438,10 +442,22 @@ export function startBookDemo(container: HTMLElement): () => void {
   ui.innerHTML = `
     <button class="demo-play" type="button">▶ Play</button>
     <span class="demo-time">0.0s</span>
+    <select class="demo-render" aria-label="Render mode"><option value="real-time">Real-time</option><option value="ray-traced">Ray-traced preview</option><option value="cinematic">Cinematic</option></select>
+    <span class="demo-samples" aria-live="polite"></span>
   `;
   document.body.appendChild(ui);
   const button = ui.querySelector(".demo-play") as HTMLButtonElement;
   const timeLabel = ui.querySelector(".demo-time") as HTMLSpanElement;
+  const modeSelect = ui.querySelector(".demo-render") as HTMLSelectElement;
+  const sampleLabel = ui.querySelector(".demo-samples") as HTMLSpanElement;
+  let photoRevision = -1;
+  function setRenderMode(mode: RenderMode) {
+    if (!["real-time","ray-traced","cinematic"].includes(mode)) return;
+    setPlaying(false);
+    trace.setMode(mode);
+    modeSelect.value=mode;
+  }
+  modeSelect.addEventListener("change",()=>setRenderMode(modeSelect.value as RenderMode));
 
   // --- Playback state ------------------------------------------------------
   let time = 0;
@@ -489,6 +505,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     lastBindingU = -1;
     updateCover(time);
     updateCamera(time);
+    trace.invalidate();
   }
 
   function stepPagesTo(t: number): void {
@@ -609,8 +626,8 @@ export function startBookDemo(container: HTMLElement): () => void {
     const dt = Math.min((now - last) / 1000, 0.05);
     last = now;
 
-    if (playing) {
-      time += dt * PLAYBACK_RATE;
+    if (playing && (trace.mode !== 'cinematic' || trace.complete)) {
+      time += (trace.mode === 'cinematic' ? 1/60 : dt) * PLAYBACK_RATE;
       if (time >= TIMELINE.end) {
         time = TIMELINE.end;
         setPlaying(false);
@@ -618,10 +635,18 @@ export function startBookDemo(container: HTMLElement): () => void {
       stepPagesTo(time);
       updateCover(time);
       updateCamera(time);
+      trace.invalidate();
     }
 
     timeLabel.textContent = `${time.toFixed(1)}s`;
-    renderer.render(scene, camera);
+    const photoState=prints.status();
+    const revision=photoState.loadedFaces+photoState.failedFaces;
+    if(revision!==photoRevision){photoRevision=revision;trace.invalidate();}
+    trace.draw(playing && trace.mode==="ray-traced");
+    modeSelect.value=trace.mode;
+    sampleLabel.textContent=trace.error ? "Ray tracing unavailable: "+trace.error :
+      trace.mode==="real-time" ? "" : playing && trace.mode==="ray-traced" ? "Raster playback · pause to trace" :
+      Math.floor(trace.samples)+" / "+trace.goal+" samples";
     raf = requestAnimationFrame(frame);
   }
   raf = requestAnimationFrame(frame);
@@ -631,6 +656,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     camera.fov = cameraVerticalFov(camera.aspect);
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+    trace.invalidate();
   }
   window.addEventListener("resize", onResize);
 
@@ -644,6 +670,8 @@ export function startBookDemo(container: HTMLElement): () => void {
     duration: TIMELINE.end,
     playbackRate: PLAYBACK_RATE,
     photoStatus: prints.status,
+    setRenderMode,
+    renderStatus: () => ({mode:trace.mode,samples:trace.samples,target:trace.goal,error:trace.error}),
     /** WebGL backend actually in use (hardware GPU or software renderer). */
     gpu: () => {
       const gl = renderer.getContext();
@@ -662,6 +690,7 @@ export function startBookDemo(container: HTMLElement): () => void {
       scene.traverse((o) => {
         if (o.name === name) o.visible = visible;
       });
+      trace.invalidate();
     },
     /** Debug aid: place the camera for close-up validation shots. */
     camera: (
@@ -671,8 +700,10 @@ export function startBookDemo(container: HTMLElement): () => void {
       manualCamera = true;
       camera.position.set(...position);
       camera.lookAt(lookAt[0], lookAt[1], lookAt[2]);
+      camera.focusDistance=camera.position.distanceTo(new THREE.Vector3(...lookAt));
+      trace.invalidate();
     },
-    cinematicCamera: () => { manualCamera = false; updateCamera(time); },
+    cinematicCamera: () => { manualCamera = false; updateCamera(time); trace.invalidate(); },
     cameraStatus: () => ({ focalLength: CAMERA_FOCAL_MM, sensor: [36,24], fov: camera.fov, position: camera.position.toArray(), manual: manualCamera }),
     /** Current cover pose + the open-cover collision surface (debug aid). */
     cover: () => {
@@ -781,6 +812,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     disposeTable();
     clothTexture.dispose();
     scene.environment = null;
+    trace.dispose();
     environment.dispose();
     renderer.dispose();
   };

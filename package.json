@@ -22,7 +22,8 @@
     "test:playback": "esbuild scripts/playback-check.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/playback-check.mjs && node node_modules/.cache/playback-check.mjs",
     "test:trace": "esbuild scripts/trace-check.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/trace-check.mjs && node node_modules/.cache/trace-check.mjs",
     "render:video": "node scripts/render-video.mjs",
-    "test:render-progress": "node scripts/render-progress-check.mjs"
+    "test:render-progress": "node scripts/render-progress-check.mjs",
+    "render:blender": "node scripts/render-blender.mjs"
   },
   "dependencies": {
     "three": "^0.180.0",

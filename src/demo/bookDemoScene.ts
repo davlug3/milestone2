@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { BlenderExport } from "../rendering/blenderExport";
 import { StudioTracer, PhysicalCamera, type RenderMode } from "../rendering/studioTracer";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { cameraVerticalFov, cinematicCameraPose, CAMERA_SENSOR_W_MM, CAMERA_FOCAL_MM } from "../rendering/cinematicCamera";
@@ -180,6 +181,8 @@ export function startBookDemo(container: HTMLElement): () => void {
   camera.apertureBlades = 6;
   camera.apertureRotation = 0.15;
   const trace = new StudioTracer(renderer, scene, camera);
+  const blenderExport = new BlenderExport(scene,camera);
+  const geometryOnly = new URLSearchParams(location.search).has("geometry-export");
   let manualCamera = false;
   function updateCamera(t: number): void {
     if (manualCamera) return;
@@ -645,7 +648,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     const photoState=prints.status();
     const revision=photoState.loadedFaces+photoState.failedFaces;
     if(revision!==photoRevision){photoRevision=revision;trace.invalidate();}
-    trace.draw(playing && trace.mode==="ray-traced");
+    if(!geometryOnly)trace.draw(playing && trace.mode==="ray-traced");
     modeSelect.value=trace.mode;
     sampleLabel.textContent=trace.error ? "Ray tracing unavailable: "+trace.error :
       trace.mode==="real-time" ? "" : playing && trace.mode==="ray-traced" ? "Raster playback · pause to trace" :
@@ -674,6 +677,15 @@ export function startBookDemo(container: HTMLElement): () => void {
     playbackRate: PLAYBACK_RATE,
     photoStatus: prints.status,
     setRenderMode,
+    blenderSetup: () => {
+      if(!geometryOnly)throw Error("Geometry export mode required");
+      setPlaying(false);seek(0);return blenderExport.setup();
+    },
+    blenderFrame: (t:number) => {
+      if(!geometryOnly)throw Error("Geometry export mode required");
+      if(t<time)seek(t);else{time=Math.min(t,TIMELINE.end);stepPagesTo(time);updateCover(time);updateCamera(time);}
+      return blenderExport.frame();
+    },
     exportFrame: (t: number, samples: number, bounces: number) => {
       if (!new URLSearchParams(location.search).has('export')) throw Error('Export mode required');
       setPlaying(false);

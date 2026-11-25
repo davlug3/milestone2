@@ -44,40 +44,62 @@ export function createFlowerVase(scene:THREE.Scene){
    return surface(10,9,(u,t)=>{
      const s=2*u-1,fan=Math.pow(Math.sin(Math.PI*(.06+.89*t)),.68);
      const rr=r*(.22+.78*t)+(inner?-.08:.13)*r*Math.sin(Math.PI*t);
-     const cross=s*width*fan*.5;
+     const cross=s*width*fan*.5*(1+.07*Math.sin(t*9+phase));
      const wave=(.045*Math.sin(s*7+phase)+.025*Math.sin(s*14+phase*2))*h*t*t;
-     const yy=h*(t-.22*t*t)+h*.18*s*s*Math.sin(Math.PI*t)-h*(inner?.04:.26)*Math.pow(t,5)+wave;
+     const yy=h*(t-.22*t*t)+h*.28*s*s*Math.sin(Math.PI*t)-h*(inner?.04:.38)*Math.pow(t,5)+wave;
      return v(Math.cos(angle)*rr-Math.sin(angle)*cross,yy,Math.sin(angle)*rr+Math.cos(angle)*cross);
    });
  }
  const identity=new THREE.Quaternion();
+ const leafVein=new THREE.MeshStandardMaterial({color:0x788457,roughness:.88});mats.push(leafVein);
+ function leaflet(origin:THREE.Vector3,dir:THREE.Vector3,length:number,width:number){
+   const q=new THREE.Quaternion().setFromUnitVectors(v(0,1,0),dir.clone().normalize());
+   const twist=(random()-.5)*.003,curve=.003+random()*.004;
+   const point=(u:number,t:number)=>{
+     const s=2*u-1,outline=Math.pow(Math.max(0,Math.sin(Math.PI*t)),.74)*(1+.055*Math.sin(t*32*Math.PI));
+     return v(s*width*.5*outline,length*t,curve*Math.sin(Math.PI*t)-.004*t*t+.0024*s*s*outline+twist*s*outline);
+   };
+   batch(surface(10,14,point),random()<.45?leaf:darkLeaf,origin,q);
+   const mid=Array.from({length:9},(_,i)=>point(.5,i/8).add(v(0,0,.00022)));
+   batch(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(mid),10,.00018,4,false),leafVein,origin,q);
+   for(let i=1;i<=3;i++)for(const side of [-1,1]){
+     const t=.16+i*.15,a=point(.5,t),b=point(.5+side*.38,t+.12);a.z+=.00015;b.z+=.00015;
+     batch(new THREE.TubeGeometry(new THREE.LineCurve3(a,b),2,.000075,3,false),leafVein,origin,q);
+   }
+ }
+ // Rose foliage is pinnate: two opposing leaflet pairs and a pointed terminal leaflet.
  function foliage(origin:THREE.Vector3,angle:number,length:number){
-   const q=new THREE.Quaternion().setFromUnitVectors(v(0,1,0),v(Math.cos(angle),.38+random()*.45,Math.sin(angle)).normalize());
-   const g=surface(10,8,(u,t)=>{
-     const s=2*u-1,edge=(1+.06*Math.sin(t*38*Math.PI))*Math.sin(Math.PI*t);
-     return v(s*length*.23*edge,length*t,.0035*(1-s*s)*Math.sin(Math.PI*t)+.002*s*Math.sin(t*6));
-   });
-   batch(g,random()<.55?leaf:darkLeaf,origin,q);
-   const vein=new THREE.QuadraticBezierCurve3(v(0,0,0),v(0,length*.5,.006),v(0,length,.001));
-   batch(new THREE.TubeGeometry(vein,7,.00032,4,false),stem,origin,q);
+   const dir=v(Math.cos(angle),.12+random()*.45,Math.sin(angle)).normalize();
+   const side=v(-Math.sin(angle),0,Math.cos(angle));
+   const rachis=new THREE.QuadraticBezierCurve3(origin,origin.clone().addScaledVector(dir,length*.55).add(v(0,.006,0)),origin.clone().addScaledVector(dir,length));
+   batch(new THREE.TubeGeometry(rachis,9,.00048,5,false),stem,v(0,0,0),identity);
+   for(let j=0;j<2;j++)for(const sign of [-1,1]){
+     const p=rachis.getPoint(.30+j*.35);
+     const d=dir.clone().multiplyScalar(.48).addScaledVector(side,sign*.82).add(v(0,-.18+random()*.23,0));
+     leaflet(p,d,length*(.53-j*.07),length*.29);
+   }
+   leaflet(rachis.getPoint(.83),dir.clone().add(v(0,-.3,0)),length*.59,length*.30);
  }
  // A tight, asymmetrical bouquet with staggered heights, openings and bloom sizes.
- const ends=[[-.034,.207,-.020],[.005,.247,-.017],[.037,.219,.002],[-.028,.177,.027],[.008,.196,.039],[-.054,.178,-.018],[.051,.179,.027],[.030,.251,-.036],[-.032,.239,-.041],[.001,.164,.049],[-.049,.200,.017],[.051,.205,-.030],[.002,.224,.015]];
+ const ends=[[-.036,.207,-.020],[.005,.257,-.017],[.040,.224,.002],[-.039,.174,.035],[.010,.198,.047],[-.064,.167,-.018],[.064,.169,.034],[.030,.251,-.036],[-.035,.241,-.041],[.002,.151,.063],[-.060,.199,.023],[.060,.204,-.030],[.002,.228,.015]];
+ const tiltDegrees=[25,5,18,96,58,112,105,12,8,125,70,48,4];
  for(let i=0;i<ends.length;i++){
    const [x,y,z]=ends[i],tip=v(x,y,z),start=v((random()-.5)*.013,.075,(random()-.5)*.013);
-   const curve=new THREE.QuadraticBezierCurve3(start,v(x*.30,y*.68,z*.30),tip);
-   batch(new THREE.TubeGeometry(curve,12,.00085+random()*.0004,6,false),stem,v(0,0,0),identity);
-   for(let j=0;j<3;j++){const t=.26+j*.22,point=curve.getPoint(t);foliage(point,i*2.399+j*2.17,.024+random()*.016);}
-   const axis=v(x*6+(random()-.5)*.25,.70+random()*.25,z*6+.40).normalize();
+   const tilt=tiltDegrees[i]*Math.PI/180,az=Math.atan2(z+.010,x)+(random()-.5)*.32;
+   const axis=v(Math.cos(az)*Math.sin(tilt),Math.cos(tilt),Math.sin(az)*Math.sin(tilt));
+   // The last stem tangent follows the actual flower neck, including downward blooms.
+   const curve=new THREE.CubicBezierCurve3(start,v(x*.18,.112,z*.18),tip.clone().addScaledVector(axis,-.038),tip);
+   batch(new THREE.TubeGeometry(curve,18,.00085+random()*.0004,6,false),stem,v(0,0,0),identity);
+   for(let j=0;j<3;j++){const t=.22+j*.24,point=curve.getPoint(t);foliage(point,i*2.399+j*2.17,.027+random()*.015);}
    const q=new THREE.Quaternion().setFromUnitVectors(v(0,1,0),axis);
-   const size=.015+random()*.008,open=.72+random()*.30,mat=roseMats[(i*3+Math.floor(random()*3))%roseMats.length];
+   const size=.014+random()*.009,open=(i===1||i===12)?.62:.83+random()*.24,mat=roseMats[(i*3+Math.floor(random()*3))%roseMats.length];
    // Five offset whorls: overlapping broad outer petals and tightly rolled inner petals.
    for(let ring=0;ring<5;ring++){
-     const t=ring/4,count=[8,7,6,5,4][ring],r=size*(1-.78*t)*open;
+     const t=ring/4,count=[9,8,7,6,5][ring],r=size*(1-.78*t)*open;
      for(let j=0;j<count;j++){
        const angle=j*Math.PI*2/count+ring*1.07+i*.67+(random()-.5)*.22;
        const h=size*(.50+.39*t)*(1+(random()-.5)*.18);
-       const g=petal(r,h,r*(1.23+.32*t),angle,random()*6.28,ring>2);
+       const g=petal(r,h,r*(1.40+.40*t),angle,random()*6.28,ring>2);
        g.translate(0,size*t*.24,0);batch(g,mat,tip,q);
      }
    }

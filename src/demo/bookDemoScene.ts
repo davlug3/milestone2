@@ -147,11 +147,12 @@ export function startBookDemo(container: HTMLElement): () => void {
   // --- Renderer / scene / camera ------------------------------------------
   const renderer = new THREE.WebGLRenderer({
     antialias: true,
+    preserveDrawingBuffer: new URLSearchParams(location.search).has('export'),
     // Prefer the discrete/high-performance GPU when the client has one. This
     // is only a hint: browsers without a usable GPU fall back automatically.
     powerPreference: "high-performance",
   });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setPixelRatio(new URLSearchParams(location.search).has('export') ? 1 : Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -673,6 +674,21 @@ export function startBookDemo(container: HTMLElement): () => void {
     playbackRate: PLAYBACK_RATE,
     photoStatus: prints.status,
     setRenderMode,
+    exportFrame: (t: number, samples: number, bounces: number) => {
+      if (!new URLSearchParams(location.search).has('export')) throw Error('Export mode required');
+      setPlaying(false);
+      trace.setExportQuality(samples,bounces);
+      if (trace.mode !== 'cinematic') setRenderMode('cinematic');
+      if (t < time) seek(t);
+      else {
+        time = Math.min(t,TIMELINE.end);
+        stepPagesTo(time); updateCover(time); updateCamera(time); trace.invalidate();
+      }
+    },
+    captureFrame: () => {
+      if (trace.mode !== 'cinematic' || !trace.complete || trace.error) throw Error('Frame not ready');
+      return renderer.domElement.toDataURL('image/png');
+    },
     renderStatus: () => ({mode:trace.mode,samples:trace.samples,target:trace.goal,error:trace.error}),
     /** WebGL backend actually in use (hardware GPU or software renderer). */
     gpu: () => {

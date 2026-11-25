@@ -8,6 +8,11 @@ export class StudioTracer {
   private tracer: WebGLPathTracer | null = null;
   private environment: GradientEquirectTexture | null = null;
   private dirty = true;
+  private exportQuality: {samples:number;bounces:number;scale:number} | null = null;
+  setExportQuality(samples:number,bounces:number){
+    if(!Number.isInteger(samples)||samples<1||!Number.isInteger(bounces)||bounces<1)throw Error('Invalid export quality');
+    this.exportQuality={samples,bounces,scale:1};this.invalidate();
+  }
   private proxy = new TraceScene();
   mode: RenderMode = "real-time";
   error = "";
@@ -19,7 +24,7 @@ export class StudioTracer {
     this.invalidate();
   }
   get samples(){return this.tracer?.samples ?? 0;}
-  get goal(){return this.mode==="real-time"?0:TRACE_SETTINGS[this.mode].samples;}
+  get goal(){return this.mode==="real-time"?0:(this.mode==='cinematic' && this.exportQuality ? this.exportQuality : TRACE_SETTINGS[this.mode]).samples;}
   get complete(){return !this.dirty && this.samples>=this.goal;}
   draw(rasterOnly=false){
     if(this.mode==="real-time"||rasterOnly){this.renderer.render(this.scene,this.camera);return;}
@@ -39,7 +44,7 @@ export class StudioTracer {
         this.tracer.fadeDuration=0;
         this.tracer.tiles.set(1,1);
       }
-      const tracer=this.tracer, settings=TRACE_SETTINGS[this.mode];
+      const tracer=this.tracer, settings=this.mode==='cinematic' && this.exportQuality ? this.exportQuality : TRACE_SETTINGS[this.mode];
       if(this.dirty){
         this.scene.environment=this.environment;
         tracer.bounces=settings.bounces;

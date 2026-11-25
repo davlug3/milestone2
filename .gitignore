@@ -20,3 +20,6 @@ blender/renders/
 blender/*.blend1
 blender/*.blend2
 blender/__pycache__/
+
+# Offline cinematic render output
+renders/

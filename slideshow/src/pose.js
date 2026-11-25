@@ -28,6 +28,7 @@ export function pose(shot,time){
     return {visible:true,x:mix(shot.fromX,shot.x+shot.slideX,travel),z:mix(shot.fromZ,shot.z+shot.slideZ,travel),height:base+.11*(1-u)+.27*4*u*(1-u),yaw:shot.yaw+shot.spin*(1-u)+.11,pitch:shot.tilt*(1-u)+.24*Math.sin(Math.PI*u),roll:shot.roll*(1-u)};
   }
   const u=clamp((age-c.flight)/c.settle),remain=Math.pow(1-u,3);
+  if(u===1)return {visible:true,x:shot.x,z:shot.z,height:base,yaw:shot.yaw,pitch:0,roll:0};
   const bounce=.018*Math.abs(Math.sin(u*Math.PI*3))*Math.pow(1-u,3);
   return {visible:true,x:shot.x+shot.slideX*remain,z:shot.z+shot.slideZ*remain,height:base+bounce,yaw:shot.yaw+.11*remain,pitch:.10*Math.sin(u*Math.PI*3)*Math.pow(1-u,3),roll:.065*Math.sin(u*Math.PI*2)*Math.pow(1-u,3)};
 }

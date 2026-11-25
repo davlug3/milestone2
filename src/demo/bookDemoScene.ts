@@ -5,7 +5,7 @@ import {createStudioWall} from "../rendering/studioWall";
 import {restingPageWear,freePageWear} from "../paper/pageShape";
 import {createDeskProps} from "../rendering/deskProps";
 import { loadingStage, loadingReady } from "../playback/loading";
-import { bindPreviewViewport, previewPixelRatio } from "../playback/viewport";
+import { bindPreviewViewport } from "../playback/viewport";
 import { PlaybackClock, createPlaybackControls } from "../playback/transport";
 import * as THREE from "three";
 import { BlenderExport } from "../rendering/blenderExport";

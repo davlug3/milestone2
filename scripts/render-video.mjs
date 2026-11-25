@@ -2,6 +2,7 @@ import { spawnSync, execFileSync } from "node:child_process";
 import { mkdirSync, existsSync, readFileSync, writeFileSync, renameSync, statSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { chromium } from "playwright";
+import { isWSL, launchWindowsChrome } from "./lib/windows-browser.mjs";
 import { launchPreviewBrowser, isSoftwareRenderer } from "./lib/browser.mjs";
 import { startPreviewServer, stopPreviewServer } from "./lib/server.mjs";
 import { parseArgs } from "node:util";
@@ -30,11 +31,14 @@ function run(bin,args){const r=spawnSync(bin,args,{stdio:"inherit"});if(r.status
 function frameName(i){return "frame-"+String(i).padStart(6,"0")+".png";}
 function validPng(p){try{const b=readFileSync(p);return b.length>33&&b.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))&&b.readUInt32BE(16)===width&&b.readUInt32BE(20)===height&&b.subarray(-8,-4).toString()==="IEND";}catch{return false;}}
 const url="http://127.0.0.1:"+port+"/";
-let server,browser;
+let server,browser,cleanupBrowser;
 try{
   run(process.execPath,["node_modules/vite/bin/vite.js","build"]);
   server=await startPreviewServer({url,port});
-  browser=o.headless?(await launchPreviewBrowser()).browser:await chromium.launch({headless:false,channel:"chromium",args:["--enable-gpu","--ignore-gpu-blocklist","--disable-background-timer-throttling","--disable-renderer-backgrounding",...(process.env.PREVIEW_GPU_ARGS??"").trim().split(/\s+/).filter(Boolean)]});
+  if(isWSL() && !process.env.RENDER_WSL_LINUX_BROWSER){
+    const native=await launchWindowsChrome({headless:o.headless});
+    browser=native.browser;cleanupBrowser=native.cleanup;
+  }else browser=o.headless?(await launchPreviewBrowser()).browser:await chromium.launch({headless:false,channel:"chromium",args:["--enable-gpu","--ignore-gpu-blocklist","--disable-background-timer-throttling","--disable-renderer-backgrounding",...(process.env.PREVIEW_GPU_ARGS??"").trim().split(/\s+/).filter(Boolean)]});
   const page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1});
   const errors=[];
   page.on("pageerror",e=>errors.push(String(e)));
@@ -78,4 +82,4 @@ try{
     renameSync(tmp,output);
     console.log("Video: "+output+" ("+statSync(output).size+" bytes)");
   }
-}finally{await browser?.close();stopPreviewServer(server);}
+}finally{if(cleanupBrowser)await cleanupBrowser();else await browser?.close();stopPreviewServer(server);}

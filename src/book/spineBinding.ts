@@ -32,7 +32,7 @@ export const CONTACT_GAP = 0.00005;
  */
 export const SPINE_FAN_STEP = 0.00028;
 /** Horizontal run over which a sheet ramps from the spine plane to its stack. */
-export const BIND_RAMP = 0.05;
+export const BIND_RAMP = 0.07;
 
 /**
  * Binding height at fraction `t` in [0, 1] of the ramp: flat at the spine plane

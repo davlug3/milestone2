@@ -165,14 +165,16 @@ export function startBookDemo(container: HTMLElement): () => void {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0a0b0d);
 
+  // A slightly wider field and a raised look-at give headroom for lifted
+  // pages so the fore-edge no longer clips at the top of the frame.
   const camera = new THREE.PerspectiveCamera(
-    42,
+    50,
     window.innerWidth / window.innerHeight,
     0.01,
     100,
   );
   camera.position.set(0.03, 0.52, 0.72);
-  camera.lookAt(0, 0.03, 0);
+  camera.lookAt(0, 0.06, 0);
 
   addStudioLighting(scene);
   const pageKey = new THREE.DirectionalLight(0xffffff, 0.7);
@@ -289,23 +291,6 @@ export function startBookDemo(container: HTMLElement): () => void {
     g.translate(0, 0, -depth / 2);
     return g;
   };
-  // A page's inner edge is GLUED onto the binding cloth, not just touching its
-  // border. Each sheet leaves a fine page-edge line on the cloth. The lines are
-  // staggered across the band (one per sheet) so they read as a fanned text
-  // block glued down, with alternating stock shades catching the light.
-  const EDGE_W = 0.0007;
-  function addBoundEdge(
-    x: number,
-    y: number,
-    material: THREE.Material,
-  ): void {
-    const g = new THREE.BoxGeometry(EDGE_W, 0.0003, H * 0.97);
-    const m = new THREE.Mesh(g, material);
-    m.position.set(x, y, 0);
-    m.name = "bound-edge";
-    m.receiveShadow = true;
-    scene.add(m);
-  }
   for (let i = 0; i < NUM_STATIC; i++) {
     const sheetIndex = NUM_TURNS + i; // 8..14
     const stackY = restBase + (NUM_SHEETS - 1 - sheetIndex) * sheetVStep;
@@ -317,21 +302,6 @@ export function startBookDemo(container: HTMLElement): () => void {
     m.name = "static-sheet";
     m.receiveShadow = true;
     scene.add(m);
-    // Right stack: one glued edge per sheet, staggered from the back hinge.
-    addBoundEdge(
-      -0.002 - i * 0.0016,
-      SPINE_CLOTH_Y + 0.0002 + i * 0.00004,
-      i % 2 === 0 ? materials.paper : materials.paperEdge,
-    );
-  }
-  // Left stack: pages land at the front hinge; their glued edges fan toward
-  // the back hinge in the same way.
-  for (let k = 0; k < NUM_TURNS; k++) {
-    addBoundEdge(
-      -SPINE_PANEL_W + 0.002 + k * 0.0014,
-      SPINE_CLOTH_Y + 0.0002 + k * 0.00004,
-      k === 0 || k === NUM_TURNS - 1 ? materials.endpaper : materials.paper,
-    );
   }
 
   // Inner hollow lining: the cloth spine plane between the two cover hinges.
@@ -378,13 +348,14 @@ export function startBookDemo(container: HTMLElement): () => void {
   }
   updateSpineCover(0);
 
-  // Headbands: cords at the head and tail of the text-block spine. The block's
-  // inner face is now the spine at x = 0, so the band sits just in the joint;
-  // the case hides it while closed and it shows in the open joint.
-  const headbandGeo = headbandGeometry(0.0015, PBT);
+  // Headbands: short cords lying ACROSS the spine at the head and tail, seated
+  // in the joint on the binding cloth. The old version stood as a 22 mm vertical
+  // post that poked above the page surface.
+  const headbandGeo = headbandGeometry(0.0009, 0.008);
   for (const z of [-H / 2 + 0.0015, H / 2 - 0.0015]) {
     const hb = new THREE.Mesh(headbandGeo, materials.headband);
-    hb.position.set(-0.0008, CT + PBT / 2, z);
+    hb.rotation.z = Math.PI / 2; // cylinder axis along X
+    hb.position.set(-0.006, SPINE_CLOTH_Y + 0.0006, z);
     hb.castShadow = true;
     scene.add(hb);
   }
@@ -452,7 +423,7 @@ export function startBookDemo(container: HTMLElement): () => void {
       height: H,
       dt: FIXED_DT,
       iterations: 12,
-      bendStiffness: 1.0,
+      bendStiffness: 1.2,
       longRangeBend: true,
       bendSpans: [3, 4, 5, 6], // longer links => stiffer, smoother sheet
       plane: "xz",
@@ -494,9 +465,9 @@ export function startBookDemo(container: HTMLElement): () => void {
       landOffsetX: -SPINE_PANEL_W,
       width: W,
       duration: win.dur,
-      liftScale: 0.6,
-      lead: 0.04,
-      liftVar: 0.06,
+      liftScale: 0.45,
+      lead: 0.03,
+      liftVar: 0.03,
       rows,
     });
     controller.seedZ(sim.particles);
@@ -626,6 +597,9 @@ export function startBookDemo(container: HTMLElement): () => void {
     coverPivot.rotation.z = pose.angle;
     // The hollow cover-spine ribbon stays convex while the cover opens.
     updateSpineCover(u);
+    // Closed, the binding plane is hidden inside the case. Showing it there
+    // left a striped slab floating beside the closed book.
+    hollowLining.visible = u > 0.12;
     // The spine plane is bounded by the FRONT COVER: its front edge is the
     // cover's inner lining point at the moving hinge. Build a thin slab whose
     // page-facing face is the plane and which extends away from the pages.

@@ -6,7 +6,8 @@ import {resolve} from "node:path";
 import {spawnSync} from "node:child_process";
 import {parseArgs} from "node:util";
 const {values}=parseArgs({options:{host:{type:"string",default:"localhost"},port:{type:"string",default:"5173"}},allowPositionals:false});
-const port=Number(values.port);if(!Number.isInteger(port)||port<1||port>65535)throw Error("Invalid port");
+const startPort=Number(values.port);if(!Number.isInteger(startPort)||startPort<1||startPort>65535)throw Error("Invalid port");
+const MAX_PORT_TRIES=100;
 const root=process.cwd(),names=["book","slideshow","stats","clothesline","floating"],servers=new Map();
 const preparation=spawnSync(process.execPath,["scripts/site-photos.mjs"],{cwd:root,stdio:"inherit"});if(preparation.status!==0)throw Error("Photo preparation failed");
 const home=()=>readFileSync(resolve(root,"site/index.html"),"utf8");
@@ -20,8 +21,25 @@ const server=createHttpServer((req,res)=>{
  const proxy=httpRequest({hostname:"127.0.0.1",port:upstream,path:req.url,method:req.method,headers:{...req.headers,host:"127.0.0.1:"+upstream}},r=>{res.writeHead(r.statusCode,r.headers);r.pipe(res);});proxy.on("error",e=>{if(!res.headersSent)res.writeHead(502);res.end(e.message);});req.pipe(proxy);
 });
 try{
+ // Bind the public origin first, stepping past ports that are already in use.
+ let port=startPort;
+ for(let attempt=0;attempt<MAX_PORT_TRIES;attempt++){
+  try{
+   await new Promise((ok,reject)=>{
+    const onError=e=>{server.removeListener("error",onError);reject(e);};
+    server.once("error",onError);
+    server.listen(port,values.host,()=>{server.removeListener("error",onError);ok();});
+   });
+   break;
+  }catch(e){
+   if(e.code!=="EADDRINUSE")throw e;
+   if(port===65535||attempt===MAX_PORT_TRIES-1)throw Error("No free port found between "+startPort+" and "+port+" (try --port)");
+   port++;
+  }
+ }
+ // Each Vite server starts from the public port and increments past it, so all five are distinct.
  for(const name of names){
-  const vite=await createViteServer({root:name==="book"?root:resolve(root,name),base:"/"+name+"/",plugins:[{name:"local-presentation-navigation",transformIndexHtml(html){return html.replace("</body>",nav+"</body>");}}],server:{host:"127.0.0.1",port:0,strictPort:true,hmr:{clientPort:port,path:"hmr"},fs:{allow:[root]}},configFile:false,appType:"mpa"});
+  const vite=await createViteServer({root:name==="book"?root:resolve(root,name),base:"/"+name+"/",plugins:[{name:"local-presentation-navigation",transformIndexHtml(html){return html.replace("</body>",nav+"</body>");}}],server:{host:"127.0.0.1",port,strictPort:false,hmr:{clientPort:port,path:"hmr"},fs:{allow:[root]}},configFile:false,appType:"mpa"});
   await vite.listen();servers.set(name,vite);
  }
  // WebSocket upgrades are forwarded to the scene's own Vite HMR server.
@@ -30,7 +48,6 @@ try{
   const proxy=httpRequest({hostname:"127.0.0.1",port:vite.httpServer.address().port,path:req.url,method:req.method,headers:req.headers});
   proxy.on("upgrade",(response,upstream,buffer)=>{let header="HTTP/1.1 "+response.statusCode+" "+response.statusMessage+"\r\n";for(let i=0;i<response.rawHeaders.length;i+=2)header+=response.rawHeaders[i]+": "+response.rawHeaders[i+1]+"\r\n";socket.write(header+"\r\n");if(buffer.length)socket.write(buffer);if(head.length)upstream.write(head);upstream.pipe(socket);socket.pipe(upstream);upstream.on("error",()=>socket.destroy());socket.on("error",()=>upstream.destroy());});proxy.on("error",()=>socket.destroy());proxy.end();
  });
- await new Promise((ok,reject)=>{server.once("error",reject);server.listen(port,values.host,ok);});
  console.log("Milestone2 presentations: http://"+values.host+":"+port+"/");
-}catch(e){await Promise.allSettled([...servers.values()].map(v=>v.close()));throw e;}
-let closing=false;async function close(){if(closing)return;closing=true;server.close();await Promise.allSettled([...servers.values()].map(v=>v.close()));process.exit(0);}process.on("SIGINT",close);process.on("SIGTERM",close);
+}catch(e){if(server.listening)server.close();await Promise.allSettled([...servers.values()].map(v=>v.close()));throw e;}
+let closing=false;async function close(){if(closing)return;closing=true;if(server.listening)server.close();await Promise.allSettled([...servers.values()].map(v=>v.close()));process.exit(0);}process.on("SIGINT",close);process.on("SIGTERM",close);

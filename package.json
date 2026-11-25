@@ -31,7 +31,8 @@
     "test:stats": "node --test scripts/stats.test.mjs",
     "render:stats": "node scripts/render-stats.mjs",
     "test:clothesline": "node --test scripts/clothesline.test.mjs",
-    "render:clothesline": "node scripts/render-clothesline.mjs"
+    "render:clothesline": "node scripts/render-clothesline.mjs",
+    "render:passes": "node scripts/render-passes.mjs"
   },
   "dependencies": {
     "three": "^0.180.0",

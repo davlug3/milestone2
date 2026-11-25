@@ -5,7 +5,7 @@ import {SLIDE_SECONDS,slidePose,validateSlides,numberText,motionPose,easeOut,uni
 import examples from "./data.json";
 const query=new URLSearchParams(location.search),exportMode=query.has("export"),qualityName=browserQuality(query),profile=QUALITY_PROFILES[qualityName];
 const canvas=document.getElementById("scene"),ctx=canvas.getContext("2d"),loading=document.getElementById("loading");
-const layers=["composite","background","foreground","chroma"],validLayer=value=>layers.includes(value)?value:"composite";
+const layers=["composite","background","foreground","chroma","typography","accent"],validLayer=value=>layers.includes(value)?value:"composite";
 let layer=validLayer(query.get("layer"));
 let background=query.get("background")==="tabletop"?"tabletop":"luxury";
 let tabletopFrame=null,tabletopAPI=null,tabletopPromise=null,tabletopError="";
@@ -25,7 +25,7 @@ const W=DEFAULT_OUTPUT.width,H=DEFAULT_OUTPUT.height,storageKey="milestone2.stat
 let slides=validateSlides(examples);
 if(!exportMode){try{const saved=localStorage.getItem(storageKey);if(saved)slides=validateSlides(JSON.parse(saved));}catch{}}
 const clock=new PlaybackClock(slides.length*SLIDE_SECONDS,1);
-const controls=createPlaybackControls({modes:[{value:"composite",label:"Full composite"},{value:"background",label:"Background only"},{value:"foreground",label:"Transparent overlay"},{value:"chroma",label:"Green-screen overlay"}],quality:{value:qualityName,options:qualityOptions(),onChange:changeQuality},onToggle:()=>{if(clock.time>=clock.duration)clock.seek(0);clock.setPlaying(!clock.playing);controls.sync(clock);},onRestart:()=>{clock.seek(0);clock.setPlaying(true);draw();},onSeek:t=>{clock.setPlaying(false);clock.seek(t);draw();},onMode:value=>{layer=validLayer(value);const url=new URL(location.href);url.searchParams.set("layer",layer);history.replaceState(null,"",url.href);draw();},hidden:exportMode});
+const controls=createPlaybackControls({modes:[{value:"composite",label:"Full composite"},{value:"background",label:"Background only"},{value:"foreground",label:"Transparent overlay"},{value:"chroma",label:"Green-screen overlay"},{value:"typography",label:"Typography only"},{value:"accent",label:"Accent only"}],quality:{value:qualityName,options:qualityOptions(),onChange:changeQuality},onToggle:()=>{if(clock.time>=clock.duration)clock.seek(0);clock.setPlaying(!clock.playing);controls.sync(clock);},onRestart:()=>{clock.seek(0);clock.setPlaying(true);draw();},onSeek:t=>{clock.setPlaying(false);clock.seek(t);draw();},onMode:value=>{layer=validLayer(value);const url=new URL(location.href);url.searchParams.set("layer",layer);history.replaceState(null,"",url.href);draw();},hidden:exportMode});
 controls.mode.value=layer;
 const palettes=[["#10271f","#071310","#d8bc83","#f3ebd9"],["#152b30","#081516","#9bc4bf","#edf2e9"],["#30251d","#100e0b","#dfb994","#f5eadf"]];
 function text(str,x,y,max,size,font,color){
@@ -129,19 +129,19 @@ function draw(){
  const numberBlock=310,gap=24,divider=2,afterDivider=42,subtitleGap=24;
  const blockHeight=numberBlock+gap+divider+afterDivider+title.height+(subtitle?subtitleGap+subtitle.height:0);
  let y=(H-blockHeight)/2;
- reveal(numberText(s.number),W/2,y+numberBlock/2,1570,350,"400 SIZEpx Georgia, serif","#ebd6a9",m.number,m.exit,true,p.local);
+ if(layer!=="accent")reveal(numberText(s.number),W/2,y+numberBlock/2,1570,350,"400 SIZEpx Georgia, serif","#ebd6a9",m.number,m.exit,true,p.local);
  y+=numberBlock+gap;
  // Thin centered rule with a diamond at its center; opens smoothly before the text.
- ctx.save();ctx.globalAlpha=m.accent*(1-m.exit);
+ if(layer!=="typography"){ctx.save();ctx.globalAlpha=m.accent*(1-m.exit);
  const bar=220*m.accent;ctx.fillStyle=gold;ctx.fillRect(W/2-bar/2,y,bar,divider);
- ctx.translate(W/2,y+divider/2);ctx.rotate(Math.PI/4);ctx.fillRect(-4,-4,8,8);ctx.restore();
+ ctx.translate(W/2,y+divider/2);ctx.rotate(Math.PI/4);ctx.fillRect(-4,-4,8,8);ctx.restore();}
  y+=divider+afterDivider;
- for(let i=0;i<title.list.length;i++){reveal(title.list[i],W/2,y+title.size*.565,1510,title.size,"500 SIZEpx system-ui",ivory,easeOut((p.local-.86-i*.12)/.82),m.exit);y+=title.size*1.13;}
- if(subtitle){y+=subtitleGap;for(let i=0;i<subtitle.list.length;i++){reveal(subtitle.list[i],W/2,y+subtitle.size*.565,1400,subtitle.size,"400 SIZEpx system-ui","#d9d3c6",easeOut((p.local-1.13-i*.1)/.8),m.exit);y+=subtitle.size*1.13;}}
+ if(layer!=="accent")for(let i=0;i<title.list.length;i++){reveal(title.list[i],W/2,y+title.size*.565,1510,title.size,"500 SIZEpx system-ui",ivory,easeOut((p.local-.86-i*.12)/.82),m.exit);y+=title.size*1.13;}
+ if(subtitle&&layer!=="accent"){y+=subtitleGap;for(let i=0;i<subtitle.list.length;i++){reveal(subtitle.list[i],W/2,y+subtitle.size*.565,1400,subtitle.size,"400 SIZEpx system-ui","#d9d3c6",easeOut((p.local-1.13-i*.1)/.8),m.exit);y+=subtitle.size*1.13;}}
  // No counter or progress bar is burned into the editorial overlay.
 
  }
- canvas.style.background=(!exportMode&&layer==="foreground")?"repeating-conic-gradient(#303030 0% 25%,#484848 0% 50%) 50% / 24px 24px":"transparent";
+ canvas.style.background=(!exportMode&&["foreground","typography","accent"].includes(layer))?"repeating-conic-gradient(#303030 0% 25%,#484848 0% 50%) 50% / 24px 24px":"transparent";
  controls.sync(clock);controls.setFrameProgress({phase:background==="tabletop"&&!tabletopAPI&&!tabletopError?"Loading tabletop background…":"Frame render · Motion graphics",ready:background!=="tabletop"||!!tabletopAPI||!!tabletopError});controls.samples.textContent=background==="tabletop"&&tabletopError?"Tabletop unavailable: "+tabletopError:"";
 }
 function resize(w,h){const dpr=exportMode?1:Math.min(devicePixelRatio||1,profile.dpr);canvas.width=Math.max(1,Math.round(w*dpr));canvas.height=Math.max(1,Math.round(h*dpr));draw();}

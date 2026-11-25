@@ -5,8 +5,8 @@ import {readFileSync,writeFileSync,mkdirSync,statSync} from "node:fs";
 import {resolve,extname,sep,dirname} from "node:path";
 import {parseArgs} from "node:util";
 const {values:o}=parseArgs({options:{data:{type:"string",default:"stats/src/data.json"},output:{type:"string",default:"renders/stats.mp4"},frames:{type:"string",default:"renders/stats-frames"},layer:{type:"string",default:"composite"},background:{type:"string",default:"luxury"},"frames-only":{type:"boolean",default:false},help:{type:"boolean",default:false}}});
-if(o.help){console.log("npm run render:stats -- [--data stats/src/data.json --output renders/stats.mp4 --frames renders/stats-frames --background luxury|tabletop --layer composite|background|foreground|chroma|separate --frames-only]");process.exit(0);}
-if(!["composite","background","foreground","chroma","separate"].includes(o.layer))throw Error("Invalid layer");
+if(o.help){console.log("npm run render:stats -- [--data stats/src/data.json --output renders/stats.mp4 --frames renders/stats-frames --background luxury|tabletop --layer composite|background|foreground|chroma|typography|accent|separate --frames-only]");process.exit(0);}
+if(!["composite","background","foreground","chroma","typography","accent","separate"].includes(o.layer))throw Error("Invalid layer");
 if(!["luxury","tabletop"].includes(o.background))throw Error("Invalid background");
 const root=resolve("site-dist");if(!statSync(root).isDirectory())throw Error("Run npm run build:site first.");
 const types={".html":"text/html",".js":"text/javascript",".css":"text/css",".json":"application/json",".jpg":"image/jpeg",".jpeg":"image/jpeg",".png":"image/png",".webp":"image/webp",".svg":"image/svg+xml"};
@@ -16,7 +16,7 @@ let browser;try{
  browser=await chromium.launch({headless:true});const page=await browser.newPage({viewport:{width:1920,height:1080},deviceScaleFactor:1});
  await page.goto("http://127.0.0.1:"+server.address().port+"/stats/?export",{waitUntil:"networkidle"});await page.waitForFunction(()=>window.__stats);
  await page.evaluate(data=>window.__stats.setData(data),JSON.parse(readFileSync(o.data,"utf8")));
- if(o.background==="tabletop"&&!["foreground","chroma"].includes(o.layer))await page.evaluate(()=>window.__stats.setBackground("tabletop"));
+ if(o.background==="tabletop"&&!["foreground","chroma","typography","accent"].includes(o.layer))await page.evaluate(()=>window.__stats.setBackground("tabletop"));
  const duration=await page.evaluate(()=>window.__stats.duration),count=Math.ceil(duration*60);
  const passes=o.layer==="separate"?["background","foreground"]:[o.layer];
  for(const pass of passes){
@@ -28,8 +28,8 @@ let browser;try{
    if(i%60===0)console.log(pass+" frame "+(i+1)+"/"+count);
   }
   if(o["frames-only"])continue;
-  const alpha=pass==="foreground",base=o.output.replace(/\.[^/.]+$/,"");
-  const output=alpha?base+"-foreground.mov":pass==="composite"?o.output:base+"-"+pass+".mp4";
+  const alpha=["foreground","typography","accent"].includes(pass),base=o.output.replace(/\.[^/.]+$/,"");
+  const output=alpha?base+"-"+pass+".mov":pass==="composite"?o.output:base+"-"+pass+".mp4";
   mkdirSync(dirname(resolve(output)),{recursive:true});
   const codec=alpha?["-c:v","prores_ks","-profile:v","4","-pix_fmt","yuva444p10le","-alpha_bits","16"]:["-c:v","libx264","-pix_fmt","yuv420p"];
   const result=spawnSync("ffmpeg",["-y","-framerate","60","-i",resolve(frames,"frame-%06d.png"),"-frames:v",String(count),...codec,output],{stdio:"inherit"});

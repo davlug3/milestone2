@@ -1,3 +1,4 @@
+import {createRenderPasses,type PassName} from "../rendering/renderPasses";
 import {browserQuality,QUALITY_PROFILES,qualityOptions,changeQuality} from "../rendering/quality";
 import {createOrnamentalPlant} from "../rendering/ornamentalPlant";
 import {createFlowerVase} from "../rendering/flowerVase";
@@ -478,6 +479,11 @@ export function startBookDemo(container: HTMLElement): () => void {
   let photoRevision=-1;
   let startupComplete=false;
   let gpuLost=false;
+  const passes=createRenderPasses(renderer,scene,camera,mesh=>{
+    for(let o:THREE.Object3D|null=mesh;o;o=o.parent)if(o===backCover||o===boundBlock||o===spineCover||o===coverPivot||pages.some(p=>p.mesh===o)||staticSheets.some(p=>p.mesh===o)||headbands.some(h=>h===o))return true;
+    return false;
+  },()=>trace.draw(playback.playing&&trace.mode==="ray-traced"));
+  passes.addUI(controls.ui,()=>{setPlaying(false);trace.invalidate();});
   function onContextLost(event:Event){event.preventDefault();gpuLost=true;setPlaying(false);controls.setFrameProgress({phase:"GPU context lost · recovering",ready:false});controls.samples.textContent="Graphics memory limit reached. If recovery stalls, reload in real-time mode.";}
   function onContextRestored(){gpuLost=false;trace.recover();controls.mode.value="real-time";}
   renderer.domElement.addEventListener("webglcontextlost",onContextLost);
@@ -649,7 +655,7 @@ export function startBookDemo(container: HTMLElement): () => void {
   // --- Main loop -----------------------------------------------------------
   function frame(now: number): void {
     if(gpuLost||trace.contextLost){controls.setFrameProgress({phase:"GPU context lost · recovering",ready:false});raf=requestAnimationFrame(frame);return;}
-    if(playback.tick(now,trace.mode!=="cinematic"||trace.complete,trace.mode==="cinematic"?1/60:undefined)){
+    if(playback.tick(now,passes.pass!=="beauty"||trace.mode!=="cinematic"||trace.complete,passes.pass==="beauty"&&trace.mode==="cinematic"?1/60:undefined)){
       time=playback.time;
       stepPagesTo(time);
       updateCover(time);
@@ -661,12 +667,12 @@ export function startBookDemo(container: HTMLElement): () => void {
     const photoState=prints.status();
     const revision=photoState.loadedFaces+photoState.failedFaces;
     if(revision!==photoRevision){if(!startupComplete)loadingStage("Loading printed pages…",revision,photoState.totalFaces);photoRevision=revision;trace.invalidate();}
-    if(!geometryOnly)trace.draw(playback.playing && trace.mode==="ray-traced");
+    if(!geometryOnly)passes.render();
     if(!startupComplete&&revision>=photoState.totalFaces){startupComplete=true;loadingReady();if(photoState.failedFaces)console.warn("[book] Some printed pages use placeholders:",photoState.failedFaces);}
     if(trace.contextLost){controls.setFrameProgress({phase:"GPU context lost · recovering",ready:false});raf=requestAnimationFrame(frame);return;}
     controls.mode.value=trace.mode;
     const raster=trace.mode==="real-time"||(playback.playing&&trace.mode==="ray-traced");
-    controls.setFrameProgress(raster?{phase:trace.mode==="ray-traced"?"Real-time playback · pause to trace":"Frame render · Real-time",ready:true}:{phase:trace.complete?"Frame complete":trace.phase,samples:trace.samples,target:trace.goal});
+    controls.setFrameProgress(passes.pass!=="beauty"?{phase:"Render pass · "+passes.pass,ready:true}:raster?{phase:trace.mode==="ray-traced"?"Real-time playback · pause to trace":"Frame render · Real-time",ready:true}:{phase:trace.complete?"Frame complete":trace.phase,samples:trace.samples,target:trace.goal});
     controls.samples.textContent=trace.error?"Ray tracing unavailable: "+trace.error:"";
     raf = requestAnimationFrame(frame);
   }
@@ -694,6 +700,9 @@ export function startBookDemo(container: HTMLElement): () => void {
     duration: TIMELINE.end,
     playbackRate: PLAYBACK_RATE,
     photoStatus: prints.status,
+    capturePass:(t:number,pass:PassName)=>{setPlaying(false);if(t<time)seek(t);else{time=playback.seek(t);stepPagesTo(time);updateCover(time);updateCamera(time);}return passes.capture(pass);},
+    passIds:()=>passes.idMap(),
+    setPass:(value:string)=>{passes.setPass(value);trace.invalidate();},
     setRenderMode,
     blenderSetup: () => {
       if(!geometryOnly)throw Error("Geometry export mode required");
@@ -850,7 +859,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     cancelAnimationFrame(raf);
     window.removeEventListener("resize", onResize);
     unbindViewport();
-    controls.dispose();
+    controls.dispose();passes.dispose();
     for (const pg of pages) pg.geo.dispose();
     bindingGeo.dispose();
     bindingMaterial.dispose();

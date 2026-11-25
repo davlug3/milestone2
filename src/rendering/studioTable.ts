@@ -13,7 +13,7 @@ export function createStudioTable(scene: THREE.Scene) {
   const group = new THREE.Group();
   group.name = "antique-writing-table";
   group.position.set(-0.008,0,-0.025);
-  group.scale.set(0.88,1,0.90);
+  group.scale.set(0.82,1,0.84);
   scene.add(group);
   const parts: THREE.Mesh[] = [];
   function mesh(g:THREE.BufferGeometry,m:THREE.Material,x:number,y:number,z:number) {

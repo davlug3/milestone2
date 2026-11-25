@@ -1,3 +1,4 @@
+import {createStudioWall} from "../rendering/studioWall";
 import {restingPageWear,freePageWear} from "../paper/pageShape";
 import {createDeskProps} from "../rendering/deskProps";
 import { loadingStage, loadingReady } from "../playback/loading";
@@ -170,7 +171,7 @@ export function startBookDemo(container: HTMLElement): () => void {
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0c0d10);
-  scene.fog = new THREE.Fog(0x0c0d10, 1.15, 3.2);
+  scene.fog = new THREE.Fog(0x0c0d10, 4.0, 9.0);
   const pmrem = new THREE.PMREMGenerator(renderer);
   const room = new RoomEnvironment();
   const environment = pmrem.fromScene(room, 0.04);
@@ -179,7 +180,7 @@ export function startBookDemo(container: HTMLElement): () => void {
   scene.environment = environment.texture;
   scene.environmentIntensity = 0.16;
 
-  // Full-frame 35mm prime; fit the full sensor gate to the viewport.
+  // Full-frame 85mm prime; fit the full sensor gate to the viewport.
   const aspect = window.innerWidth / window.innerHeight;
   const camera = new PhysicalCamera(cameraVerticalFov(aspect), aspect, 0.01, 100);
   camera.filmGauge = CAMERA_SENSOR_W_MM;
@@ -201,6 +202,7 @@ export function startBookDemo(container: HTMLElement): () => void {
 
   addStudioLighting(scene);
   const disposeTable = createStudioTable(scene);
+  const disposeWall = createStudioWall(scene);
   const disposeProps = createDeskProps(scene);
 
   // --- Static book parts (closed on the right; gutter at x=0) --------------
@@ -840,6 +842,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     headbandGeo.dispose();
     prints.dispose();
     disposeProps();
+    disposeWall();
     disposeTable();
     clothTexture.dispose();
     scene.environment = null;

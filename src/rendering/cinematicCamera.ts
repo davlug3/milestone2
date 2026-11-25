@@ -1,7 +1,7 @@
 import { clamp01 } from "../animation/easing";
 
 /** Fixed full-frame lens, with the entire 36x24 gate visible at every aspect. */
-export const CAMERA_FOCAL_MM = 35;
+export const CAMERA_FOCAL_MM = 85;
 export const CAMERA_SENSOR_W_MM = 36;
 export const CAMERA_SENSOR_H_MM = 24;
 export function cameraVerticalFov(aspect: number): number {
@@ -20,5 +20,8 @@ export function cinematicCameraPose(time: number, duration: number) {
   const target: [number, number, number] = [
     lerp(0.015, 0.005), lerp(0.065, 0.025), 0,
   ];
+  // Dolly back along the viewing ray to preserve the projected subject size.
+  const ratio = CAMERA_FOCAL_MM / 35;
+  for(let i=0;i<3;i++)position[i]=target[i]+(position[i]-target[i])*ratio;
   return { position, target };
 }

@@ -31,7 +31,7 @@ export function createDeskProps(scene:THREE.Scene){
  for(const z of [.021,.027,.062])rod(pen,v(0,.006,z),v(0,.006,z+.002),.0063,brass);
  rod(pen,v(.003,.012,.060),v(.004,.012,.033),.0012,brass);
  // Folded, thin brass spectacles at the front-left edge.
- const glasses=group("folded-brass-spectacles",-.297,.184,.18);
+ const glasses=group("folded-brass-spectacles",-.274,.181,.18);
  for(const x of [-.028,.028]){
   const rim=part(new THREE.TorusGeometry(.023,.00145,8,36),brass,glasses,x,.005,0);
   rim.rotation.x=-Math.PI/2;rim.scale.set(1,.77,1);
@@ -39,29 +39,29 @@ export function createDeskProps(scene:THREE.Scene){
  }
  rod(glasses,v(-.005,.005,0),v(.005,.005,0),.0015,brass);
  // Small wooden wax seal stamp behind the book, not over the page path.
- const stamp=group("wax-seal-stamp",.304,-.216,.4);
+ const stamp=group("wax-seal-stamp",.302,-.211,.4);
  part(new THREE.CylinderGeometry(.017,.018,.007,24),brass,stamp,0,.0035,0);
  const profile=[[0,.007],[.009,.007],[.010,.013],[.006,.021],[.007,.031],[.012,.038],[.013,.046],[.009,.053],[0,.055]].map(([r,y])=>new THREE.Vector2(r,y));
  part(new THREE.LatheGeometry(profile,24),wood,stamp,0,0,0);
  // Two understated overlapping paper slips behind the left side.
- const slips=group("loose-paper-slips",-.300,-.211,-.14);
+ const slips=group("loose-paper-slips",-.293,-.197,-.14);
  for(let i=0;i<3;i++){
   const slip=part(new RoundedBoxGeometry(.071,.0009,.045,2,.0004),i?paper:darkPaper,slips,i*.004,.00055+i*.001,i*.003);
   slip.rotation.y=i*.19;
  }
- const bottle=group("ink-bottle",-.305,-.118,-.19);
+ const bottle=group("ink-bottle",-.303,-.118,-.19);
  part(new THREE.CylinderGeometry(.023,.026,.036,8),ink,bottle,0,.018,0);
  part(new THREE.CylinderGeometry(.012,.023,.012,8),ink,bottle,0,.042,0);
  part(new THREE.CylinderGeometry(.013,.013,.009,16),black,bottle,0,.052,0);
  const waxStick=group("sealing-wax-stick",.303,.165,.52);
  part(new RoundedBoxGeometry(.014,.013,.064,2,.003),wax,waxStick,0,.0065,0);
- const coins=group("scattered-coins",.314,-.095,-.1);
+ const coins=group("scattered-coins",.289,-.095,-.1);
  for(let i=0;i<2;i++){const coin=part(new THREE.CylinderGeometry(.010+i*.002,.010+i*.002,.002,24),brass,coins,i*.017,.001,i*.009);coin.rotation.z=i*.02;}
- const pencil=group("pencil-stub",-.310,.009,-.21);
+ const pencil=group("pencil-stub",-.307,.009,-.21);
  rod(pencil,v(0,.004,-.044),v(0,.004,.030),.0038,pencilWood);
  rod(pencil,v(0,.004,.030),v(0,.004,.041),.0038,pencilWood,.001);
  rod(pencil,v(0,.004,.041),v(0,.004,.045),.001,graphite,.00015);
- const scraps=group("curled-paper-scraps",.07,-.238,.12);
+ const scraps=group("curled-paper-scraps",.07,-.225,.12);
  for(let i=0;i<3;i++){
   const g=new THREE.PlaneGeometry(.029+i*.007,.020+i*.003,6,4);
   const pos=g.attributes.position;

@@ -28,3 +28,13 @@ npm run build
 ```
 
 Raster PBR is the default. Select Ray-traced in the preview to progressively render the paused pose, or use `npm run render:video -- --mode raytrace --samples 32` for final output. Ray tracing is slower and has no denoiser yet. Prints use thin, closed deformable shells with seeded curl, folded corners, wrinkles, airborne flutter and damped bending/torsion after impact. Contact samples the table and earlier settled prints to avoid sampled underside penetration. This is deterministic analytic modal dynamics, not a full rigid-body/cloth solver; continuous triangle collision, motion blur and audio are not implemented.
+
+## Temporary Firebase Hosting preview (Spark only)
+
+Create a project at https://console.firebase.google.com/ with the free Spark plan and no linked billing account. Use **Hosting**, not App Hosting. Enable Hosting if necessary. Authenticate locally with `npx --yes firebase-tools login --no-localhost` (or `login` in a desktop browser). Then run:
+
+```sh
+npm run deploy:preview -- YOUR_SPARK_PROJECT_ID --confirm-spark
+````
+
+The command rebuilds the slideshow and deploys only static files to a seven-day preview channel named slideshow. The CLI prints the public HTTPS URL. Repeat the command to update the same channel. The confirmation flag is a manual attestation, not an automatic billing-plan check. Do not attach billing or upgrade to Blaze. Review the photo files before deploying: anyone with the preview URL can access them, and Vite copies public assets into dist. No live-channel deployment, Cloud Run, Functions, or GPU instance is used. Rendering takes place on the visitor's device.

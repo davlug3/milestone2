@@ -10,7 +10,8 @@
     "test": "node --test scripts/*.test.mjs",
     "photos:download": "node scripts/photos.mjs --refresh",
     "render:video": "node scripts/render.mjs",
-    "photos:sync": "node scripts/photos.mjs"
+    "photos:sync": "node scripts/photos.mjs",
+    "deploy:preview": "node scripts/firebase-preview.mjs"
   },
   "dependencies": {
     "three": "0.180.0",

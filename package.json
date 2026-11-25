@@ -25,7 +25,8 @@
     "test:render-progress": "node scripts/render-progress-check.mjs",
     "render:blender": "node scripts/render-blender.mjs",
     "build:site": "node scripts/build-site.mjs",
-    "preview:site": "vite preview --outDir site-dist"
+    "preview:site": "vite preview --outDir site-dist",
+    "test:transport": "node --experimental-strip-types --test scripts/transport.test.mjs"
   },
   "dependencies": {
     "three": "^0.180.0",

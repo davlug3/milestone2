@@ -1,3 +1,4 @@
+import { PlaybackClock, createPlaybackControls } from "../../src/playback/transport.ts";
 import * as THREE from "three";
 import { PhysicalSpotLight, WebGLPathTracer, GradientEquirectTexture } from "three-gpu-pathtracer";
 import { makeShots,pose,duration,cameraPose,random } from "./pose.js";
@@ -21,8 +22,8 @@ scene.add(new THREE.HemisphereLight(0xffe6cd,0x322015,.18));
 const environment=new GradientEquirectTexture(128);environment.topColor.set(0x9ca8c4);environment.bottomColor.set(0x27190f);environment.update();
 scene.environment=environment;scene.environmentIntensity=.16;
 let tracer=null,mode="raster",traceDirty=true,traceError="",target=64;
-const modeSelect=document.querySelector("#mode"),sampleLabel=document.querySelector("#samples");
-function setMode(value){mode=value;modeSelect.value=value;traceDirty=true;traceError="";}
+
+function setMode(value){mode=value;controls.mode.value=value;traceDirty=true;traceError="";controls.samples.textContent="";}
 function traceDraw(){
   if(!tracer){
     if(!renderer.extensions.has("EXT_color_buffer_float"))throw Error("GPU lacks float render targets");
@@ -30,13 +31,13 @@ function traceDraw(){
   }
   if(traceDirty){tracer.setScene(scene,camera);tracer.reset();traceDirty=false;}
   tracer.pausePathTracing=tracer.samples>=target;tracer.renderSample();
-  sampleLabel.textContent=Math.floor(tracer.samples)+" / "+target+" spp";
+  controls.samples.textContent=Math.floor(tracer.samples)+" / "+target+" spp";
 }
 function draw(){
-  if(mode==="raytrace"&&!playing){try{traceDraw();return;}catch(e){setMode("raster");traceError=String(e);sampleLabel.textContent="Ray tracing failed: "+String(e);}}
+  if(mode==="raytrace"&&!playback.playing){try{traceDraw();return;}catch(e){setMode("raster");traceError=String(e);controls.samples.textContent="Ray tracing failed: "+String(e);}}
   renderer.render(scene,camera);
 }
-modeSelect.onchange=()=>{play(false);setMode(modeSelect.value);draw();};
+
 function walnut(){
   const n=1024,c=document.createElement("canvas");c.width=c.height=n;const ctx=c.getContext("2d"),im=ctx.createImageData(n,n),r=random(91);
   for(let y=0;y<n;y++)for(let x=0;x<n;x++){
@@ -54,27 +55,26 @@ table.rotation.x=-Math.PI/2;table.receiveShadow=true;scene.add(table);
 const loader=new THREE.TextureLoader(),cards=[];
 const paper=new THREE.MeshPhysicalMaterial({color:0xf4eee3,roughness:.82,sheen:.08});
 const edge=new THREE.MeshStandardMaterial({color:0xe1d8c9,roughness:.9});
-let shots=[],total=0,clock=0,playing=!exportMode,last=performance.now();
-const button=document.querySelector("#play"),seek=document.querySelector("#seek"),label=document.querySelector("#time");
+let shots=[],total=0,clock=0;
+const playback=new PlaybackClock(0);
+const controls=createPlaybackControls({modes:[{value:"raster",label:"Real-time"},{value:"raytrace",label:"Ray-traced preview"}],onToggle:()=>play(!playback.playing),onRestart:()=>{update(0);play(true);},onSeek:t=>{play(false);update(t);},onMode:m=>{play(false);setMode(m);draw();},hidden:exportMode});
+controls.sync(playback);
 
-function update(t){
-  clock=Math.max(0,Math.min(t,total));
+function update(t,fromTick=false){
+  clock=fromTick?playback.time:playback.seek(t);
   const p=cameraPose(clock);camera.position.set(p.x,p.y,p.z);camera.lookAt(p.targetX,0,p.targetZ);camera.rotateZ(p.roll);
   for(let i=0;i<cards.length;i++){
     const card=cards[i],s=pose(shots[i],clock);card.visible=s.visible;if(!s.visible)continue;
     placePhoto(card,s,shots[i],clock,cards.slice(0,i));
   }
-  traceDirty=true;draw();seek.value=String(clock);label.textContent=clock.toFixed(1)+" / "+total.toFixed(1)+"s";
+  traceDirty=true;draw();controls.sync(playback);
 }
-function play(value){playing=value;button.textContent=playing?"Pause":"Play";last=performance.now();}
-button.onclick=()=>{if(clock>=total)update(0);play(!playing);};
-document.querySelector("#restart").onclick=()=>{update(0);play(true);};
-seek.oninput=()=>{play(false);update(Number(seek.value));};
+function play(value){if(value&&clock>=total)update(0);playback.setPlaying(value);controls.sync(playback);}
 addEventListener("resize",()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);update(clock);});
 async function init(){
   const response=await fetch("./slides.json");if(!response.ok)throw Error("Missing slides.json; run npm run build or npm run dev");
   const manifest=await response.json();if(!manifest.photos.length)throw Error("No photos found");
-  shots=makeShots(manifest.photos.length,manifest.config);total=duration(shots);seek.max=String(total);
+  shots=makeShots(manifest.photos.length,manifest.config);total=duration(shots);playback.duration=total;controls.sync(playback);
   for(let i=0;i<manifest.photos.length;i++){
     const c=shots[i].config,source=await loader.loadAsync(manifest.photos[i]);
     const tex=printTexture(source.image,c,renderer.capabilities.getMaxAnisotropy());source.dispose();
@@ -84,6 +84,6 @@ async function init(){
   }
   update(0);
   window.__slideshow={duration:total,count:cards.length,seek:t=>{play(false);update(t);},capture:t=>{play(false);setMode("raster");update(t);return renderer.domElement.toDataURL("image/png");},beginTrace:(t,samples)=>{play(false);target=samples;setMode("raytrace");update(t);},traceStep:()=>{if(mode!=="raytrace")throw Error(traceError||"Ray tracer unavailable");traceDraw();return {samples:traceDirty?0:tracer.samples,target};},traceCapture:()=>{if(mode!=="raytrace"||traceDirty||tracer.samples<target)throw Error("Frame not ready");return renderer.domElement.toDataURL("image/png");},gpu:()=>{const gl=renderer.getContext(),ext=gl.getExtension("WEBGL_debug_renderer_info");return ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER);}};
-  if(!exportMode){function tick(now){if(playing){update(clock+Math.min(.1,(now-last)/1000));if(clock>=total)play(false);}else if(mode==="raytrace")draw();last=now;requestAnimationFrame(tick);}requestAnimationFrame(tick);}
+  if(!exportMode){function tick(now){if(playback.tick(now))update(playback.time,true);else if(!playback.playing&&mode==="raytrace")draw();controls.sync(playback);requestAnimationFrame(tick);}requestAnimationFrame(tick);}
 }
 init().catch(e=>{document.querySelector("#error").textContent=String(e);window.__slideshowError=String(e);console.error(e);});

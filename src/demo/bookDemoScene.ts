@@ -1,3 +1,4 @@
+import { PlaybackClock, createPlaybackControls } from "../playback/transport";
 import * as THREE from "three";
 import { BlenderExport } from "../rendering/blenderExport";
 import { StudioTracer, PhysicalCamera, type RenderMode } from "../rendering/studioTracer";
@@ -442,40 +443,28 @@ export function startBookDemo(container: HTMLElement): () => void {
     }
   }
 
-  // --- UI ------------------------------------------------------------------
-  const ui = document.createElement("div");
-  ui.className = "demo-ui";
-  ui.innerHTML = `
-    <button class="demo-play" type="button">▶ Play</button>
-    <span class="demo-time">0.0s</span>
-    <select class="demo-render" aria-label="Render mode"><option value="real-time">Real-time</option><option value="ray-traced">Ray-traced preview</option><option value="cinematic">Cinematic</option></select>
-    <span class="demo-samples" aria-live="polite"></span>
-  `;
-  document.body.appendChild(ui);
-  const button = ui.querySelector(".demo-play") as HTMLButtonElement;
-  const timeLabel = ui.querySelector(".demo-time") as HTMLSpanElement;
-  const modeSelect = ui.querySelector(".demo-render") as HTMLSelectElement;
-  const sampleLabel = ui.querySelector(".demo-samples") as HTMLSpanElement;
-  let photoRevision = -1;
-  function setRenderMode(mode: RenderMode) {
-    if (!["real-time","ray-traced","cinematic"].includes(mode)) return;
-    setPlaying(false);
-    trace.setMode(mode);
-    modeSelect.value=mode;
+  // Shared transport; book physics and tracing stay scene-specific.
+  let time=0;
+  let raf=0;
+  const playback=new PlaybackClock(TIMELINE.end,PLAYBACK_RATE);
+  const controls=createPlaybackControls({
+    modes:[{value:"real-time",label:"Real-time"},{value:"ray-traced",label:"Ray-traced preview"},{value:"cinematic",label:"Cinematic"}],
+    onToggle:()=>setPlaying(!playback.playing),
+    onRestart:()=>{seek(0);setPlaying(true);},
+    onSeek:t=>{setPlaying(false);seek(t);},
+    onMode:m=>setRenderMode(m as RenderMode),
+    hidden:geometryOnly||new URLSearchParams(location.search).has("export"),
+  });
+  let photoRevision=-1;
+  function setRenderMode(mode:RenderMode){
+    if(!["real-time","ray-traced","cinematic"].includes(mode))return;
+    setPlaying(false);trace.setMode(mode);controls.mode.value=mode;
   }
-  modeSelect.addEventListener("change",()=>setRenderMode(modeSelect.value as RenderMode));
-
-  // --- Playback state ------------------------------------------------------
-  let time = 0;
-  let playing = false;
-  let last = performance.now();
-  let raf = 0;
-
-  function setPlaying(next: boolean): void {
-    if (next && time >= TIMELINE.end) seek(0);
-    playing = next;
-    button.textContent = playing ? "❚❚ Pause" : "▶ Play";
+  function setPlaying(next:boolean):void{
+    if(next&&time>=TIMELINE.end)seek(0);
+    playback.setPlaying(next);controls.sync(playback);
   }
+  controls.sync(playback);
 
   function poseUnturned(pg: PageInstance, u: number): void {
     const root = textRoot(BOOK_DIMENSIONS, pg.index, u);
@@ -504,7 +493,7 @@ export function startBookDemo(container: HTMLElement): () => void {
   }
 
   function seek(t: number): void {
-    time = Math.max(0, Math.min(t, TIMELINE.end));
+    time = playback.seek(t);
     resetHeightfield();
     for (const pg of pages) resetPage(pg);
     stepPagesTo(time);
@@ -625,33 +614,25 @@ export function startBookDemo(container: HTMLElement): () => void {
   }
   updateCover(0);
 
-  button.addEventListener("click", () => setPlaying(!playing));
 
   // --- Main loop -----------------------------------------------------------
   function frame(now: number): void {
-    const dt = Math.min((now - last) / 1000, 0.05);
-    last = now;
-
-    if (playing && (trace.mode !== 'cinematic' || trace.complete)) {
-      time += (trace.mode === 'cinematic' ? 1/60 : dt) * PLAYBACK_RATE;
-      if (time >= TIMELINE.end) {
-        time = TIMELINE.end;
-        setPlaying(false);
-      }
+    if(playback.tick(now,trace.mode!=="cinematic"||trace.complete,trace.mode==="cinematic"?1/60:undefined)){
+      time=playback.time;
       stepPagesTo(time);
       updateCover(time);
       updateCamera(time);
       trace.invalidate();
     }
 
-    timeLabel.textContent = `${time.toFixed(1)}s`;
+    controls.sync(playback);
     const photoState=prints.status();
     const revision=photoState.loadedFaces+photoState.failedFaces;
     if(revision!==photoRevision){photoRevision=revision;trace.invalidate();}
-    if(!geometryOnly)trace.draw(playing && trace.mode==="ray-traced");
-    modeSelect.value=trace.mode;
-    sampleLabel.textContent=trace.error ? "Ray tracing unavailable: "+trace.error :
-      trace.mode==="real-time" ? "" : playing && trace.mode==="ray-traced" ? "Raster playback · pause to trace" :
+    if(!geometryOnly)trace.draw(playback.playing && trace.mode==="ray-traced");
+    controls.mode.value=trace.mode;
+    controls.samples.textContent=trace.error ? "Ray tracing unavailable: "+trace.error :
+      trace.mode==="real-time" ? "" : playback.playing && trace.mode==="ray-traced" ? "Raster playback · pause to trace" :
       Math.floor(trace.samples)+" / "+trace.goal+" samples";
     raf = requestAnimationFrame(frame);
   }
@@ -683,7 +664,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     },
     blenderFrame: (t:number) => {
       if(!geometryOnly)throw Error("Geometry export mode required");
-      if(t<time)seek(t);else{time=Math.min(t,TIMELINE.end);stepPagesTo(time);updateCover(time);updateCamera(time);}
+      if(t<time)seek(t);else{time=playback.seek(t);stepPagesTo(time);updateCover(time);updateCamera(time);}
       return blenderExport.frame();
     },
     exportFrame: (t: number, samples: number, bounces: number) => {
@@ -693,7 +674,7 @@ export function startBookDemo(container: HTMLElement): () => void {
       if (trace.mode !== 'cinematic') setRenderMode('cinematic');
       if (t < time) seek(t);
       else {
-        time = Math.min(t,TIMELINE.end);
+        time = playback.seek(t);
         stepPagesTo(time); updateCover(time); updateCamera(time); trace.invalidate();
       }
     },
@@ -831,7 +812,7 @@ export function startBookDemo(container: HTMLElement): () => void {
   return () => {
     cancelAnimationFrame(raf);
     window.removeEventListener("resize", onResize);
-    ui.remove();
+    controls.dispose();
     for (const pg of pages) pg.geo.dispose();
     bindingGeo.dispose();
     bindingMaterial.dispose();

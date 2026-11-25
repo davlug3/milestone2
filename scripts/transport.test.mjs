@@ -1,0 +1,3 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {PlaybackClock} from '../src/playback/transport.ts';
+test('shared clock pause, seek, resume and completion',()=>{const c=new PlaybackClock(1);c.setPlaying(true);c.tick(1000);c.tick(1050);assert.equal(c.time,.05*.85);c.setPlaying(false);c.tick(3000);assert.equal(c.time,.05*.85);c.seek(.99);c.setPlaying(true);c.tick(4000);c.tick(4050);assert.equal(c.time,1);assert.equal(c.playing,false);c.seek(-1);assert.equal(c.time,0);});
+test('cinematic waits for readiness and advances fixed frames',()=>{const c=new PlaybackClock(10);c.setPlaying(true);assert.equal(c.tick(0,false,1/60),false);assert.equal(c.tick(5000,false,1/60),false);c.tick(9000,true,1/60);assert.equal(c.time,.85/60);});

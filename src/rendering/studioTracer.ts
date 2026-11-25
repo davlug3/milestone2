@@ -51,8 +51,12 @@ export class StudioTracer {
         this.scene.environment=this.environment;
         tracer.bounces=settings.bounces;
         tracer.renderScale=settings.scale;
+        tracer.pausePathTracing=false;
         tracer.setScene(this.proxy.update(this.scene),this.camera);
+        tracer.reset();
         this.dirty=false;
+        tracer.renderSample();
+        return;
       }
       tracer.pausePathTracing=this.samples>=settings.samples;
       tracer.renderSample();

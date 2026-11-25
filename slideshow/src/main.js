@@ -36,13 +36,14 @@ function traceDraw(){
     if(!renderer.extensions.has("EXT_color_buffer_float"))throw Error("GPU lacks float render targets");
     tracer=new WebGLPathTracer(renderer);tracer.textureSize.set(1024,1024);tracer.bounces=5;tracer.renderDelay=0;tracer.fadeDuration=0;tracer.minSamples=1;tracer.tiles.set(1,1);
   }
-  if(traceDirty){const quality=mode==="cinematic"?TRACE_QUALITY.cinematic:TRACE_QUALITY.preview;tracer.bounces=quality.bounces;tracer.renderScale=exportMode?1:quality.scale;tracer.pausePathTracing=false;tracer.setScene(scene,camera);tracer.reset();traceDirty=false;tracer.renderSample();controls.samples.textContent=Math.floor(tracer.samples)+" / "+target+" spp";return;}
+  if(traceDirty){const quality=mode==="cinematic"?TRACE_QUALITY.cinematic:TRACE_QUALITY.preview;tracer.bounces=quality.bounces;tracer.renderScale=exportMode?1:quality.scale;tracer.pausePathTracing=false;tracer.setScene(scene,camera);tracer.reset();traceDirty=false;tracer.renderSample();controls.setFrameProgress({phase:tracer.samples>=target?"Frame complete":tracer.samples>0?"Accumulating samples":"Preparing first sample",samples:tracer.samples,target});return;}
   tracer.pausePathTracing=tracer.samples>=target;tracer.renderSample();
-  controls.samples.textContent=Math.floor(tracer.samples)+" / "+target+" spp";
+  controls.setFrameProgress({phase:tracer.samples>=target?"Frame complete":tracer.samples>0?"Accumulating samples":"Preparing first sample",samples:tracer.samples,target});
 }
 function draw(){
   if(mode==="cinematic"||(mode==="raytrace"&&!playback.playing)){try{traceDraw();return;}catch(e){setMode("raster");traceError=String(e);controls.samples.textContent="Ray tracing failed: "+String(e);}}
   renderer.render(scene,camera);
+  controls.setFrameProgress({phase:mode==="raytrace"?"Real-time playback · pause to trace":"Frame render · Real-time",ready:true});
 }
 
 function walnut(){

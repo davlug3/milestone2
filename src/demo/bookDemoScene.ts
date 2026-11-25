@@ -638,9 +638,9 @@ export function startBookDemo(container: HTMLElement): () => void {
     if(!geometryOnly)trace.draw(playback.playing && trace.mode==="ray-traced");
     if(!startupComplete&&revision>=photoState.totalFaces){startupComplete=true;loadingReady();if(photoState.failedFaces)console.warn("[book] Some printed pages use placeholders:",photoState.failedFaces);}
     controls.mode.value=trace.mode;
-    controls.samples.textContent=trace.error ? "Ray tracing unavailable: "+trace.error :
-      trace.mode==="real-time" ? "" : playback.playing && trace.mode==="ray-traced" ? "Raster playback · pause to trace" :
-      Math.floor(trace.samples)+" / "+trace.goal+" samples";
+    const raster=trace.mode==="real-time"||(playback.playing&&trace.mode==="ray-traced");
+    controls.setFrameProgress(raster?{phase:trace.mode==="ray-traced"?"Real-time playback · pause to trace":"Frame render · Real-time",ready:true}:{phase:trace.complete?"Frame complete":trace.phase,samples:trace.samples,target:trace.goal});
+    controls.samples.textContent=trace.error?"Ray tracing unavailable: "+trace.error:"";
     raf = requestAnimationFrame(frame);
   }
   raf = requestAnimationFrame(frame);

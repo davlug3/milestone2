@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/dev-site.mjs",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
@@ -34,7 +34,8 @@
     "render:clothesline": "node scripts/render-clothesline.mjs",
     "render:passes": "node scripts/render-passes.mjs",
     "render:floating": "node scripts/render-floating.mjs",
-    "test:floating": "node --test scripts/floating.test.mjs"
+    "test:floating": "node --test scripts/floating.test.mjs",
+    "dev:book": "vite"
   },
   "dependencies": {
     "three": "^0.180.0",

@@ -35,7 +35,14 @@ export function createWalnutTextures(){
     const seam=Math.min(v,1-v)<0.002?0.76:1;
     const age=0.84+0.28*noise(x*7,y*8);
     const scratch=noise(x*35,y*590)>0.92?1.18:1;
-    return {tone:(0.82+0.18*rings+0.17*(fine-0.5)+0.25*(noise(x*5,y*30)-0.5)+0.15*(hash(plank,4)-0.5))*seam*age*scratch,bump:0.5+0.18*rings+0.22*(fine-0.5)};
+    const kx=x-.72,ky=(y-.27)*3.5;
+    const knot=Math.exp(-(kx*kx+ky*ky)*125);
+    const knotRing=Math.sin(Math.hypot(kx,ky)*95);
+    const patina=.88+.24*noise(x*4+19,y*5+12);
+    const scuff=noise(x*23+3,y*39+7)>.83?.91:1;
+    const score=Math.exp(-Math.pow((y-.69-.035*Math.sin(x*5))*500,2))*Math.exp(-Math.pow((x-.32)*9,2));
+    const cupRing=Math.exp(-Math.pow((Math.hypot((x-.13)*1.45,y-.79)-.075)*210,2))*.055;
+    return {tone:(0.82+0.18*rings+0.17*(fine-0.5)+0.25*(noise(x*5,y*30)-0.5)+0.15*(hash(plank,4)-0.5))*seam*age*scratch*patina*scuff*(1-.13*knot+.07*knot*knotRing-.09*score-cupRing),bump:0.5+0.18*rings+0.22*(fine-0.5)-.09*score+.035*knot*knotRing};
   }
   return {
     map:texture(1024,(x,y)=>{const t=grain(x,y).tone;return [105*t,65*t,38*t]},true),

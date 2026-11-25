@@ -103,6 +103,36 @@ async function boot(){
    const card={s:sheet,front,back,edge:edge.g,boundary:edge.boundary};cards.push(card);syncCard(card);
   }
  }
+ // Perpendicular side galleries: depth-axis lines beyond the ends of the hero row.
+ // Keep all side prints outside the dolly's swept volume, with their faces turned inward.
+ const beforeSideRows=cards.length;
+ for(const side of [-1,1]){
+  const x=side*(span/2+.33),zStart=-.98,zEnd=.90,length=zEnd-zStart,mid=(zStart+zEnd)/2;
+  const ropeHeight=z=>1.66-.085*(1-(2*(z-mid)/length)**2);
+  const points=Array.from({length:49},(_,i)=>{const z=zStart+i/48*length;return new THREE.Vector3(x,ropeHeight(z),z);});
+  mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points),120,.0035,8,false),ropeMat,0,0,0);
+  for(const z of [zStart,zEnd]){
+   mesh(new RoundedBoxGeometry(.08,2.5,.085,2,.006),wood,x,1.23,z);
+   mesh(new THREE.TorusGeometry(.02,.003,8,20),steel,x,ropeHeight(z),z);
+  }
+  const n=4,scale=.86;
+  for(let i=0;i<n;i++){
+   const z=zStart+.23+i*(length-.46)/(n-1);
+   const sheet=makeSheet(beforeSideRows+(side===1?n:0)+i,19,15),group=new THREE.Group();
+   group.position.set(x-side*.012,ropeHeight(z)-.012*scale,z);
+   group.rotation.y=-side*Math.PI/2;group.scale.setScalar(scale);scene.add(group);
+   const front=makeGeometry(sheet),back=makeGeometry(sheet,true),edge=makeEdge(sheet);
+   const material=photoMaterials[(i*3+(side===1?2:0))%count];
+   mesh(front,material,0,0,0,group);mesh(back,paperBack,0,0,0,group);mesh(edge.g,edgeMat,0,0,0,group);
+   for(const pin of [sheet.left,sheet.right]){
+    const clip=new THREE.Group();clip.position.set(sheet.rest[pin*3],.008,-.003);clip.scale.set(1.25,1.25,1.15);group.add(clip);
+    mesh(clipJawGeometry,wood,0,.009,-.006,clip);mesh(clipJawGeometry,wood,0,.009,.006,clip);
+    mesh(clipSpringGeometry,steel,0,.012,0,clip).rotation.y=Math.PI/2;
+   }
+   const card={s:sheet,front,back,edge:edge.g,boundary:edge.boundary};cards.push(card);syncCard(card);
+  }
+ }
+ const sidePrintCount=cards.length-beforeSideRows;
  // Captions are painted into the actual photo texture and deform with the paper.
  // Rear prints keep their original material, so only the hero row carries editorial captions.
  const captionMaterials=photoMaterials.map(m=>m.clone());
@@ -145,7 +175,7 @@ async function boot(){
  document.getElementById("label-cancel").onclick=()=>labelDialog.close();
  document.getElementById("label-apply").onclick=()=>{try{setLabels(JSON.parse(labelInput.value),true);saveLabels();labelDialog.close();}catch(e){labelError.textContent=String(e.message||e);}};
  seek(0);loadingReady();
- window.__clothesline={duration,count,setLabels,backgroundCount:cards.length-count,totalPrints:cards.length,seek:t=>{clock.setPlaying(false);seek(t);},capture:t=>{clock.setPlaying(false);setMode("raster");seek(t);return renderer.domElement.toDataURL("image/png");},beginTrace:(t,samples)=>{clock.setPlaying(false);setMode("raytrace");target=samples;seek(t);},traceStep:()=>{if(mode!=="raytrace")throw Error(traceError||"Ray tracer unavailable");traceDraw();return {samples:tracer.samples,target};},traceCapture:()=>{if(!tracer||dirty||tracer.samples<target)throw Error("Frame not ready");return renderer.domElement.toDataURL("image/png");},cameraStatus:()=>({focalLength:camera.getFocalLength(),fStop:camera.fStop,focusDistance:camera.focusDistance,previewDof:!previewDofError}),gpu:()=>{const gl=renderer.getContext(),ext=gl.getExtension("WEBGL_debug_renderer_info");return ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER);}};
+ window.__clothesline={duration,count,setLabels,backgroundCount:beforeSideRows-count,sidePrintCount,totalPrints:cards.length,seek:t=>{clock.setPlaying(false);seek(t);},capture:t=>{clock.setPlaying(false);setMode("raster");seek(t);return renderer.domElement.toDataURL("image/png");},beginTrace:(t,samples)=>{clock.setPlaying(false);setMode("raytrace");target=samples;seek(t);},traceStep:()=>{if(mode!=="raytrace")throw Error(traceError||"Ray tracer unavailable");traceDraw();return {samples:tracer.samples,target};},traceCapture:()=>{if(!tracer||dirty||tracer.samples<target)throw Error("Frame not ready");return renderer.domElement.toDataURL("image/png");},cameraStatus:()=>({focalLength:camera.getFocalLength(),fStop:camera.fStop,focusDistance:camera.focusDistance,previewDof:!previewDofError}),gpu:()=>{const gl=renderer.getContext(),ext=gl.getExtension("WEBGL_debug_renderer_info");return ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER);}};
  if(!exportMode){function tick(now){if(clock.tick(now,mode!=="cinematic"||(!dirty&&tracer&&tracer.samples>=target),mode==="cinematic"?1/60:undefined))seek(clock.time,true);else if(mode==="cinematic"||mode==="raytrace"&&!clock.playing)draw();controls.sync(clock);requestAnimationFrame(tick);}requestAnimationFrame(tick);}
 }
 boot().catch(e=>{loadingFailed(e);window.__clotheslineError=String(e);document.getElementById("error").textContent=String(e);console.error(e);});

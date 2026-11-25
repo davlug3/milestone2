@@ -24,26 +24,27 @@ export function makeSheet(index,cols=25,rows=19){
   const k=j*cols+i;
   if(i+1<cols)link(k,k+1,1e-9);
   if(j+1<rows)link(k,k+cols,1e-9);
-  if(i+1<cols&&j+1<rows){link(k,k+cols+1,3e-9);link(k+1,k+cols,3e-9);}
-  if(i+2<cols)link(k,k+2,2e-7);
-  if(j+2<rows)link(k,k+cols*2,2e-7);
-  if(i+4<cols)link(k,k+4,7e-7);
-  if(j+4<rows)link(k,k+cols*4,7e-7);
+  if(i+1<cols&&j+1<rows){link(k,k+cols+1,1.5e-9);link(k+1,k+cols,1.5e-9);}
+  if(i+2<cols)link(k,k+2,7e-8);
+  if(j+2<rows)link(k,k+cols*2,7e-8);
+  // Stiffer long-range bending links preserve the print's curved rest shape.
+  if(i+4<cols)link(k,k+4,2.5e-7);
+  if(j+4<rows)link(k,k+cols*4,2.5e-7);
  }
  return {cols,rows,p,prev,rest,inverse,links,phase,phase2,left,right};
 }
 export function resetSheet(s){s.p.set(s.rest);s.prev.set(s.rest);}
 export function windAt(t,phase){return 1.0*Math.sin(t*1.5+phase)+.48*Math.sin(t*3.7+phase*.53)+.22*Math.sin(t*7.9+phase);}
-export function stepSheet(s,t,iterations=8){
+export function stepSheet(s,t,iterations=10){
  const {p,prev,rest,inverse,links,cols,rows,phase}=s;
  for(let k=0;k<inverse.length;k++){
   const i=k*3;if(!inverse[k]){for(let q=0;q<3;q++)p[i+q]=prev[i+q]=rest[i+q];continue;}
   const v=Math.floor(k/cols)/(rows-1),u=(k%cols)/(cols-1);
   const ax=.24*windAt(t+.14*u,phase+1.3),az=(.75+v*.45)*windAt(t-.17*v,phase)+.26;
   const ox=p[i],oy=p[i+1],oz=p[i+2];
-  p[i]+=(ox-prev[i])*.986+ax*DT*DT;
-  p[i+1]+=(oy-prev[i+1])*.986-9.81*DT*DT;
-  p[i+2]+=(oz-prev[i+2])*.986+az*DT*DT;
+  p[i]+=(ox-prev[i])*.981+ax*DT*DT;
+  p[i+1]+=(oy-prev[i+1])*.981-9.81*DT*DT;
+  p[i+2]+=(oz-prev[i+2])*.981+az*DT*DT;
   prev[i]=ox;prev[i+1]=oy;prev[i+2]=oz;
  }
  for(const l of links)l.lambda=0;

@@ -27,16 +27,18 @@ function texture(size:number, sample:(x:number,y:number)=>number[], srgb=false):
 }
 export function createWalnutTextures(){
   function grain(x:number,y:number){
-    const plank=Math.floor(y*6);
-    const v=y*6-plank;
+    const plank=Math.floor(y*3);
+    const v=y*3-plank;
     const warp=noise(x*3,y*12)*2+noise(x*11,y*32)*0.3;
     const rings=Math.sin((y*105+warp*1.8+Math.sin(x*3+plank)*0.6)*Math.PI*2);
     const fine=noise(x*19,y*370);
-    const seam=Math.min(v,1-v)<0.003?0.55:1;
-    return {tone:(0.82+0.18*rings+0.17*(fine-0.5)+0.25*(noise(x*5,y*30)-0.5)+0.15*(hash(plank,4)-0.5))*seam,bump:0.5+0.18*rings+0.22*(fine-0.5)};
+    const seam=Math.min(v,1-v)<0.002?0.76:1;
+    const age=0.84+0.28*noise(x*7,y*8);
+    const scratch=noise(x*35,y*590)>0.92?1.18:1;
+    return {tone:(0.82+0.18*rings+0.17*(fine-0.5)+0.25*(noise(x*5,y*30)-0.5)+0.15*(hash(plank,4)-0.5))*seam*age*scratch,bump:0.5+0.18*rings+0.22*(fine-0.5)};
   }
   return {
-    map:texture(1024,(x,y)=>{const t=grain(x,y).tone;return [111*t,73*t,44*t]},true),
+    map:texture(1024,(x,y)=>{const t=grain(x,y).tone;return [105*t,65*t,38*t]},true),
     bumpMap:texture(1024,(x,y)=>{const v=grain(x,y).bump*255;return [v,v,v]})
   };
 }

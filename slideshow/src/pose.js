@@ -21,11 +21,12 @@ export function makeShots(count,config={}){
 export function duration(shots){return shots.length?shots.at(-1).start+shots.at(-1).config.flight+shots.at(-1).config.settle+shots.at(-1).config.hold:0;}
 export function pose(shot,time){
   const {config:c}=shot,age=time-shot.start;
-  if(age<0)return {visible:false,x:shot.fromX,z:shot.fromZ,height:0,yaw:shot.yaw,pitch:0,roll:0};
+  const fromX=shot.launchX??shot.fromX,fromZ=shot.launchZ??shot.fromZ;
+  if(age<0)return {visible:false,x:fromX,z:fromZ,height:0,yaw:shot.yaw,pitch:0,roll:0};
   const base=shot.layer*c.thickness;
   if(age<c.flight){
     const u=clamp(age/c.flight),travel=1-Math.pow(1-u,1.35);
-    return {visible:true,x:mix(shot.fromX,shot.x+shot.slideX,travel),z:mix(shot.fromZ,shot.z+shot.slideZ,travel),height:base+.11*(1-u)+.27*4*u*(1-u),yaw:shot.yaw+shot.spin*(1-u)+.11,pitch:shot.tilt*(1-u)+.24*Math.sin(Math.PI*u),roll:shot.roll*(1-u)};
+    return {visible:true,x:mix(fromX,shot.x+shot.slideX,travel),z:mix(fromZ,shot.z+shot.slideZ,travel),height:base+.11*(1-u)+.27*4*u*(1-u),yaw:shot.yaw+shot.spin*(1-u)+.11,pitch:shot.tilt*(1-u)+.24*Math.sin(Math.PI*u),roll:shot.roll*(1-u)};
   }
   const u=clamp((age-c.flight)/c.settle),remain=Math.pow(1-u,3);
   if(u===1)return {visible:true,x:shot.x,z:shot.z,height:base,yaw:shot.yaw,pitch:0,roll:0};

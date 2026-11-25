@@ -1,3 +1,4 @@
+import { frameLaunches } from "./frameLaunches.js";
 import { loadingStage, loadingReady, loadingFailed } from "../../src/playback/loading.ts";
 import { bindPreviewViewport, previewPixelRatio, fitVerticalFov } from "../../src/playback/viewport.ts";
 import { TRACE_QUALITY } from "../../src/rendering/quality.ts";
@@ -78,14 +79,14 @@ function update(t,fromTick=false){
   traceDirty=true;draw();controls.sync(playback);
 }
 function play(value){if(value&&clock>=total)update(0);playback.setPlaying(value);controls.sync(playback);}
-function resizeScene(w,h){camera.aspect=w/h;camera.fov=exportMode?40:fitVerticalFov(40,camera.aspect);camera.updateProjectionMatrix();renderer.setSize(w,h,false);update(clock);}
+function resizeScene(w,h){camera.aspect=w/h;camera.fov=exportMode?40:fitVerticalFov(40,camera.aspect);camera.updateProjectionMatrix();frameLaunches(shots,camera);renderer.setSize(w,h,false);update(clock);}
 bindPreviewViewport(renderer.domElement,controls.ui,resizeScene,exportMode);
 if(exportMode)addEventListener("resize",()=>resizeScene(innerWidth,innerHeight));
 async function init(){
   loadingStage("Downloading photo manifest…");
   const response=await fetch("./slides.json",{signal:AbortSignal.timeout(20000)});if(!response.ok)throw Error("Missing slides.json; run npm run build or npm run dev");
   const manifest=await response.json();if(!manifest.photos.length)throw Error("No photos found");
-  shots=makeShots(manifest.photos.length,manifest.config);total=duration(shots);playback.duration=total;controls.sync(playback);
+  shots=makeShots(manifest.photos.length,manifest.config);frameLaunches(shots,camera);total=duration(shots);playback.duration=total;controls.sync(playback);
   loadingStage("Loading photo prints…",0,manifest.photos.length);
   for(let i=0;i<manifest.photos.length;i++){
     const c=shots[i].config;

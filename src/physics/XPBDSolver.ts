@@ -2,37 +2,23 @@ import type { Particle } from "./Particle";
 import type { DistanceConstraint } from "./DistanceConstraint";
 
 /**
- * Position-Based Dynamics (PBD) solver for a single deformable sheet.
- *
- * This is a plain-data solver: it knows nothing about Three.js. It integrates
- * gravity, predicts positions, and iteratively projects distance constraints,
- * then reconstructs velocities. XPBD compliance can be added later by giving
- * constraints a compliance term; for Milestone 2 we use per-iteration stiffness.
- *
- * Determinism: fixed timestep, fixed iteration count, no randomness. Given the
- * same initial state and the same number of steps, the result is identical.
+ * Deterministic XPBD solver for a deformable paper sheet.
+ * Constraint multipliers are accumulated within a step and reset between steps.
  */
 export class XPBDSolver {
   public readonly particles: Particle[] = [];
   public readonly constraints: DistanceConstraint[] = [];
-
-  /** Fixed timestep in seconds. */
   public readonly dt: number;
-  /** Solver iterations per step. */
   public readonly iterations: number;
-  /** Gravity along -Y (m/s^2). */
   public readonly gravity: number;
-  /** Global velocity damping per step (0..1). 1 = no damping. */
   public damping: number;
-  /**
-   * Optional ground: either a flat plane at `groundY`, or a heightfield
-   * callback `groundHeight(x, z)` returning the surface height at that point.
-   * Particles are clamped to stay at or above the surface (PBD projection after
-   * constraint iterations). A heightfield lets a turning page collide with a
-   * tall book stack on one side and a low surface on the other. `null` disables.
-   */
   public groundY: number | null;
   public groundHeight: ((x: number, z: number) => number) | null;
+  /** Tangential velocity retained after ground contact (0 = no sliding). */
+  public groundFriction: number;
+  /** Normal velocity retained after impact (0 = no bounce). */
+  public groundRestitution: number;
+  private multipliers = new Float64Array(0);
 
   constructor(options?: {
     dt?: number;
@@ -41,6 +27,8 @@ export class XPBDSolver {
     damping?: number;
     groundY?: number | null;
     groundHeight?: ((x: number, z: number) => number) | null;
+    groundFriction?: number;
+    groundRestitution?: number;
   }) {
     this.dt = options?.dt ?? 1 / 120;
     this.iterations = options?.iterations ?? 6;
@@ -48,6 +36,8 @@ export class XPBDSolver {
     this.damping = options?.damping ?? 0.999;
     this.groundY = options?.groundY ?? null;
     this.groundHeight = options?.groundHeight ?? null;
+    this.groundFriction = options?.groundFriction ?? 0.28;
+    this.groundRestitution = options?.groundRestitution ?? 0.015;
   }
 
   addParticle(p: Particle): number {
@@ -57,9 +47,13 @@ export class XPBDSolver {
 
   addConstraint(c: DistanceConstraint): void {
     this.constraints.push(c);
+    if (this.multipliers.length !== this.constraints.length) {
+      const next = new Float64Array(this.constraints.length);
+      next.set(this.multipliers);
+      this.multipliers = next;
+    }
   }
 
-  /** Save current positions into the previous-position slot. */
   private savePrevious(): void {
     for (const p of this.particles) {
       p.px = p.x;
@@ -68,98 +62,136 @@ export class XPBDSolver {
     }
   }
 
-  /** Integrate: apply gravity to velocity, then predict positions. */
   private integrate(): void {
     const dt = this.dt;
     for (const p of this.particles) {
-      if (p.pinned) {
-        p.vx = 0;
-        p.vy = 0;
-        p.vz = 0;
+      if (p.pinned || p.invMass <= 0) {
+        p.vx = p.vy = p.vz = 0;
         continue;
       }
-      // Semi-implicit Euler: v += a*dt ; x += v*dt
-      p.vy += -this.gravity * dt;
+      p.vy -= this.gravity * dt;
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       p.z += p.vz * dt;
     }
   }
 
-  /** Project all distance constraints once. */
+  /**
+   * XPBD distance projection. Compliance makes material response substantially
+   * less dependent on iteration count and timestep than per-iteration stiffness.
+   */
   private solveConstraints(): void {
-    const inv = this.particles.map((p) => p.invMass);
-    for (const c of this.constraints) {
+    const inv = this.particles.map((p) => Math.max(0, p.invMass));
+    const alphaScale = 1 / (this.dt * this.dt);
+    for (let i = 0; i < this.constraints.length; i++) {
+      const c = this.constraints[i];
       const pa = this.particles[c.a];
       const pb = this.particles[c.b];
-      const w = inv[c.a] + inv[c.b];
-      if (w === 0) continue; // both pinned
+      const wa = inv[c.a];
+      const wb = inv[c.b];
+      const w = wa + wb;
+      if (w === 0) continue;
 
-      let dx = pb.x - pa.x;
-      let dy = pb.y - pa.y;
-      let dz = pb.z - pa.z;
+      const dx = pb.x - pa.x;
+      const dy = pb.y - pa.y;
+      const dz = pb.z - pa.z;
       const dist = Math.hypot(dx, dy, dz);
-      if (dist === 0) continue;
+      if (dist < 1e-10) continue;
 
-      // Error between current and rest length.
-      const diff = (dist - c.restLength) / dist;
-      const k = c.stiffness / w;
+      const C = dist - c.restLength;
+      const alpha = Math.max(0, c.compliance ?? 0) * alphaScale;
+      const dlambda = (-C - alpha * this.multipliers[i]) / (w + alpha);
+      this.multipliers[i] += dlambda;
 
-      dx *= diff * k;
-      dy *= diff * k;
-      dz *= diff * k;
-
-      if (!pa.pinned) {
-        pa.x += dx * inv[c.a];
-        pa.y += dy * inv[c.a];
-        pa.z += dz * inv[c.a];
+      const nx = dx / dist;
+      const ny = dy / dist;
+      const nz = dz / dist;
+      if (wa > 0) {
+        pa.x -= wa * nx * dlambda;
+        pa.y -= wa * ny * dlambda;
+        pa.z -= wa * nz * dlambda;
       }
-      if (!pb.pinned) {
-        pb.x -= dx * inv[c.b];
-        pb.y -= dy * inv[c.b];
-        pb.z -= dz * inv[c.b];
+      if (wb > 0) {
+        pb.x += wb * nx * dlambda;
+        pb.y += wb * ny * dlambda;
+        pb.z += wb * nz * dlambda;
       }
     }
   }
 
-  /** Reconstruct velocities from position change, apply damping. */
   private updateVelocities(): void {
     const invDt = 1 / this.dt;
     for (const p of this.particles) {
-      if (p.pinned) continue;
+      if (p.pinned || p.invMass <= 0) continue;
       p.vx = (p.x - p.px) * invDt * this.damping;
       p.vy = (p.y - p.py) * invDt * this.damping;
       p.vz = (p.z - p.pz) * invDt * this.damping;
     }
   }
 
-  /** Clamp particles above the ground (flat plane or heightfield). */
-  private solveGround(): void {
-    if (this.groundHeight) {
-      const h = this.groundHeight;
-      for (const p of this.particles) {
-        if (p.pinned) continue;
-        const g = h(p.x, p.z);
-        if (p.y < g) p.y = g;
+  /** Project positions against the flat ground or sampled heightfield. */
+  private solveGround(): boolean[] {
+    const contacts = new Array<boolean>(this.particles.length).fill(false);
+    if (!this.groundHeight && this.groundY === null) return contacts;
+    for (let i = 0; i < this.particles.length; i++) {
+      const p = this.particles[i];
+      if (p.pinned || p.invMass <= 0) continue;
+      const ground = this.groundHeight
+        ? this.groundHeight(p.x, p.z)
+        : this.groundY as number;
+      if (p.y < ground) {
+        p.y = ground;
+        contacts[i] = true;
       }
-      return;
     }
-    if (this.groundY === null) return;
-    const g = this.groundY;
-    for (const p of this.particles) {
-      if (p.pinned) continue;
-      if (p.y < g) p.y = g;
+    return contacts;
+  }
+
+  /**
+   * Remove inward normal velocity and damp tangential motion at contact.
+   * Heightfield normals are estimated locally so pages slide along book stacks.
+   */
+  private solveContactVelocity(contacts: boolean[]): void {
+    const friction = Math.max(0, Math.min(1, this.groundFriction));
+    const restitution = Math.max(0, Math.min(1, this.groundRestitution));
+    const h = this.groundHeight;
+    for (let i = 0; i < contacts.length; i++) {
+      if (!contacts[i]) continue;
+      const p = this.particles[i];
+      let nx = 0, ny = 1, nz = 0;
+      if (h) {
+        const e = 0.001;
+        const dhdx = (h(p.x + e, p.z) - h(p.x - e, p.z)) / (2 * e);
+        const dhdz = (h(p.x, p.z + e) - h(p.x, p.z - e)) / (2 * e);
+        const length = Math.hypot(dhdx, 1, dhdz);
+        nx = -dhdx / length;
+        ny = 1 / length;
+        nz = -dhdz / length;
+      }
+      const vn = p.vx * nx + p.vy * ny + p.vz * nz;
+      if (vn < 0) {
+        const impulse = (1 + restitution) * vn;
+        p.vx -= impulse * nx;
+        p.vy -= impulse * ny;
+        p.vz -= impulse * nz;
+      }
+      const normalSpeed = p.vx * nx + p.vy * ny + p.vz * nz;
+      const tx = p.vx - normalSpeed * nx;
+      const ty = p.vy - normalSpeed * ny;
+      const tz = p.vz - normalSpeed * nz;
+      p.vx = normalSpeed * nx + tx * (1 - friction);
+      p.vy = normalSpeed * ny + ty * (1 - friction);
+      p.vz = normalSpeed * nz + tz * (1 - friction);
     }
   }
 
-  /** Advance the simulation by one fixed step. */
   step(): void {
     this.savePrevious();
     this.integrate();
-    for (let i = 0; i < this.iterations; i++) {
-      this.solveConstraints();
-    }
-    this.solveGround();
+    this.multipliers.fill(0);
+    for (let i = 0; i < this.iterations; i++) this.solveConstraints();
+    const contacts = this.solveGround();
     this.updateVelocities();
+    this.solveContactVelocity(contacts);
   }
 }

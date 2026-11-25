@@ -2,6 +2,7 @@ import { spawnSync, execFileSync } from "node:child_process";
 import { mkdirSync, existsSync, readFileSync, writeFileSync, renameSync, statSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { chromium } from "playwright";
+import { renderFrame } from "./lib/render-progress.mjs";
 import { isWSL, launchWindowsWorker } from "./lib/windows-browser.mjs";
 import { launchPreviewBrowser, isSoftwareRenderer } from "./lib/browser.mjs";
 import { startPreviewServer, stopPreviewServer } from "./lib/server.mjs";
@@ -14,11 +15,14 @@ const {values:o}=parseArgs({options:{
   output:{type:"string",default:"renders/final.mp4"},frames:{type:"string"},
   start:{type:"string",default:"0"},duration:{type:"string"},port:{type:"string",default:"4319"},
   "allow-software":{type:"boolean",default:false},headless:{type:"boolean",default:false},
+  verbose:{type:"boolean",default:false},"status-interval":{type:"string",default:"5"},
   "frames-only":{type:"boolean",default:false},help:{type:"boolean",default:false}
 }});
-if(o.help){console.log("npm run render:video -- [--width 1920 --height 1080 --fps 60 --samples 384 --bounces 10 --output renders/final.mp4 --start 0 --duration seconds --frames folder --headless --allow-software --frames-only]");process.exit(0);}
+if(o.help){console.log("npm run render:video -- [--width 1920 --height 1080 --fps 60 --samples 384 --bounces 10 --output renders/final.mp4 --start 0 --duration seconds --frames folder --headless --verbose --status-interval 5 --allow-software --frames-only]");process.exit(0);}
 function positive(s,name){const n=Number(s);if(!Number.isInteger(n)||n<1)throw Error("Invalid "+name);return n;}
 const width=positive(o.width,"width"),height=positive(o.height,"height"),fps=positive(o.fps,"fps"),samples=positive(o.samples,"samples"),bounces=positive(o.bounces,"bounces"),port=positive(o.port,"port");
+const statusInterval=Number(o["status-interval"]);
+if(!Number.isFinite(statusInterval)||statusInterval<=0)throw Error("Invalid --status-interval");
 if(width%2||height%2)throw Error("MP4 requires even width and height");
 const start=Number(o.start),requested=o.duration===undefined?null:Number(o.duration);
 if(!Number.isFinite(start)||start<0||requested!==null&&(!Number.isFinite(requested)||requested<=0))throw Error("Invalid start/duration");
@@ -33,12 +37,19 @@ function validPng(p){try{const b=readFileSync(p);return b.length>33&&b.subarray(
 const url="http://127.0.0.1:"+port+"/";
 let server,browser,worker,page,info;
 const errors=[];
+const log=(...args)=>console.log("[render]",...args);
+const elapsedText=s=>s<60?s.toFixed(1)+"s":s<3600?(s/60).toFixed(1)+"m":(s/3600).toFixed(2)+"h";
 try{
+  log("Starting export | "+width+"x"+height+" | "+fps+" fps | "+samples+" spp | "+bounces+" bounces | "+(o.headless?"headless":"headed"));
+  log("Output:",output);log("Frames:",dir);log("Building production bundle");
   run(process.execPath,["node_modules/vite/bin/vite.js","build"]);
+  log("Build complete");
   if(isWSL() && !process.env.RENDER_WSL_LINUX_BROWSER){
-    worker=await launchWindowsWorker({width,height,headless:o.headless});
+    log("Launching Windows-native GPU worker");
+    worker=await launchWindowsWorker({width,height,headless:o.headless,verbose:o.verbose});
     info=worker.info;
   }else{
+  log("Launching local browser");
   server=await startPreviewServer({url,port});
   browser=o.headless?(await launchPreviewBrowser()).browser:await chromium.launch({headless:false,channel:"chromium",args:["--enable-gpu","--ignore-gpu-blocklist","--disable-background-timer-throttling","--disable-renderer-backgrounding",...(process.env.PREVIEW_GPU_ARGS??"").trim().split(/\s+/).filter(Boolean)]});
   page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1});
@@ -62,28 +73,44 @@ try{
   if(existsSync(manifest)&&JSON.stringify(JSON.parse(readFileSync(manifest,"utf8")))!==JSON.stringify(config))throw Error("Frame directory settings changed. Choose a new --frames directory.");
   writeFileSync(manifest,JSON.stringify(config,null,2));
   console.log(count+" frames | "+width+"x"+height+" | "+fps+" fps | "+samples+" spp");
+  let rendered=0,totalSeconds=0;
   for(let i=0;i<count;i++){
     const file=join(dir,frameName(i));
     if(validPng(file)){console.log("Resume "+(i+1)+"/"+count);continue;}
     if(errors.length)throw Error(errors.join("\n"));
     const time=Math.min(info.duration,(start+i/fps)*info.rate);
+    const frameStart=Date.now();
+    log("Frame "+(i+1)+"/"+count+" started | timeline "+time.toFixed(3)+"s");
+    let lastProgress=null;
+    const report=p=>{
+      lastProgress=p;
+      const n=p.status?.samples??0;
+      const rate=n>0&&p.elapsed>0?n/p.elapsed:0;
+      log("Frame "+(i+1)+"/"+count+" | "+p.phase+" | "+Math.floor(n)+"/"+samples+" spp | elapsed "+elapsedText(p.elapsed)+(rate>0?" | "+rate.toFixed(2)+" spp/s | frame ETA ~"+elapsedText(Math.max(0,(samples-n)/rate)):""));
+    };
+    // Parent heartbeat continues even if the native worker or CDP is blocked.
+    let lastReport=Date.now();
+    const receive=p=>{lastReport=Date.now();report(p);};
+    const heartbeat=setInterval(()=>{
+      if(Date.now()-lastReport>=statusInterval*1000)log("Frame "+(i+1)+"/"+count+" | waiting for renderer response | elapsed "+elapsedText((Date.now()-frameStart)/1000)+(lastProgress?" | last reported "+lastProgress.phase:""));
+    },statusInterval*1000);
     let png;
-    if(worker)png=await worker.frame({time,samples,bounces});
-    else{
-    await page.evaluate(({time,samples,bounces})=>window.__demo.exportFrame(time,samples,bounces),{time,samples,bounces});
-    await page.waitForFunction(()=>{const r=window.__demo.renderStatus();return r.error||r.mode!=="cinematic"||r.samples>=r.target;},null,{timeout:0,polling:100});
-    const status=await page.evaluate(()=>window.__demo.renderStatus());
-    if(status.error||status.mode!=="cinematic")throw Error("Ray tracing failed: "+status.error);
-    png=await page.evaluate(()=>window.__demo.captureFrame());
-    }
+    try{
+      const args={time,samples,bounces,statusInterval};
+      png=worker?await worker.frame(args,receive):await renderFrame(page,args,receive);
+    }finally{clearInterval(heartbeat);}
+    if(o.verbose)log("Writing PNG:",file);
     writeFileSync(file+".tmp",Buffer.from(png.split(",")[1],"base64"));
     if(!validPng(file+".tmp"))throw Error("Invalid frame "+i);
     renameSync(file+".tmp",file);
-    console.log("Rendered "+(i+1)+"/"+count+" | t="+time.toFixed(3));
+    const seconds=(Date.now()-frameStart)/1000;
+    rendered++;totalSeconds+=seconds;
+    log("Frame "+(i+1)+"/"+count+" complete | "+elapsedText(seconds)+" | "+((i+1)/count*100).toFixed(2)+"% | estimated remaining "+elapsedText((count-i-1)*totalSeconds/rendered));
   }
   if(!o["frames-only"]){
     mkdirSync(resolve(output,".."),{recursive:true});
     const tmp=output.replace(/\.mp4$/i,"")+".partial.mp4";
+    log("Encoding MP4 with FFmpeg:",ffmpeg);
     run(ffmpeg,["-y","-framerate",String(fps),"-start_number","0","-i",encodePath(join(dir,"frame-%06d.png")),"-frames:v",String(count),"-c:v","libx264","-preset","slow","-crf","15","-pix_fmt","yuv420p","-movflags","+faststart",encodePath(tmp)]);
     renameSync(tmp,output);
     console.log("Video: "+output+" ("+statSync(output).size+" bytes)");

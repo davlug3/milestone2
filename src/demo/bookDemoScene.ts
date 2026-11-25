@@ -689,7 +689,7 @@ export function startBookDemo(container: HTMLElement): () => void {
       if (trace.mode !== 'cinematic' || !trace.complete || trace.error) throw Error('Frame not ready');
       return renderer.domElement.toDataURL('image/png');
     },
-    renderStatus: () => ({mode:trace.mode,samples:trace.samples,target:trace.goal,error:trace.error}),
+    renderStatus: () => ({mode:trace.mode,samples:trace.samples,target:trace.goal,error:trace.error,complete:trace.complete,phase:trace.phase}),
     /** WebGL backend actually in use (hardware GPU or software renderer). */
     gpu: () => {
       const gl = renderer.getContext();

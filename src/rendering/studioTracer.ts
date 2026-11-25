@@ -23,7 +23,8 @@ export class StudioTracer {
     this.mode=mode;
     this.invalidate();
   }
-  get samples(){return this.tracer?.samples ?? 0;}
+  get samples(){return this.dirty ? 0 : (this.tracer?.samples ?? 0);}
+  get phase(){return this.dirty?'preparing scene / BVH':this.complete?'complete':this.samples>0?'accumulating samples':'waiting for shader / first sample';}
   get goal(){return this.mode==="real-time"?0:(this.mode==='cinematic' && this.exportQuality ? this.exportQuality : TRACE_SETTINGS[this.mode]).samples;}
   get complete(){return !this.dirty && this.samples>=this.goal;}
   draw(rasterOnly=false){

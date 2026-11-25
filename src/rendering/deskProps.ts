@@ -44,12 +44,12 @@ export function createDeskProps(scene:THREE.Scene){
  const profile=[[0,.007],[.009,.007],[.010,.013],[.006,.021],[.007,.031],[.012,.038],[.013,.046],[.009,.053],[0,.055]].map(([r,y])=>new THREE.Vector2(r,y));
  part(new THREE.LatheGeometry(profile,24),wood,stamp,0,0,0);
  // Two understated overlapping paper slips behind the left side.
- const slips=group("loose-paper-slips",-.293,-.197,-.14);
+ const slips=group("loose-paper-slips",-.190,-.212,-.14);
  for(let i=0;i<3;i++){
   const slip=part(new RoundedBoxGeometry(.071,.0009,.045,2,.0004),i?paper:darkPaper,slips,i*.004,.00055+i*.001,i*.003);
   slip.rotation.y=i*.19;
  }
- const bottle=group("ink-bottle",-.303,-.118,-.19);
+ const bottle=group("ink-bottle",-.310,-.107,-.19);
  part(new THREE.CylinderGeometry(.023,.026,.036,8),ink,bottle,0,.018,0);
  part(new THREE.CylinderGeometry(.012,.023,.012,8),ink,bottle,0,.042,0);
  part(new THREE.CylinderGeometry(.013,.013,.009,16),black,bottle,0,.052,0);

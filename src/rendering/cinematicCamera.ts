@@ -1,11 +1,12 @@
 import { clamp01 } from "../animation/easing";
 
-/** Fixed full-frame lens, with the entire 36x24 gate visible at every aspect. */
+/** Fixed 85mm full-frame lens, using a 36mm-wide 16:9 crop in the presentation. */
 export const CAMERA_FOCAL_MM = 85;
 export const CAMERA_SENSOR_W_MM = 36;
 export const CAMERA_SENSOR_H_MM = 24;
+export const BOOK_ASPECT = 16/9;
 export function cameraVerticalFov(aspect: number): number {
-  const gateHeight = Math.max(CAMERA_SENSOR_H_MM, CAMERA_SENSOR_W_MM / Math.max(aspect, 0.01));
+  const gateHeight = CAMERA_SENSOR_W_MM / Math.max(aspect, 0.01);
   return 2 * Math.atan(gateHeight / (2 * CAMERA_FOCAL_MM)) * 180 / Math.PI;
 }
 

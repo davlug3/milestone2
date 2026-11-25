@@ -1,3 +1,4 @@
+import {createFlowerVase} from "../rendering/flowerVase";
 import {createStudioWall} from "../rendering/studioWall";
 import {restingPageWear,freePageWear} from "../paper/pageShape";
 import {createDeskProps} from "../rendering/deskProps";
@@ -8,7 +9,7 @@ import * as THREE from "three";
 import { BlenderExport } from "../rendering/blenderExport";
 import { StudioTracer, PhysicalCamera, type RenderMode } from "../rendering/studioTracer";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { cameraVerticalFov, cinematicCameraPose, CAMERA_SENSOR_W_MM, CAMERA_FOCAL_MM } from "../rendering/cinematicCamera";
+import { cameraVerticalFov, cinematicCameraPose, CAMERA_SENSOR_W_MM, CAMERA_FOCAL_MM, BOOK_ASPECT } from "../rendering/cinematicCamera";
 import { BOOK_DIMENSIONS } from "../config/bookConfig";
 import { createBookMaterials } from "../book/materials";
 import { createCover } from "../book/cover";
@@ -181,7 +182,7 @@ export function startBookDemo(container: HTMLElement): () => void {
   scene.environmentIntensity = 0.16;
 
   // Full-frame 85mm prime; fit the full sensor gate to the viewport.
-  const aspect = window.innerWidth / window.innerHeight;
+  const aspect = BOOK_ASPECT;
   const camera = new PhysicalCamera(cameraVerticalFov(aspect), aspect, 0.01, 100);
   camera.filmGauge = CAMERA_SENSOR_W_MM;
   camera.fStop = 4.5;
@@ -204,6 +205,7 @@ export function startBookDemo(container: HTMLElement): () => void {
   const disposeTable = createStudioTable(scene);
   const disposeWall = createStudioWall(scene);
   const disposeProps = createDeskProps(scene);
+  const disposeFlowers = createFlowerVase(scene);
 
   // --- Static book parts (closed on the right; gutter at x=0) --------------
   const materials = createBookMaterials();
@@ -663,7 +665,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     trace.invalidate();
   }
   const fixedViewport=geometryOnly||new URLSearchParams(location.search).has("export");
-  const unbindViewport=bindPreviewViewport(renderer.domElement,controls.ui,resizeScene,fixedViewport);
+  const unbindViewport=bindPreviewViewport(renderer.domElement,controls.ui,resizeScene,fixedViewport,BOOK_ASPECT);
   function onResize():void { if(fixedViewport)resizeScene(window.innerWidth,window.innerHeight); }
   window.addEventListener("resize", onResize);
 
@@ -841,6 +843,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     spineCoverGeo.dispose();
     headbandGeo.dispose();
     prints.dispose();
+    disposeFlowers();
     disposeProps();
     disposeWall();
     disposeTable();

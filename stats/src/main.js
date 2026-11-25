@@ -42,8 +42,6 @@ function draw(){
  }
  if(layer!=="background"){
  ctx.textAlign="center";ctx.textBaseline="middle";
- ctx.fillStyle=gold;ctx.font="500 24px system-ui";ctx.letterSpacing="5px";ctx.fillText("IMPACT IN NUMBERS",W/2,89);ctx.letterSpacing="0px";
- ctx.fillRect(W/2-42,115,84,3);
  ctx.save();ctx.globalAlpha=p.entrance*p.exit;ctx.translate(0,36*(1-p.entrance)-18*(1-p.exit));
  const num=numberText(s.number,p.countProgress),title=layoutLines(s.title,1510,86,"600 SIZEpx system-ui",2);
  const subtitle=s.subtitle?layoutLines(s.subtitle,1400,38,"400 SIZEpx system-ui",2):null;

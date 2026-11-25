@@ -1,3 +1,4 @@
+import {visualStyle,addStyleControl} from "../rendering/visualStyle";
 import {createRenderPasses,type PassName} from "../rendering/renderPasses";
 import {browserQuality,QUALITY_PROFILES,qualityOptions,changeQuality} from "../rendering/quality";
 import {createOrnamentalPlant} from "../rendering/ornamentalPlant";
@@ -157,7 +158,7 @@ interface PageInstance {
 export function startBookDemo(container: HTMLElement): () => void {
   loadingStage("Initializing WebGL renderer…");
   // --- Renderer / scene / camera ------------------------------------------
-  const query=new URLSearchParams(location.search);
+  const query=new URLSearchParams(location.search),style=visualStyle(query),luxury=style==="luxury";
   const qualityName=browserQuality(query),quality=QUALITY_PROFILES[qualityName];
   const renderer = new THREE.WebGLRenderer({
     antialias: true,
@@ -170,21 +171,21 @@ export function startBookDemo(container: HTMLElement): () => void {
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.72;
+  renderer.toneMappingExposure = luxury?0.80:0.72;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   container.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0c0d10);
-  scene.fog = new THREE.Fog(0x0c0d10, 4.0, 9.0);
+  scene.background = new THREE.Color(luxury?0x0c1713:0x0c0d10);
+  scene.fog = new THREE.Fog(luxury?0x0c1713:0x0c0d10, 4.0, 9.0);
   const pmrem = new THREE.PMREMGenerator(renderer);
   const room = new RoomEnvironment();
   const environment = pmrem.fromScene(room, 0.04);
   room.dispose();
   pmrem.dispose();
   scene.environment = environment.texture;
-  scene.environmentIntensity = 0.085;
+  scene.environmentIntensity = luxury?.10:.085;
 
   // Full-frame 85mm prime; fit the full sensor gate to the viewport.
   const aspect = BOOK_ASPECT;
@@ -206,7 +207,7 @@ export function startBookDemo(container: HTMLElement): () => void {
   }
   updateCamera(0);
 
-  addStudioLighting(scene);
+  addStudioLighting(scene,luxury);
   const disposeTable = createStudioTable(scene,quality.woodSize);
   const disposeWall = createStudioWall(scene);
   const disposeProps = createDeskProps(scene);
@@ -483,6 +484,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     for(let o:THREE.Object3D|null=mesh;o;o=o.parent)if(o===backCover||o===boundBlock||o===spineCover||o===coverPivot||pages.some(p=>p.mesh===o)||staticSheets.some(p=>p.mesh===o)||headbands.some(h=>h===o))return true;
     return false;
   },()=>trace.draw(playback.playing&&trace.mode==="ray-traced"));
+  addStyleControl(controls.ui,style);
   passes.addUI(controls.ui,()=>{setPlaying(false);trace.invalidate();});
   function onContextLost(event:Event){event.preventDefault();gpuLost=true;setPlaying(false);controls.setFrameProgress({phase:"GPU context lost · recovering",ready:false});controls.samples.textContent="Graphics memory limit reached. If recovery stalls, reload in real-time mode.";}
   function onContextRestored(){gpuLost=false;trace.recover();controls.mode.value="real-time";}

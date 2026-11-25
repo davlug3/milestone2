@@ -1,3 +1,5 @@
+import {UnrealBloomPass} from "three/addons/postprocessing/UnrealBloomPass.js";
+import {visualStyle,addStyleControl,LUXURY} from "../../src/rendering/visualStyle.ts";
 import * as THREE from "three";
 import {PhysicalCamera,PhysicalSpotLight,WebGLPathTracer,GradientEquirectTexture} from "three-gpu-pathtracer";
 import {EffectComposer} from "three/addons/postprocessing/EffectComposer.js";
@@ -13,14 +15,15 @@ import {loadingStage,loadingReady,loadingFailed} from "../../src/playback/loadin
 import {createRenderPasses} from "../../src/rendering/renderPasses.ts";
 import {makeLayout,floatPose,memoryCamera,SECONDS} from "./motion.js";
 const query=new URLSearchParams(location.search),exportMode=query.has("export"),qualityName=browserQuality(query),profile=QUALITY_PROFILES[qualityName];
+const style=visualStyle(query),luxury=style==="luxury";
 async function boot(){
  await new Promise(r=>requestAnimationFrame(r));loadingStage("Building floating memories…");
  const renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:exportMode,powerPreference:"high-performance"});
- renderer.setPixelRatio(exportMode?1:Math.min(devicePixelRatio||1,profile.dpr));renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=.94;document.body.prepend(renderer.domElement);
- const scene=new THREE.Scene();scene.background=new THREE.Color(0x0e171a);scene.fog=new THREE.FogExp2(0x0e171a,.065);
- const camera=new PhysicalCamera(39.6,16/9,.035,150);camera.filmGauge=36;camera.setFocalLength(50);camera.fStop=2.8;camera.focusDistance=1.1;
+ renderer.setPixelRatio(exportMode?1:Math.min(devicePixelRatio||1,profile.dpr));renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=luxury?.99:.94;document.body.prepend(renderer.domElement);
+ const scene=new THREE.Scene();scene.background=new THREE.Color(luxury?0x0c1c17:0x0e171a);scene.fog=new THREE.FogExp2(luxury?0x0c1c17:0x0e171a,luxury?.095:.065);
+ const camera=new PhysicalCamera(39.6,16/9,.035,150);camera.filmGauge=36;camera.setFocalLength(50);camera.fStop=luxury?1.8:2.8;camera.focusDistance=1.1;
  const env=new GradientEquirectTexture(128);env.topColor.set(0xb4c2d2);env.bottomColor.set(0x33241b);env.update();scene.environment=env;scene.environmentIntensity=.31;
- const composer=new EffectComposer(renderer),bokeh=new BokehPass(scene,camera,{focus:1.1,aperture:.018,maxblur:.014});composer.addPass(new RenderPass(scene,camera));composer.addPass(bokeh);composer.addPass(new OutputPass());let dofError="";
+ const composer=new EffectComposer(renderer),bokeh=new BokehPass(scene,camera,{focus:1.1,aperture:luxury?.026:.018,maxblur:luxury?.019:.014});composer.addPass(new RenderPass(scene,camera));composer.addPass(bokeh);if(luxury)composer.addPass(new UnrealBloomPass(new THREE.Vector2(1,1),.18,.45,.85));composer.addPass(new OutputPass());let dofError="";
  const manifestResponse=await fetch("../slideshow/slides.json",{signal:AbortSignal.timeout(20000)});if(!manifestResponse.ok)throw Error("Photo manifest unavailable");const manifest=await manifestResponse.json();if(!manifest.photos.length)throw Error("No photos");
  const count=manifest.photos.length,duration=count*SECONDS,clock=new PlaybackClock(duration,1),layout=makeLayout(count),cards=[],photoMeshes=new Set();
  const config={width:.46,depth:.322,thickness:.00065,flight:1.25,settle:.85},loader=new THREE.TextureLoader(),materials=[];
@@ -28,7 +31,7 @@ async function boot(){
  for(let i=0;i<count;i++){
   loadingStage("Loading memories…",i,count);let timer;const source=await Promise.race([loader.loadAsync(new URL(manifest.photos[i],new URL("../slideshow/",location.href)).href),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error("Photo "+(i+1)+" timed out")),20000);})]).finally(()=>clearTimeout(timer));
   const tex=printTexture(source.image,config,renderer.capabilities.getMaxAnisotropy(),profile.photoWidth);source.dispose();
-  materials.push(new THREE.MeshPhysicalMaterial({map:tex,roughness:.55,clearcoat:.15,clearcoatRoughness:.44}));
+  materials.push(new THREE.MeshPhysicalMaterial({map:tex,roughness:luxury?.39:.55,clearcoat:luxury?.30:.15,clearcoatRoughness:luxury?.32:.44}));
  }
  // True front/back/edge paper surfaces. The rest shape comes from the shared tabletop print geometry.
  // Free-flight deformation is a small deterministic flex field around its curved rest shape.
@@ -40,19 +43,19 @@ async function boot(){
   cards.push({spec,pivot,surfaces});
  }
  // A sparse constellation of gold dust, modeled as small emissive spheres, shared geometry/material.
- const rng=random(821),dustGeo=new THREE.SphereGeometry(.0045,6,4),dustMat=new THREE.MeshStandardMaterial({color:0xbca67b,emissive:0xa77a39,emissiveIntensity:.32,roughness:.5});
+ const rng=random(821),dustGeo=new THREE.SphereGeometry(.0045,6,4),dustMat=new THREE.MeshStandardMaterial({color:0xbca67b,emissive:0xa77a39,emissiveIntensity:luxury?.55:.32,roughness:.5});
  const dust=[];
  for(let i=0;i<count*18;i++){const o=new THREE.Mesh(dustGeo,dustMat);const base={x:(rng()-.5)*3.4,y:.35+rng()*2.2,z:-rng()*(count*1.35+1.5),phase:rng()*6.283};o.scale.setScalar(.35+rng()*.85);scene.add(o);dust.push({o,...base});}
- const key=new PhysicalSpotLight(0xffe4bb,9,8,Math.PI/3,.92,2);key.radius=.50;scene.add(key,key.target);
- const fill=new THREE.DirectionalLight(0xb1cbff,.75);fill.position.set(-2,2,1);scene.add(fill);
- const rim=new PhysicalSpotLight(0xffc48c,6,7,Math.PI/3,.8,2);rim.radius=.25;scene.add(rim,rim.target);
+ const key=new PhysicalSpotLight(luxury?LUXURY.key:0xffe4bb,luxury?10.5:9,8,Math.PI/3,.92,2);key.radius=.50;scene.add(key,key.target);
+ const fill=new THREE.DirectionalLight(luxury?LUXURY.fill:0xb1cbff,luxury?.55:.75);fill.position.set(-2,2,1);scene.add(fill);
+ const rim=new PhysicalSpotLight(luxury?LUXURY.rim:0xffc48c,luxury?7.5:6,7,Math.PI/3,.8,2);rim.radius=.25;scene.add(rim,rim.target);
  scene.add(new THREE.HemisphereLight(0xc8d5e7,0x433125,.35));
  let tracer=null,mode="raster",dirty=true,target=profile.preview.samples,traceError="";
  function setMode(m){mode=m;target=m==="cinematic"?profile.cinematic.samples:profile.preview.samples;dirty=true;traceError="";controls.mode.value=m;}
  function traceDraw(){if(!tracer){if(!renderer.extensions.has("EXT_color_buffer_float"))throw Error("Floating point render targets unavailable");tracer=new WebGLPathTracer(renderer);tracer.textureSize.set(profile.atlas,profile.atlas);tracer.renderDelay=0;tracer.minSamples=1;tracer.fadeDuration=0;tracer.tiles.set(profile.tiles,profile.tiles);}if(dirty){const q=mode==="cinematic"||exportMode?profile.cinematic:profile.preview;tracer.bounces=q.bounces;tracer.renderScale=exportMode?1:q.scale;tracer.setScene(scene,camera);tracer.reset();dirty=false;}tracer.pausePathTracing=tracer.samples>=target;tracer.renderSample();controls.setFrameProgress({phase:"Accumulating samples",samples:tracer.samples,target});}
  function beauty(){if(mode==="cinematic"||mode==="raytrace"&&!clock.playing){try{traceDraw();return;}catch(e){setMode("raster");traceError=String(e);}}if(!dofError){try{bokeh.uniforms.focus.value=camera.focusDistance;composer.render();}catch(e){dofError=String(e);renderer.render(scene,camera);}}else renderer.render(scene,camera);controls.setFrameProgress({phase:dofError?"Real-time":"Real-time · depth of field",ready:true});controls.samples.textContent=traceError||dofError;}
  const controls=createPlaybackControls({modes:[{value:"raster",label:"Real-time"},{value:"raytrace",label:"Ray-traced preview"},{value:"cinematic",label:"Cinematic"}],quality:{value:qualityName,options:qualityOptions(),onChange:changeQuality},onToggle:()=>{if(clock.time>=duration)seek(0);clock.setPlaying(!clock.playing);controls.sync(clock);},onRestart:()=>{seek(0);clock.setPlaying(true);},onSeek:t=>{clock.setPlaying(false);seek(t);},onMode:m=>{clock.setPlaying(false);setMode(m);draw();},hidden:exportMode});
- const passes=createRenderPasses(renderer,scene,camera,mesh=>photoMeshes.has(mesh),beauty);passes.addUI(controls.ui,()=>{clock.setPlaying(false);dirty=true;draw();});
+ const passes=createRenderPasses(renderer,scene,camera,mesh=>photoMeshes.has(mesh),beauty);addStyleControl(controls.ui,style);passes.addUI(controls.ui,()=>{clock.setPlaying(false);dirty=true;draw();});
  function draw(){if(passes.pass==="beauty")beauty();else{passes.render();controls.setFrameProgress({phase:"Render pass · "+passes.pass,ready:true});}}
  function seek(t,fromTick=false){if(!fromTick)clock.seek(t);t=clock.time;
   for(const {spec,pivot,surfaces} of cards){const p=floatPose(spec,t);pivot.position.set(p.x,p.y,p.z);pivot.rotation.set(p.pitch,p.yaw,p.roll,"YXZ");

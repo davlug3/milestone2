@@ -1,3 +1,4 @@
+import {visualStyle,addStyleControl,LUXURY} from "../../src/rendering/visualStyle.ts";
 import {createRenderPasses} from "../../src/rendering/renderPasses.ts";
 import { frameLaunches } from "./frameLaunches.js";
 import { loadingStage, loadingReady, loadingFailed } from "../../src/playback/loading.ts";
@@ -18,18 +19,19 @@ await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resol
 const renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:exportMode,powerPreference:"high-performance"});
 renderer.setPixelRatio(exportMode?1:Math.min(devicePixelRatio||1,profile.dpr));
 renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;
-renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=.86;
+const style=visualStyle(),luxury=style==="luxury";
+renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=luxury?.91:.86;
 renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 document.body.prepend(renderer.domElement);
-const scene=new THREE.Scene();scene.background=new THREE.Color(0x1d150f);
+const scene=new THREE.Scene();scene.background=new THREE.Color(luxury?0x111b16:0x1d150f);
 const camera=new THREE.PerspectiveCamera(exportMode?40:fitVerticalFov(40,innerWidth/innerHeight),innerWidth/innerHeight,.02,8);
-const key=new PhysicalSpotLight(0xffe3c7,3.6,4,Math.PI/3,.95,2);
+const key=new PhysicalSpotLight(luxury?LUXURY.key:0xffe3c7,luxury?4.0:3.6,4,Math.PI/3,.95,2);
 key.radius=.48;key.position.set(-.55,.94,.30);key.target.position.set(0,0,0);key.castShadow=true;key.shadow.mapSize.set(2048,2048);
 key.shadow.camera.near=.08;key.shadow.camera.far=3;key.shadow.radius=5;key.shadow.blurSamples=16;key.shadow.bias=-.00004;key.shadow.normalBias=.0003;scene.add(key,key.target);
-const fill=new THREE.DirectionalLight(0xd8e5ff,.48);fill.position.set(.8,.85,-.6);scene.add(fill);
-const rim=new THREE.DirectionalLight(0xffe8d0,.12);rim.position.set(.1,.6,-.8);scene.add(rim);
-scene.add(new THREE.HemisphereLight(0xffecd8,0x66503e,.34));
-const environment=new GradientEquirectTexture(128);environment.topColor.set(0x9ca8c4);environment.bottomColor.set(0x27190f);environment.update();
+const fill=new THREE.DirectionalLight(luxury?LUXURY.fill:0xd8e5ff,luxury?.35:.48);fill.position.set(.8,.85,-.6);scene.add(fill);
+const rim=new THREE.DirectionalLight(luxury?LUXURY.rim:0xffe8d0,luxury?.28:.12);rim.position.set(.1,.6,-.8);scene.add(rim);
+scene.add(new THREE.HemisphereLight(0xffecd8,luxury?0x35473b:0x66503e,luxury?.27:.34));
+const environment=new GradientEquirectTexture(128);environment.topColor.set(0x9ca8c4);environment.bottomColor.set(luxury?0x19251c:0x27190f);environment.update();
 scene.environment=environment;scene.environmentIntensity=.27;
 let tracer=null,mode="raster",traceDirty=true,traceError="",target=profile.preview.samples;
 
@@ -62,7 +64,7 @@ function walnut(){
   }
   ctx.putImageData(im,0,0);const tex=new THREE.CanvasTexture(c);tex.colorSpace=THREE.SRGBColorSpace;tex.anisotropy=renderer.capabilities.getMaxAnisotropy();return tex;
 }
-const wood=walnut(),table=new THREE.Mesh(new THREE.PlaneGeometry(2.2,1.6),new THREE.MeshStandardMaterial({map:wood,color:new THREE.Color().setScalar(.82),roughness:.78}));
+const wood=walnut(),table=new THREE.Mesh(new THREE.PlaneGeometry(2.2,1.6),new THREE.MeshStandardMaterial({map:wood,color:new THREE.Color().setScalar(luxury?.66:.82),roughness:luxury?.68:.78}));
 table.rotation.x=-Math.PI/2;table.receiveShadow=true;scene.add(table);
 const loader=new THREE.TextureLoader(),cards=[];
 const paper=new THREE.MeshPhysicalMaterial({color:0xf4eee3,roughness:.82,sheen:.08});
@@ -70,7 +72,7 @@ const edge=new THREE.MeshStandardMaterial({color:0xe1d8c9,roughness:.9});
 let shots=[],total=0,clock=0;
 const playback=new PlaybackClock(0);
 const controls=createPlaybackControls({quality:{value:qualityName,options:qualityOptions(),onChange:changeQuality},modes:[{value:"raster",label:"Real-time"},{value:"raytrace",label:"Ray-traced preview"},{value:"cinematic",label:"Cinematic"}],onToggle:()=>play(!playback.playing),onRestart:()=>{update(0);play(true);},onSeek:t=>{play(false);update(t);},onMode:m=>{play(false);setMode(m);draw();},hidden:exportMode});
-const passes=createRenderPasses(renderer,scene,camera,mesh=>cards.some(card=>mesh.parent===card),beautyDraw);passes.addUI(controls.ui,()=>{play(false);traceDirty=true;draw();});
+const passes=createRenderPasses(renderer,scene,camera,mesh=>cards.some(card=>mesh.parent===card),beautyDraw);addStyleControl(controls.ui,style);passes.addUI(controls.ui,()=>{play(false);traceDirty=true;draw();});
 controls.sync(playback);
 
 function update(t,fromTick=false){
@@ -96,7 +98,7 @@ async function init(){
     const c=shots[i].config;
     let timer;const source=await Promise.race([loader.loadAsync(manifest.photos[i]),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error("Photo "+(i+1)+" failed to load in time")),20000);})]).finally(()=>clearTimeout(timer));
     const tex=printTexture(source.image,c,renderer.capabilities.getMaxAnisotropy(),profile.photoWidth);source.dispose();
-    const front=new THREE.MeshPhysicalMaterial({map:tex,roughness:.43,clearcoat:.22,clearcoatRoughness:.46});
+    const front=new THREE.MeshPhysicalMaterial({map:tex,roughness:luxury?.36:.43,clearcoat:luxury?.31:.22,clearcoatRoughness:luxury?.35:.46});
     const card=createPhoto(c,shapeFor(c.seed,i),{front,back:paper,edge});
     scene.add(card);cards.push(card);loadingStage("Loading photo prints…",i+1,manifest.photos.length);
   }

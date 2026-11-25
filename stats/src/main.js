@@ -1,3 +1,4 @@
+import {visualStyle,addStyleControl,LUXURY} from "../../src/rendering/visualStyle.ts";
 import {PlaybackClock,createPlaybackControls} from "../../src/playback/transport.ts";
 import {bindPreviewViewport} from "../../src/playback/viewport.ts";
 import {browserQuality,QUALITY_PROFILES,qualityOptions,changeQuality,DEFAULT_OUTPUT} from "../../src/rendering/quality.ts";
@@ -27,6 +28,7 @@ if(!exportMode){try{const saved=localStorage.getItem(storageKey);if(saved)slides
 const clock=new PlaybackClock(slides.length*SLIDE_SECONDS,1);
 const controls=createPlaybackControls({modes:[{value:"composite",label:"Full composite"},{value:"background",label:"Background only"},{value:"foreground",label:"Transparent overlay"},{value:"chroma",label:"Green-screen overlay"},{value:"typography",label:"Typography only"},{value:"accent",label:"Accent only"}],quality:{value:qualityName,options:qualityOptions(),onChange:changeQuality},onToggle:()=>{if(clock.time>=clock.duration)clock.seek(0);clock.setPlaying(!clock.playing);controls.sync(clock);},onRestart:()=>{clock.seek(0);clock.setPlaying(true);draw();},onSeek:t=>{clock.setPlaying(false);clock.seek(t);draw();},onMode:value=>{layer=validLayer(value);const url=new URL(location.href);url.searchParams.set("layer",layer);history.replaceState(null,"",url.href);draw();},hidden:exportMode});
 controls.mode.value=layer;
+const style=visualStyle(query),luxury=style==="luxury";addStyleControl(controls.ui,style);
 const palettes=[["#10271f","#071310","#d8bc83","#f3ebd9"],["#152b30","#081516","#9bc4bf","#edf2e9"],["#30251d","#100e0b","#dfb994","#f5eadf"]];
 function text(str,x,y,max,size,font,color){
  ctx.font=font.replace("SIZE",String(size));while(ctx.measureText(str).width>max&&size>12){size-=2;ctx.font=font.replace("SIZE",String(size));}ctx.fillStyle=color;ctx.fillText(str,x,y);return size;
@@ -80,7 +82,7 @@ function reveal(str,x,y,max,size,font,color,progress,exit=0,metallic=false,local
  ctx.save();ctx.globalAlpha=unit(progress*3)*(1-exit*.35);if(metallic){ctx.translate(x,y);const settle=1-progress;ctx.transform(1-.045*settle,0,.035*settle,1,0,0);ctx.drawImage(matte,-width/2,-height/2,width,height);}else ctx.drawImage(matte,x-width/2,y-height/2,width,height);ctx.restore();
 }
 function draw(){
- const p=slidePose(clock.time,slides.length),s=slides[p.index],palette=palettes[p.index%palettes.length];
+ const p=slidePose(clock.time,slides.length),s=slides[p.index],palette=luxury?[LUXURY.emerald,"#071310",LUXURY.gold,LUXURY.ivory]:palettes[p.index%palettes.length];
  const [a,b,gold,ivory]=palette,m=motionPose(p.local,p.index,slides.length);
  ctx.setTransform(canvas.width/W,0,0,canvas.height/H,0,0);ctx.clearRect(0,0,W,H);
  if(layer==="chroma"){ctx.fillStyle="#00ff00";ctx.fillRect(0,0,W,H);}

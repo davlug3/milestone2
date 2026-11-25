@@ -1,3 +1,4 @@
-import test from "node:test";import assert from "node:assert/strict";import {validateSlides,slidePose,numberText,SLIDE_SECONDS} from "../stats/src/model.js";
+import test from "node:test";import assert from "node:assert/strict";import {validateSlides,slidePose,numberText,SLIDE_SECONDS,motionPose} from "../stats/src/model.js";
 test("slide schema",()=>{assert.deepEqual(validateSlides([{title:"Life groups",number:233}]),[{title:"Life groups",number:233}]);assert.throws(()=>validateSlides([{title:"",number:1}]));assert.throws(()=>validateSlides([{title:"A",number:"2"}]));});
 test("deterministic boundaries",()=>{assert.equal(slidePose(0,2).countProgress,0);assert.equal(slidePose(3,2).countProgress,1);assert.equal(slidePose(SLIDE_SECONDS,2).index,1);assert.equal(slidePose(10,2).exit,1);assert.equal(numberText(1234,1),"1,234");});
+test("motion holds exact final values and exits only between slides",()=>{assert.equal(motionPose(0,0,2).number,0);assert.equal(motionPose(2.5,0,2).count,1);assert.equal(motionPose(5,0,2).exit,1);assert.equal(motionPose(5,1,2).exit,0);});

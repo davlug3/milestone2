@@ -17,3 +17,10 @@ export function numberText(value,progress=1){
  const digits=Math.min(6,(String(value).split(".")[1]||"").length);
  return new Intl.NumberFormat("en-US",{minimumFractionDigits:digits,maximumFractionDigits:digits}).format(value*Math.max(0,Math.min(1,progress)));
 }
+
+export const unit=x=>Math.max(0,Math.min(1,x));
+export const easeOut=x=>1-Math.pow(1-unit(x),4);
+export function motionPose(local,index,count){
+ const tail=index<count-1?unit((local-4.28)/.72):0;
+ return {number:easeOut(local/.92),title:easeOut((local-.48)/.85),subtitle:easeOut((local-.88)/.8),accent:easeOut((local-.24)/1.05),exit:tail*tail*tail,shine:unit((local-1.35)/1.25),count:1-Math.pow(1-unit((local-.17)/1.7),3)};
+}

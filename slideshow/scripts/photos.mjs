@@ -5,7 +5,7 @@ import {spawnSync} from "node:child_process";
 const dir="public/photos",cache="public/photo-cache";mkdirSync(dir,{recursive:true});mkdirSync(cache,{recursive:true});
 const config=JSON.parse(readFileSync("slideshow.config.json","utf8"));
 for(const k of ["interval","flight","settle","hold","width","depth","thickness"])if(k in config&&(!Number.isFinite(config[k])||config[k]<=0))throw Error("Invalid "+k);
-if((config.interval??2)<(config.flight??.64)+(config.settle??.62))throw Error("interval must allow each print to settle");
+if((config.interval??3)<(config.flight??1.25)+(config.settle??.85))throw Error("interval must allow each print to settle");
 const list=()=>readdirSync(dir).filter(x=>/\.(jpe?g|png|webp|avif)$/i.test(x)).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
 const p=config.photos??{source:"picsum",count:8,seed:"tabletop",width:1600,height:1100};
 const count=p.count??8;

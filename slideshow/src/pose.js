@@ -1,5 +1,5 @@
 // Analytic, deterministic 2.5D toss. Units: metres, seconds, radians.
-export const defaults={interval:2.0,flight:.64,settle:.62,hold:2.5,seed:27,width:.35,depth:.245,thickness:.00065};
+export const defaults={interval:3.0,flight:1.25,settle:.85,hold:2.5,seed:27,width:.35,depth:.245,thickness:.00065};
 const clamp=x=>Math.max(0,Math.min(1,x));
 const mix=(a,b,t)=>a+(b-a)*t;
 const smooth=x=>{x=clamp(x);return x*x*(3-2*x);};
@@ -34,5 +34,5 @@ export function pose(shot,time){
 }
 export function cameraPose(time){
   // Low-frequency, millimetre-scale movement: no pans or cuts.
-  return {x:.009*Math.sin(time*.71)+.003*Math.sin(time*1.93),y:.83+.003*Math.sin(time*.91),z:.19+.006*Math.sin(time*.57),targetX:.005*Math.sin(time*.63),targetZ:.004*Math.cos(time*.81),roll:.003*Math.sin(time*.83)};
+  return {x:.009*Math.sin(time*.71)+.003*Math.sin(time*1.93),y:.78+.003*Math.sin(time*.91),z:.35+.006*Math.sin(time*.57),targetX:.005*Math.sin(time*.63),targetZ:.004*Math.cos(time*.81),roll:.003*Math.sin(time*.83)};
 }

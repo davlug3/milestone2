@@ -7,7 +7,7 @@
     "dev": "node scripts/photos.mjs && vite --host 127.0.0.1",
     "build": "node scripts/photos.mjs && vite build",
     "preview": "vite preview",
-    "test": "node --test scripts/pose.test.mjs",
+    "test": "node --test scripts/*.test.mjs",
     "photos:download": "node scripts/photos.mjs --refresh",
     "render:video": "node scripts/render.mjs",
     "photos:sync": "node scripts/photos.mjs"

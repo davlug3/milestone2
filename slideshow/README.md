@@ -27,4 +27,4 @@ npm test
 npm run build
 ```
 
-Raster PBR is the default. Select Ray-traced in the preview to progressively render the paused pose, or use `npm run render:video -- --mode raytrace --samples 32` for final output. Ray tracing is slower and has no denoiser yet. Print overlap uses approximate layers; real collision, paper flex, motion blur and audio are not implemented.
+Raster PBR is the default. Select Ray-traced in the preview to progressively render the paused pose, or use `npm run render:video -- --mode raytrace --samples 32` for final output. Ray tracing is slower and has no denoiser yet. Prints use thin, closed deformable shells with seeded curl, folded corners, wrinkles, airborne flutter and damped bending/torsion after impact. Contact samples the table and earlier settled prints to avoid sampled underside penetration. This is deterministic analytic modal dynamics, not a full rigid-body/cloth solver; continuous triangle collision, motion blur and audio are not implemented.

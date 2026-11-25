@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { PhysicalSpotLight, WebGLPathTracer, GradientEquirectTexture } from "three-gpu-pathtracer";
-import { makeShots,pose,duration,cameraPose,defaults,random } from "./pose.js";
+import { makeShots,pose,duration,cameraPose,random } from "./pose.js";
+import { shapeFor,printTexture,createPhoto,placePhoto } from "./photoDeform.js";
 const q=new URLSearchParams(location.search),exportMode=q.has("export");
 if(exportMode)document.body.classList.add("export");
 const renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:exportMode,powerPreference:"high-performance"});
@@ -51,20 +52,17 @@ function walnut(){
 const wood=walnut(),table=new THREE.Mesh(new THREE.PlaneGeometry(2.2,1.6),new THREE.MeshStandardMaterial({map:wood,roughness:.78}));
 table.rotation.x=-Math.PI/2;table.receiveShadow=true;scene.add(table);
 const loader=new THREE.TextureLoader(),cards=[];
-const paper=new THREE.MeshStandardMaterial({color:0xf4eee3,roughness:.86});
+const paper=new THREE.MeshPhysicalMaterial({color:0xf4eee3,roughness:.82,sheen:.08});
 const edge=new THREE.MeshStandardMaterial({color:0xe1d8c9,roughness:.9});
 let shots=[],total=0,clock=0,playing=!exportMode,last=performance.now();
 const button=document.querySelector("#play"),seek=document.querySelector("#seek"),label=document.querySelector("#time");
-const matrix=new THREE.Matrix4();
+
 function update(t){
   clock=Math.max(0,Math.min(t,total));
   const p=cameraPose(clock);camera.position.set(p.x,p.y,p.z);camera.lookAt(p.targetX,0,p.targetZ);camera.rotateZ(p.roll);
   for(let i=0;i<cards.length;i++){
     const card=cards[i],s=pose(shots[i],clock);card.visible=s.visible;if(!s.visible)continue;
-    card.rotation.set(s.pitch,s.yaw,s.roll,"YXZ");matrix.makeRotationFromEuler(card.rotation);
-    const m=matrix.elements,c=shots[i].config;
-    const clearance=Math.abs(m[1])*c.width/2+Math.abs(m[5])*c.thickness/2+Math.abs(m[9])*c.depth/2;
-    card.position.set(s.x,s.height+clearance+.00015,s.z);
+    placePhoto(card,s,shots[i],clock,cards.slice(0,i));
   }
   traceDirty=true;draw();seek.value=String(clock);label.textContent=clock.toFixed(1)+" / "+total.toFixed(1)+"s";
 }
@@ -78,14 +76,11 @@ async function init(){
   const manifest=await response.json();if(!manifest.photos.length)throw Error("No photos found");
   shots=makeShots(manifest.photos.length,manifest.config);total=duration(shots);seek.max=String(total);
   for(let i=0;i<manifest.photos.length;i++){
-    const c=shots[i].config,tex=await loader.loadAsync(manifest.photos[i]);
-    tex.colorSpace=THREE.SRGBColorSpace;tex.anisotropy=renderer.capabilities.getMaxAnisotropy();
-    const w=c.width-.020,h=c.depth-.022,target=w/h,aspect=tex.image.width/tex.image.height;
-    if(aspect>target){tex.repeat.x=target/aspect;tex.offset.x=(1-tex.repeat.x)/2;}else{tex.repeat.y=aspect/target;tex.offset.y=(1-tex.repeat.y)/2;}
-    const card=new THREE.Group(),board=new THREE.Mesh(new THREE.BoxGeometry(c.width,c.thickness,c.depth),paper);
-    board.castShadow=true;board.receiveShadow=true;card.add(board);
-    const image=new THREE.Mesh(new THREE.PlaneGeometry(w,h),new THREE.MeshStandardMaterial({map:tex,roughness:.63}));
-    image.rotation.x=-Math.PI/2;image.position.y=c.thickness/2+.00004;image.receiveShadow=true;card.add(image);scene.add(card);cards.push(card);
+    const c=shots[i].config,source=await loader.loadAsync(manifest.photos[i]);
+    const tex=printTexture(source.image,c,renderer.capabilities.getMaxAnisotropy());source.dispose();
+    const front=new THREE.MeshPhysicalMaterial({map:tex,roughness:.43,clearcoat:.22,clearcoatRoughness:.46});
+    const card=createPhoto(c,shapeFor(c.seed,i),{front,back:paper,edge});
+    scene.add(card);cards.push(card);
   }
   update(0);
   window.__slideshow={duration:total,count:cards.length,seek:t=>{play(false);update(t);},capture:t=>{play(false);setMode("raster");update(t);return renderer.domElement.toDataURL("image/png");},beginTrace:(t,samples)=>{play(false);target=samples;setMode("raytrace");update(t);},traceStep:()=>{if(mode!=="raytrace")throw Error(traceError||"Ray tracer unavailable");traceDraw();return {samples:traceDirty?0:tracer.samples,target};},traceCapture:()=>{if(mode!=="raytrace"||traceDirty||tracer.samples<target)throw Error("Frame not ready");return renderer.domElement.toDataURL("image/png");},gpu:()=>{const gl=renderer.getContext(),ext=gl.getExtension("WEBGL_debug_renderer_info");return ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER);}};

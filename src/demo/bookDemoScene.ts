@@ -6,12 +6,13 @@ import { createCover } from "../book/cover";
 import { addStudioLighting } from "../rendering/lighting";
 import { PaperSimulation } from "../physics/PaperSimulation";
 import { TurnHandoff } from "../physics/TurnHandoff";
+import { bindingLoad, bindingLift } from "../book/bindingFlex";
 import { ThickSheetGeometry } from "../paper/ThickSheetGeometry";
 import { createPagePrints } from "../paper/PagePrints";
 import { createParticle } from "../physics/Particle";
 import { PageTurnController } from "../animation/PageTurnController";
 import { Heightfield } from "../physics/Heightfield";
-import { clamp01 } from "../animation/easing";
+import { clamp01, smootherstep } from "../animation/easing";
 import {
   HINGE_DROP_START,
   coverPose,
@@ -247,21 +248,8 @@ export function startBookDemo(container: HTMLElement): () => void {
   bindingMesh.receiveShadow = true;
   boundBlock.add(bindingMesh);
 
-  // Inner hollow lining: the cloth spine plane between the two cover hinges.
-  // Its front edge is the FRONT COVER's inner lining point at the hinge, so the
-  // plane follows the cover as it opens (vertical when closed, flat when open).
-  // It is a distinct binding cloth (not endpaper) so the bound line stays
-  // visible between the page stacks. The unit box is re-transformed every frame
-  // in `updateCover`.
-  // Span the full book height so the binding cloth cannot end short of the
-  // boards at head/tail.
-  const hollowGeo = new THREE.BoxGeometry(1, 1, H * 1.005);
-  const hollowLining = new THREE.Mesh(hollowGeo, materials.spineCloth);
-  hollowLining.name = "hollow-lining";
-  hollowLining.castShadow = true;
-  hollowLining.receiveShadow = true;
-  scene.add(hollowLining);
-
+  // The distributed cloth ribbon is the lining. Do not add a rigid slab
+  // overlapping the cover hinges.
   // Hollow spine cover: a curved ribbon from the back cover's lower edge to the
   // front cover's hinge edge. It stays convex while the text block's spine
   // throws up inside it, leaving the hollow.
@@ -468,6 +456,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     }
     pg.handoff.capture(pg.sim.particles);
     pg.geo.update(pg.sim.particles);
+    flexBases.delete(pg.geo.geometry);
     pg.geoStep = pg.stepped;
   }
 
@@ -509,11 +498,26 @@ export function startBookDemo(container: HTMLElement): () => void {
       // Only rebuild GPU geometry when this page actually moved.
       if (pg.stepped !== pg.geoStep) {
         pg.geo.update(pg.handoff.pose(pg.sim.particles, pg.stepped * FIXED_DT));
+        flexBases.delete(pg.geo.geometry);
         pg.geoStep = pg.stepped;
       }
     }
   }
 
+  const flexBases = new WeakMap<THREE.BufferGeometry, Float32Array>();
+  function flexGeometry(mesh: THREE.Mesh, load: number): void {
+    const geo = mesh.geometry;
+    const attr = geo.getAttribute("position") as THREE.BufferAttribute;
+    const arr = attr.array as Float32Array;
+    let base = flexBases.get(geo);
+    if (!base) { base = arr.slice(); flexBases.set(geo, base); }
+    for (let i = 0; i < arr.length; i += 3) {
+      arr[i + 1] = base[i + 1] + bindingLift(base[i] + mesh.position.x, SPINE_PANEL_W, load);
+    }
+    attr.needsUpdate = true;
+    geo.computeVertexNormals();
+    geo.computeBoundingSphere();
+  }
   let lastBindingU = -1;
   function updateCover(t: number): void {
     const u = clamp01(
@@ -550,6 +554,7 @@ export function startBookDemo(container: HTMLElement): () => void {
           bindingPositions[offset + 2] = (j - 0.5) * H;
         }
       }
+      flexBases.delete(bindingGeo);
       bindingGeo.getAttribute("position").needsUpdate = true;
       bindingGeo.computeVertexNormals();
       bindingGeo.computeBoundingSphere();
@@ -560,49 +565,17 @@ export function startBookDemo(container: HTMLElement): () => void {
       }
       lastBindingU = u;
     }
-    // The hollow cover-spine ribbon stays convex while the cover opens.
+    // Existing opening arc remains active through the cover swing. The extra
+    // elastic crown ramps in only near fully open, avoiding the moving board.
+    const load = bindingLoad(t, u, TIMELINE.turns) * smootherstep(clamp01((u - 0.95) / 0.05));
+    for (const pg of pages) flexGeometry(pg.mesh, load);
+    for (const entry of staticSheets) flexGeometry(entry.mesh, load);
+    flexGeometry(bindingMesh, load);
+    const frontRoot = textRoot(BOOK_DIMENSIONS, 0, u);
+    for (const hb of headbands) {
+      hb.position.y = frontRoot.y + bindingLift(frontRoot.x, SPINE_PANEL_W, load);
+    }
     updateSpineCover(u);
-    // Closed, the binding plane is hidden inside the case. Showing it there
-    // left a striped slab floating beside the closed book.
-    hollowLining.visible = u > 0.12;
-    // The spine plane is bounded by the FRONT COVER: its front edge is the
-    // cover's inner lining point at the moving hinge. Build a thin slab whose
-    // page-facing face is the plane and which extends away from the pages.
-    const edges = spinePlaneEdges(
-      u,
-      BOOK_DIMENSIONS,
-      closedCenterY,
-      OPEN_COVER_CENTER_Y,
-      SPINE_PANEL_W,
-    );
-    const dx = edges.front.x - edges.back.x;
-    const dy = edges.front.y - edges.back.y;
-    const len = Math.max(1e-6, Math.hypot(dx, dy));
-    // Tuck well past both cover hinges so the cloth's raw edge is hidden under
-    // the pastedown creases and it reads as bound to the boards, not abutting.
-    const overlap = 0.008;
-    const ux = dx / len;
-    const uy = dy / len;
-    const bx = edges.back.x - ux * overlap;
-    const by = edges.back.y - uy * overlap;
-    const fx = edges.front.x + ux * overlap;
-    const fy = edges.front.y + uy * overlap;
-    const fullLen = len + overlap * 2;
-    const nx = -dy / len; // local +Y (points away from the pages)
-    const ny = dx / len;
-    // A visible cloth slab, not a hairline: it must read as the bound surface
-    // the pages are glued to. It extends AWAY from the pages (below the open
-    // plane), so the binding face stays flush with the page undersides.
-    const thickness = 0.002;
-    // Flush with the cover lining top: no height step at the bound edge.
-    const gap = 0;
-    hollowLining.position.set(
-      (bx + fx) / 2 + nx * (thickness / 2 + gap),
-      (by + fy) / 2 + ny * (thickness / 2 + gap),
-      0,
-    );
-    hollowLining.rotation.z = Math.atan2(dy, dx);
-    hollowLining.scale.set(fullLen, thickness, 1);
   }
   updateCover(0);
 
@@ -717,7 +690,11 @@ export function startBookDemo(container: HTMLElement): () => void {
         sheetCount: NUM_SHEETS,
         bindings: Array.from({ length: NUM_SHEETS }, (_, k) => ({
           index: k,
-          current: textRoot(BOOK_DIMENSIONS, k, u),
+          current: (() => {
+            const root = textRoot(BOOK_DIMENSIONS, k, u);
+            const load = bindingLoad(time, u, TIMELINE.turns) * smootherstep(clamp01((u - 0.95) / 0.05));
+            return { x: root.x, y: root.y + bindingLift(root.x, SPINE_PANEL_W, load) };
+          })(),
           right: textRoot(BOOK_DIMENSIONS, k),
           left: textRoot(BOOK_DIMENSIONS, k),
         })),
@@ -781,7 +758,6 @@ export function startBookDemo(container: HTMLElement): () => void {
     bindingMaterial.dispose();
     for (const entry of staticSheets) entry.mesh.geometry.dispose();
     spineCoverGeo.dispose();
-    hollowGeo.dispose();
     headbandGeo.dispose();
     prints.dispose();
     renderer.dispose();

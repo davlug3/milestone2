@@ -29,11 +29,6 @@ export function createPagePrints(edge: THREE.Material, anisotropy: number) {
     if (!image) {
       ctx.fillStyle = "#e0ded8";
       ctx.fillRect(x,y,w,h);
-      ctx.fillStyle = "#777";
-      ctx.font = "16px sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("Photo unavailable", x + w/2, y + h/2);
-      ctx.textAlign = "left";
       return;
     }
     const scale = Math.max(w / image.naturalWidth, h / image.naturalHeight);
@@ -52,27 +47,16 @@ export function createPagePrints(edge: THREE.Material, anisotropy: number) {
     const material = new THREE.MeshStandardMaterial({ map: texture, color: 0xffffff, roughness: 0.92, metalness: 0 });
     materials.push(material);
     const layouts = [
-      [[35,76,442,488]],
-      [[35,76,442,226],[35,315,442,249]],
-      [[35,76,442,270],[35,359,214,205],[263,359,214,205]],
-      [[35,76,214,235],[263,76,214,235],[35,324,442,240]]
+      [[35,35,442,590]],
+      [[35,35,442,288],[35,337,442,288]],
+      [[35,35,442,338],[35,387,214,238],[263,387,214,238]],
+      [[35,35,214,270],[263,35,214,270],[35,319,442,306]]
     ];
     const boxes = layouts[(page-1) % layouts.length];
     function paint(photos: (HTMLImageElement|null)[]) {
       ctx.fillStyle = "#f4efe4";
       ctx.fillRect(0,0,WIDTH,HEIGHT);
-      ctx.fillStyle = "#343c40";
-      ctx.font = "bold 21px sans-serif";
-      ctx.fillText("PHOTO COLLECTION",35,48);
-      ctx.fillStyle = "#777";
-      ctx.fillRect(35,59,442,1);
       boxes.forEach(([x,y,w,h], i) => drawPhoto(ctx,photos[i] ?? null,x,y,w,h));
-      ctx.fillStyle = "#555";
-      ctx.font = "15px sans-serif";
-      ctx.fillText("Sample imagery  /  Lorem Picsum",35,605);
-      ctx.textAlign = "right";
-      ctx.fillText(String(page).padStart(3,"0"),477,630);
-      ctx.textAlign = "left";
       texture.needsUpdate = true;
     }
     paint([]);

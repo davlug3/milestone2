@@ -19,25 +19,18 @@ import { PageTurnController } from "../src/animation/PageTurnController";
 import { Heightfield } from "../src/physics/Heightfield";
 import { BOOK_DIMENSIONS } from "../src/config/bookConfig";
 import { openCoverSurface } from "../src/book/coverRig";
-import {
-  bindingFloorY,
-  sheetBinding,
-  distributedRightSheetY,
-} from "../src/book/spineBinding";
+import { TEXT_BLOCK_THICKNESS, TEXT_BLOCK_TURNS, textRoot, textStackY, textPageY, textPageFloor } from "../src/book/textBlockBinding";
 
 const W = BOOK_DIMENSIONS.width;
 const H = BOOK_DIMENSIONS.height;
 const CT = BOOK_DIMENSIONS.coverThickness;
-const PBT = 0.022;
+const PBT = TEXT_BLOCK_THICKNESS;
 const SPINE_PANEL_W = 2 * CT + PBT;
-const blockTop = CT + PBT;
 const cols = 25;
 const rows = 33;
 const DT = 1 / 120;
 const gutterX = -W / 2;
-const NUM_SHEETS = 15;
-const vStep = 0.0003;
-const restBase = blockTop + 0.0004;
+const NUM_SHEETS = BOOK_DIMENSIONS.sheetCount;
 
 // Open-cover collision surface (mirrors the demo).
 const OPEN_CENTER_Y = CT / 2;
@@ -54,25 +47,22 @@ const landBase = COVER_FLOOR + 0.0002;
 const landStep = 0.0008;
 const bakeMinX = gutterX - 0.04; // gutter strip is left free (natural fan)
 const bakeTop = 0.0006;
-const PAGES = Number(process.env.PAGES ?? 8);
+const PAGES = Number(process.env.PAGES ?? TEXT_BLOCK_TURNS);
 
 // Spine binding (mirrors the demo).
 
-const hf = new Heightfield({ width: W, height: H, nx: 110, nz: 110 });
-hf.setBase((x) => bindingFloorY(x + W / 2, BOOK_DIMENSIONS, blockTop, COVER_FLOOR));
+const hf = new Heightfield({ width: W, height: H, nx: 120, nz: 110, paddingX: SPINE_PANEL_W });
+hf.reset(COVER_FLOOR);
 
 interface Settled {
   particles: { x: number; y: number; z: number; pinned: boolean }[];
 }
 
-function makePage(restY: number, landY: number, belowRestY: number, k: number) {
-  const root = sheetBinding(BOOK_DIMENSIONS, k, NUM_SHEETS);
-  const belowRoot = sheetBinding(BOOK_DIMENSIONS, k + 1, NUM_SHEETS);
+function makePage(restY: number, landY: number, k: number) {
+  const root = textRoot(BOOK_DIMENSIONS, k);
   const groundHeight = (x: number, z: number): number => {
     const h = hf.heightAt(x, z);
-    if (x + W / 2 < belowRoot.x) return h;
-    const below = distributedRightSheetY(x + W / 2 - belowRoot.x, belowRoot.y, belowRestY) + 0.00025;
-    return Math.max(below, h);
+    return Math.max(h, textPageFloor(BOOK_DIMENSIONS, k, x + W / 2, COVER_FLOOR));
   };
   const sim = new PaperSimulation({
     cols,
@@ -81,7 +71,7 @@ function makePage(restY: number, landY: number, belowRestY: number, k: number) {
     height: H,
     dt: DT,
     iterations: 12,
-    bendStiffness: 1.0,
+    bendStiffness: 1.2,
     longRangeBend: true,
     bendSpans: [3, 4, 5, 6],
     plane: "xz",
@@ -89,7 +79,7 @@ function makePage(restY: number, landY: number, belowRestY: number, k: number) {
   });
   const spineRestY = root.y;
   for (const p of sim.particles) {
-    p.y = p.py = distributedRightSheetY(p.x + W / 2, root.y, restY);
+    p.y = p.py = textPageY(BOOK_DIMENSIONS, k, p.x + W / 2);
     p.x = p.px = p.x + root.x;
   }
   const spine: number[] = [];
@@ -110,9 +100,9 @@ function makePage(restY: number, landY: number, belowRestY: number, k: number) {
     landSpineStart: 0.5,
       width: W,
     duration: 2.5,
-    liftScale: 0.6,
-    lead: 0.04,
-    liftVar: 0.06,
+    liftScale: 0.45,
+    lead: 0.03,
+    liftVar: 0.03,
     rows,
   });
   ctrl.seedZ(sim.particles);
@@ -156,10 +146,9 @@ let totalChecks = 0;
 let badParticles = 0;
 
 for (let k = 0; k < PAGES; k++) {
-  const restY = restBase + (NUM_SHEETS - 1 - k) * vStep;
-  const belowRestY = restBase + (NUM_SHEETS - 1 - (k + 1)) * vStep;
+  const restY = textStackY(BOOK_DIMENSIONS, k);
   const landY = landBase + k * landStep;
-  const { sim, ctrl } = makePage(restY, landY, belowRestY, k);
+  const { sim, ctrl } = makePage(restY, landY, k);
   turn(sim, ctrl, 2.5);
 
   // Compare this page against the pages already below it.

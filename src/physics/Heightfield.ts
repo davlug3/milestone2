@@ -24,13 +24,15 @@ export class Heightfield {
     height: number; // page height H
     nx?: number;
     nz?: number;
+    paddingX?: number;
   }) {
     const { width: W, height: H } = options;
     this.nx = options.nx ?? 64;
     this.nz = options.nz ?? 64;
     // Local x spans both sides: left fore-edge (-1.5W) to right fore-edge (+0.5W).
-    this.x0 = -1.5 * W;
-    this.x1 = 0.5 * W;
+    const pad = Math.max(0, options.paddingX ?? 0);
+    this.x0 = -1.5 * W - pad;
+    this.x1 = 0.5 * W + pad;
     this.z0 = -H / 2;
     this.z1 = H / 2;
     this.data = new Float32Array(this.nx * this.nz);

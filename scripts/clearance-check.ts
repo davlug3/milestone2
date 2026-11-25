@@ -5,7 +5,7 @@
  * step, that no particle of a turning sheet:
  *
  *   1. sinks below the book surface (block top, gutter, open-cover lining),
- *   2. enters the right text block's solid,
+ *   2. penetrates the actual next sheet's collision surface,
  *   3. dips below the table,
  *
  * The demo's heightfield used to stop at `blockWidth`, which pushed the last
@@ -20,26 +20,16 @@ import { PageTurnController } from "../src/animation/PageTurnController";
 import { Heightfield } from "../src/physics/Heightfield";
 import { BOOK_DIMENSIONS } from "../src/config/bookConfig";
 import { openCoverSurface } from "../src/book/coverRig";
-import {
-  bindingFloorY,
-  blockRampY,
-  sheetBinding,
-  distributedRightSheetY,
-} from "../src/book/spineBinding";
+import { TEXT_BLOCK_THICKNESS, TEXT_BLOCK_TURNS, textRoot, textStackY, textPageY, textPageFloor } from "../src/book/textBlockBinding";
 
 const W = BOOK_DIMENSIONS.width;
 const H = BOOK_DIMENSIONS.height;
 const CT = BOOK_DIMENSIONS.coverThickness;
-const PBT = 0.022;
+const PBT = TEXT_BLOCK_THICKNESS;
 const SPINE_PANEL_W = 2 * CT + PBT;
-const blockTop = CT + PBT;
-const BLOCK_WIDTH = W - 0.004;
-const BLOCK_DEPTH = H * 0.97;
 
-const NUM_TURNS = 8;
-const NUM_SHEETS = 15;
-const vStep = 0.0003;
-const restBase = blockTop + 0.0004;
+const NUM_TURNS = TEXT_BLOCK_TURNS;
+const NUM_SHEETS = BOOK_DIMENSIONS.sheetCount;
 const PAGE_SHELL_HALF = 0.000125;
 const COVER_CONTACT_GAP = 0.00005;
 const OPEN_CENTER_Y = CT / 2;
@@ -56,8 +46,6 @@ const DUR = 2.5;
 const SETTLE = 0.5;
 const gutterX = -W / 2;
 
-const topSheetY = restBase + (NUM_SHEETS - 1) * vStep;
-const closedCenterY = topSheetY + 0.0005 + CT / 2;
 
 function fail(msg: string): never {
   console.error(`FAIL: ${msg}`);
@@ -70,7 +58,7 @@ function fail(msg: string): never {
  * (surface + shell + gap), or the open-cover particle floor.
  */
 function floorAt(worldX: number): number {
-  return bindingFloorY(worldX, BOOK_DIMENSIONS, blockTop, COVER_FLOOR_Y);
+  return COVER_FLOOR_Y;
 }
 
 interface TurnReport {
@@ -82,20 +70,16 @@ interface TurnReport {
 }
 
 function runTurn(k: number): TurnReport {
-  const restY = restBase + (NUM_SHEETS - 1 - k) * vStep;
+  const restY = textStackY(BOOK_DIMENSIONS, k);
   const landY = landBase + k * landStep;
-  const belowRestY = restBase + (NUM_SHEETS - 1 - (k + 1)) * vStep;
-  const root = sheetBinding(BOOK_DIMENSIONS, k, NUM_SHEETS);
-  const belowRoot = sheetBinding(BOOK_DIMENSIONS, k + 1, NUM_SHEETS);
+  const root = textRoot(BOOK_DIMENSIONS, k);
 
-  const hf = new Heightfield({ width: W, height: H, nx: 110, nz: 110 });
-  hf.setBase((x) => floorAt(x + W / 2));
+  const hf = new Heightfield({ width: W, height: H, nx: 120, nz: 110, paddingX: SPINE_PANEL_W });
+  hf.reset(COVER_FLOOR_Y);
 
   const groundHeight = (x: number, z: number): number => {
     const h = hf.heightAt(x, z);
-    if (x + W / 2 < belowRoot.x) return h;
-    const below = distributedRightSheetY(x + W / 2 - belowRoot.x, belowRoot.y, belowRestY) + 0.00025;
-    return Math.max(below, h);
+    return Math.max(h, textPageFloor(BOOK_DIMENSIONS, k, x + W / 2, COVER_FLOOR_Y));
   };
 
   const sim = new PaperSimulation({
@@ -105,7 +89,7 @@ function runTurn(k: number): TurnReport {
     height: H,
     dt: DT,
     iterations: 12,
-    bendStiffness: 1.0,
+    bendStiffness: 1.2,
     longRangeBend: true,
     bendSpans: [3, 4, 5, 6],
     plane: "xz",
@@ -113,7 +97,7 @@ function runTurn(k: number): TurnReport {
   });
   const spineRestY = root.y;
   for (const p of sim.particles) {
-    p.y = p.py = distributedRightSheetY(p.x + W / 2, root.y, restY);
+    p.y = p.py = textPageY(BOOK_DIMENSIONS, k, p.x + W / 2);
     p.x = p.px = p.x + root.x;
   }
 
@@ -136,9 +120,9 @@ function runTurn(k: number): TurnReport {
     landSpineStart: 0.5,
       width: W,
     duration: DUR,
-    liftScale: 0.6,
-    lead: 0.04,
-    liftVar: 0.06,
+    liftScale: 0.45,
+    lead: 0.03,
+    liftVar: 0.03,
     rows,
   });
   controller.seedZ(sim.particles);
@@ -177,24 +161,10 @@ function runTurn(k: number): TurnReport {
           `${(p.y * 1000).toFixed(2)},${(p.z * 1000).toFixed(2)})mm`;
       }
 
-      // Depth inside the text block's solid (if any). The block is a wedge: its
-      // top follows the binding ramp, so a particle is inside when it is below
-      // that surface (and above the board / inside the fore-edge).
-      const blockSurface = blockRampY(worldX, BOOK_DIMENSIONS, blockTop);
-      if (
-        worldX > 1e-6 &&
-        worldX < BLOCK_WIDTH - 1e-6 &&
-        p.y > CT + 1e-6 &&
-        p.y < blockSurface - 1e-6 &&
-        Math.abs(p.z) < BLOCK_DEPTH / 2 - 1e-6
-      ) {
-        const depth = Math.min(
-          worldX,
-          BLOCK_WIDTH - worldX,
-          p.y - CT,
-          blockSurface - p.y,
-        );
-        worstInsideBlock = Math.min(worstInsideBlock, depth);
+      // Collision against the real next sheet, not the deleted solid wedge.
+      if (!p.pinned) {
+        const depth = textPageFloor(BOOK_DIMENSIONS, k, worldX, COVER_FLOOR_Y) - p.y;
+        if (depth > 1e-6) worstInsideBlock = Math.min(worstInsideBlock, depth);
       }
     }
   }

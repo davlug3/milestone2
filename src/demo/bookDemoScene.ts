@@ -16,17 +16,19 @@ import {
 } from "../book/coverRig";
 import {
   BIND_RAMP,
-  bindingFloorY,
-  blockRampY,
-  bindingLineX,
-  sheetBinding,
-  distributedRightSheetY,
-  openingRightSheetY,
-  openBindingLineX,
   spineClothTopY,
   spinePlaneEdges,
   spinePlaneY,
 } from "../book/spineBinding";
+import {
+  TEXT_BLOCK_THICKNESS,
+  TEXT_BLOCK_TURNS,
+  TEXT_SHEET_THICKNESS,
+  textRoot,
+  textStackY,
+  textPageY,
+  textPageFloor,
+} from "../book/textBlockBinding";
 import {
   headbandGeometry,
   spineCoverGeometry,
@@ -36,27 +38,10 @@ import {
 /**
  * Animated hardcover book demo with a play/pause button.
  *
- * A CLOSED book (~15 visible sheets) rests on the right. On Play:
- *   1. the front cover swings open to the left, hinged at the spine
- *   2. 8 sheets turn right->left one at a time, accumulating on the opened
- *      cover, while 7 sheets remain on the right
- *
- * Realism / stability:
- *  - The cover is a rigid board hinged at the spine: it rotates about x=0 and
- *    its hinge line stays at the top of the block until past vertical, then
- *    settles to the table. No centre-line slide, no hop, no clipping through
- *    the page block or the table.
- *  - Each visible sheet has its own permanent attachment line on a shallow
- *    curved text-block spine. The strip unfolds with the cover and remains
- *    fixed during page turns; the outer case spine moves independently.
- *  - The whole text block (wedge, mull, static sheets, turning sheets) is one
- *    group that slides to the open binding line at the end of the cover swing,
- *    after the spine has flattened and before the first page turn.
- *  - Long-range bending links distribute curvature (smooth curl, no crease).
- *  - Page-to-page collision via a heightfield: a shared Heightfield stores the
- *    top surface of everything below. Each landed sheet is baked into it (outer
- *    region only, leaving the gutter free so pages fan naturally). The active
- *    sheet collides against this, so it rests on the pages below it.
+ * All configured sheets are represented individually. Only the first eight
+ * are simulated; the other sheets use lightweight procedural profiles. The
+ * full material spine unfolds as a constant-length arc, independent of the
+ * hardcover's outer spine. No solid page wedge remains.
  *
  * Playback is deterministic in an absolute timeline `time` (seconds).
  */
@@ -64,25 +49,19 @@ import {
 const W = BOOK_DIMENSIONS.width;
 const H = BOOK_DIMENSIONS.height;
 const CT = BOOK_DIMENSIONS.coverThickness;
-const PBT = 0.022;
+const PBT = TEXT_BLOCK_THICKNESS;
 // Case spine panel width: the closed book thickness. Open, it lies flat
 // between the boards, so the open book is 2 * width + SPINE_PANEL_W long.
 const SPINE_PANEL_W = 2 * CT + PBT;
 // How far the spine cloth turns in onto the boards' outer faces (hides the
 // board bevel at the hinge, so the case reads as one continuous surface).
 const SPINE_TURN_IN = 0.003;
-const NUM_TURNS = 8;
-const NUM_STATIC = 7;
-const NUM_SHEETS = NUM_TURNS + NUM_STATIC;
-// World x of the single binding line once the book is open (constant during
-// every page turn). Sheets are simulated in binding-relative coordinates, so
-// this only positions the text-block group in the world.
-const BIND_X_OPEN = openBindingLineX(SPINE_PANEL_W);
+const NUM_SHEETS = BOOK_DIMENSIONS.sheetCount;
+const NUM_TURNS = Math.min(TEXT_BLOCK_TURNS, NUM_SHEETS - 1);
+const NUM_STATIC = NUM_SHEETS - NUM_TURNS;
 
 const FIXED_DT = 1 / 120;
-const blockTop = CT + PBT;
-const sheetVStep = 0.0003; // right-stack spacing (exaggerated for visibility)
-const restBase = blockTop + 0.0004;
+
 
 // --- Spine binding ---------------------------------------------------------
 // The pages are bound on a cloth plane between the two cover hinges. A sheet's
@@ -208,81 +187,18 @@ export function startBookDemo(container: HTMLElement): () => void {
   backCover.position.set(W / 2, CT / 2, 0);
   scene.add(backCover);
 
-  // Text block: a wedge whose top follows the spine binding ramp. At the spine
-  // (x = 0) the top is the cloth height; it rises to the flat block top over
-  // BIND_RAMP. This is the surface the page stack sits on, so there is no
-  // vertical wall in the gutter for a turning page to cut through.
-  const topSheetY = restBase + (NUM_SHEETS - 1) * sheetVStep;
+  // Every leaf, including the bottom/back leaf, has its own geometry.
+  const topSheetY = textStackY(BOOK_DIMENSIONS, 0);
   const coverBottom = topSheetY + 0.0005;
   const closedCenterY = coverBottom + CT / 2;
-  const blockDepth = H * 0.97;
-  const blockWidth = W - 0.004; // 4 mm fore-edge square under the cover
-  const blockShape = new THREE.Shape();
-  blockShape.moveTo(0, CT);
-  blockShape.lineTo(0, SPINE_CLOTH_Y);
-  const rampSegments = 24;
-  for (let i = 1; i <= rampSegments; i++) {
-    const x = (BIND_RAMP * i) / rampSegments;
-    blockShape.lineTo(x, blockRampY(x, BOOK_DIMENSIONS, blockTop));
-  }
-  blockShape.lineTo(blockWidth, blockTop);
-  blockShape.lineTo(blockWidth, CT);
-  blockShape.closePath();
-  const blockGeo = new THREE.ExtrudeGeometry(blockShape, {
-    depth: blockDepth,
-    bevelEnabled: false,
-    curveSegments: 16,
-  });
-  blockGeo.translate(0, 0, -blockDepth / 2);
-  // Everything bound on the binding line (wedge, mull, static and turning
-  // sheets) lives in one group, so the whole text block moves as one piece. It
-  // is positioned by `bindingLineX(u)` in `updateCover`.
   const boundBlock = new THREE.Group();
   boundBlock.name = "bound-text-block";
   scene.add(boundBlock);
 
-  const rightBlock = new THREE.Mesh(blockGeo, materials.paperEdge);
-  rightBlock.name = "right-block";
-  rightBlock.castShadow = true;
-  rightBlock.receiveShadow = true;
-  boundBlock.add(rightBlock);
-
-  // Cloth mull: a thin cloth layer on the text-block ramp. It is the visible
-  // binding the pages emerge from and hides the paper wedge in the gutter.
-  const mullShape = new THREE.Shape();
-  const mullSegments = 24;
-  const mullTop = (x: number): number =>
-    blockRampY(x, BOOK_DIMENSIONS, blockTop) + 0.00002;
-  const mullBottom = (x: number): number =>
-    blockRampY(x, BOOK_DIMENSIONS, blockTop) - 0.0002;
-  for (let i = 0; i <= mullSegments; i++) {
-    const x = (BIND_RAMP * i) / mullSegments;
-    if (i === 0) mullShape.moveTo(x, mullTop(x));
-    else mullShape.lineTo(x, mullTop(x));
-  }
-  for (let i = mullSegments; i >= 0; i--) {
-    const x = (BIND_RAMP * i) / mullSegments;
-    mullShape.lineTo(x, mullBottom(x));
-  }
-  mullShape.closePath();
-  const mullGeo = new THREE.ExtrudeGeometry(mullShape, {
-    depth: H * 0.99,
-    bevelEnabled: false,
-    curveSegments: 1,
-  });
-  mullGeo.translate(0, 0, -(H * 0.99) / 2);
-  const mull = new THREE.Mesh(mullGeo, materials.spine);
-  mull.name = "spine-mull";
-  mull.receiveShadow = true;
-  boundBlock.add(mull);
-
-  // Static (never-turning) sheets: thin curved sheets that start on the spine
-  // binding and fan up to their own stack heights, so the closed block reads as
-  // pages bound at the spine rather than a solid slab.
-  const staticSheetGeo = (stackY: number, index: number, u: number): THREE.ExtrudeGeometry => {
-    const profile = (x: number) => openingRightSheetY(x, BOOK_DIMENSIONS, index, NUM_SHEETS, stackY, u);
-    const half = (sheetVStep * 0.9) / 2;
-    const segs = 24;
+  const staticSheetGeo = (index: number, u: number): THREE.ExtrudeGeometry => {
+    const profile = (x: number) => textPageY(BOOK_DIMENSIONS, index, x, u);
+    const half = TEXT_SHEET_THICKNESS / 2;
+    const segs = 48;
     const shape = new THREE.Shape();
     for (let i = 0; i <= segs; i++) {
       const x = (W * i) / segs;
@@ -295,7 +211,7 @@ export function startBookDemo(container: HTMLElement): () => void {
       shape.lineTo(x, profile(x) + half);
     }
     shape.closePath();
-    const depth = H * 0.97;
+    const depth = H;
     const g = new THREE.ExtrudeGeometry(shape, {
       depth,
       bevelEnabled: false,
@@ -304,18 +220,18 @@ export function startBookDemo(container: HTMLElement): () => void {
     g.translate(0, 0, -depth / 2);
     return g;
   };
-  const staticSheets: { mesh: THREE.Mesh; index: number; stackY: number }[] = [];
+  const staticSheets: { mesh: THREE.Mesh; index: number }[] = [];
   for (let i = 0; i < NUM_STATIC; i++) {
-    const sheetIndex = NUM_TURNS + i; // 8..14
-    const stackY = restBase + (NUM_SHEETS - 1 - sheetIndex) * sheetVStep;
+    const sheetIndex = NUM_TURNS + i;
+    const isBackFlyleaf = sheetIndex === NUM_SHEETS - 1;
     const m = new THREE.Mesh(
-      staticSheetGeo(stackY, sheetIndex, 0),
-      i % 2 === 0 ? materials.paper : materials.paperEdge,
+      staticSheetGeo(sheetIndex, 0),
+      isBackFlyleaf ? materials.spineCloth : i % 2 === 0 ? materials.paper : materials.paperEdge,
     );
-    m.name = "static-sheet";
+    m.name = isBackFlyleaf ? "back-flyleaf" : "static-sheet";
     m.receiveShadow = true;
     boundBlock.add(m);
-    staticSheets.push({ mesh: m, index: sheetIndex, stackY });
+    staticSheets.push({ mesh: m, index: sheetIndex });
   }
 
   // Separate deforming text-block binding ribbon; not the outer case spine.
@@ -384,10 +300,12 @@ export function startBookDemo(container: HTMLElement): () => void {
   // sit just beyond the head/tail of the sheets (z) instead of inside them,
   // where they would cut through the pages.
   const headbandGeo = headbandGeometry(0.0009, 0.008);
+  const headbands: THREE.Mesh[] = [];
   for (const z of [-H / 2 - 0.0012, H / 2 + 0.0012]) {
     const hb = new THREE.Mesh(headbandGeo, materials.headband);
     hb.rotation.z = Math.PI / 2; // cylinder axis along X
-    hb.position.set(BIND_X_OPEN, SPINE_CLOTH_Y + 0.0006, z);
+    hb.position.set(0, SPINE_CLOTH_Y + 0.0006, z);
+    headbands.push(hb);
     hb.castShadow = true;
     scene.add(hb);
   }
@@ -405,16 +323,13 @@ export function startBookDemo(container: HTMLElement): () => void {
   scene.add(coverPivot);
 
   // --- Heightfield (shared collision surface) ------------------------------
-  const heightfield = new Heightfield({ width: W, height: H, nx: 110, nz: 110 });
+  const heightfield = new Heightfield({ width: W, height: H, nx: 120, nz: 110, paddingX: SPINE_PANEL_W });
   const gutterX = -W / 2; // local x of the spine
   // The right-hand stack starts at the spine (x = 0). Pages there must stay
   // above the sheet below them.
   const bakeMinX = gutterX - 0.04; // leave a 4cm gutter strip free (natural fan)
   function resetHeightfield(): void {
-    heightfield.setBase((x) => {
-      const worldX = x + W / 2;
-      return bindingFloorY(worldX, BOOK_DIMENSIONS, blockTop, COVER_FLOOR_Y);
-    });
+    heightfield.reset(COVER_FLOOR_Y);
   }
   resetHeightfield();
 
@@ -425,25 +340,16 @@ export function startBookDemo(container: HTMLElement): () => void {
 
   for (let k = 0; k < NUM_TURNS; k++) {
     const win = TIMELINE.turns[k];
-    // Sheet 0 is the TOP of the 15-sheet stack (turns first); sheet k sits at
-    // restBase + (NUM_SHEETS-1-k)*vStep. Static sheets fill the bottom 7 slots.
-    const restY = restBase + (NUM_SHEETS - 1 - k) * sheetVStep;
+    const restY = textStackY(BOOK_DIMENSIONS, k);
     const landY = landBase + k * landStep; // first turned lands lowest
 
     // Surface of whatever is directly beneath this sheet on the right (the next
     // sheet down, or the top static sheet). The sheet below is itself bound on
     // the spine plane, so its surface is a ramp, not a flat height. Clamp a
     // shell thickness above it so the turning page cannot lie flush with it.
-    const belowRestY = restBase + (NUM_SHEETS - 1 - (k + 1)) * sheetVStep;
-    const root = sheetBinding(BOOK_DIMENSIONS, k, NUM_SHEETS);
-    const belowRoot = sheetBinding(BOOK_DIMENSIONS, k + 1, NUM_SHEETS);
-    const groundHeight = (x: number, z: number): number => {
-      const h = heightfield.heightAt(x, z);
-      const worldX = x + W / 2;
-      if (worldX < belowRoot.x) return h;
-      const below = distributedRightSheetY(worldX - belowRoot.x, belowRoot.y, belowRestY) + 0.00025;
-      return Math.max(below, h);
-    };
+    const root = textRoot(BOOK_DIMENSIONS, k);
+    const groundHeight = (x: number, z: number): number =>
+      Math.max(heightfield.heightAt(x, z), textPageFloor(BOOK_DIMENSIONS, k, x + W / 2, COVER_FLOOR_Y));
 
     const sim = new PaperSimulation({
       cols,
@@ -465,7 +371,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     for (const p of sim.particles) {
       const localX = p.x + W / 2;
       p.x = p.px = p.x + root.x;
-      p.y = p.py = distributedRightSheetY(localX, root.y, restY);
+      p.y = p.py = textPageY(BOOK_DIMENSIONS, k, localX);
     }
 
     const spineIndices: number[] = [];
@@ -506,18 +412,14 @@ export function startBookDemo(container: HTMLElement): () => void {
     // free halves of the front/back endpapers. They are the same simulated
     // sheets as any page, just on endpaper stock, so the first and last turns
     // read as endpapers connecting the case to the block.
-    const isFlyleaf = k === 0 || k === NUM_TURNS - 1;
+    const isFlyleaf = k === 0;
     const material = isFlyleaf
       ? createPaperMaterial({ color: 0xd8ccb4, roughness: 0.95 })
       : createPaperMaterial();
     material.side = THREE.DoubleSide;
     const mesh = new THREE.Mesh(geo.geometry, material);
     mesh.name =
-      k === 0
-        ? "front-flyleaf"
-        : k === NUM_TURNS - 1
-          ? "back-flyleaf"
-          : `turning-page-${k}`;
+      k === 0 ? "front-flyleaf" : `turning-page-${k}`;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     mesh.position.x = W / 2; // binding line at the group's x
@@ -563,12 +465,12 @@ export function startBookDemo(container: HTMLElement): () => void {
   }
 
   function poseUnturned(pg: PageInstance, u: number): void {
-    const root = sheetBinding(BOOK_DIMENSIONS, pg.index, NUM_SHEETS, u);
+    const root = textRoot(BOOK_DIMENSIONS, pg.index, u);
     pg.sim.reset();
     for (const p of pg.sim.particles) {
       const localX = p.x + W / 2;
       p.x = p.px = p.x + root.x;
-      p.y = p.py = openingRightSheetY(localX, BOOK_DIMENSIONS, pg.index, NUM_SHEETS, pg.restY, u);
+      p.y = p.py = textPageY(BOOK_DIMENSIONS, pg.index, localX, u);
     }
     // Pin the simulation's actual open attachment before it starts stepping.
     if (u === 1) {
@@ -638,17 +540,18 @@ export function startBookDemo(container: HTMLElement): () => void {
     coverPivot.rotation.z = pose.angle;
     // The text block slides to the open binding line at the end of the cover
     // swing (u > 0.8, after the spine strip has flattened) and stays there.
-    boundBlock.position.x = bindingLineX(u, SPINE_PANEL_W);
+    // The back attachment stays fixed in world space throughout opening.
+    boundBlock.position.x = 0;
     if (u !== lastBindingU) {
       for (const pg of pages) if (pg.stepped === 0) poseUnturned(pg, u);
       for (const entry of staticSheets) {
-        const root = sheetBinding(BOOK_DIMENSIONS, entry.index, NUM_SHEETS, u);
+        const root = textRoot(BOOK_DIMENSIONS, entry.index, u);
         entry.mesh.geometry.dispose();
-        entry.mesh.geometry = staticSheetGeo(entry.stackY, entry.index, u);
+        entry.mesh.geometry = staticSheetGeo(entry.index, u);
         entry.mesh.position.x = root.x;
       }
       for (let i = 0; i < NUM_SHEETS; i++) {
-        const root = sheetBinding(BOOK_DIMENSIONS, i, NUM_SHEETS, u);
+        const root = textRoot(BOOK_DIMENSIONS, i, u);
         for (let j = 0; j < 2; j++) {
           const offset = (i * 2 + j) * 3;
           bindingPositions[offset] = root.x;
@@ -659,6 +562,11 @@ export function startBookDemo(container: HTMLElement): () => void {
       bindingGeo.getAttribute("position").needsUpdate = true;
       bindingGeo.computeVertexNormals();
       bindingGeo.computeBoundingSphere();
+      const frontRoot = textRoot(BOOK_DIMENSIONS, 0, u);
+      for (const hb of headbands) {
+        hb.position.x = frontRoot.x;
+        hb.position.y = frontRoot.y;
+      }
       lastBindingU = u;
     }
     // The hollow cover-spine ribbon stays convex while the cover opens.
@@ -809,12 +717,12 @@ export function startBookDemo(container: HTMLElement): () => void {
           SPINE_PANEL_W,
         ),
         bindingLineX: boundBlock.position.x,
-        bindings: pages.map((_, k) => ({
-          right: {
-            x: BIND_X_OPEN + sheetBinding(BOOK_DIMENSIONS, k, NUM_SHEETS).x,
-            y: sheetBinding(BOOK_DIMENSIONS, k, NUM_SHEETS).y,
-          },
-          left: { x: BIND_X_OPEN + sheetBinding(BOOK_DIMENSIONS, k, NUM_SHEETS).x, y: sheetBinding(BOOK_DIMENSIONS, k, NUM_SHEETS).y },
+        sheetCount: NUM_SHEETS,
+        bindings: Array.from({ length: NUM_SHEETS }, (_, k) => ({
+          index: k,
+          current: textRoot(BOOK_DIMENSIONS, k, u),
+          right: textRoot(BOOK_DIMENSIONS, k),
+          left: textRoot(BOOK_DIMENSIONS, k),
         })),
       };
     },

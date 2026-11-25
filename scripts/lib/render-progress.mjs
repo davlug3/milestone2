@@ -16,9 +16,18 @@ export async function renderFrame(page,{time,samples,bounces,statusInterval=5},r
       status=await page.evaluate(()=>window.__demo.renderStatus());
       if(status.error||status.mode!=="cinematic")throw Error("Ray tracing failed: "+status.error);
       phase=status.complete?"capturing PNG":status.phase??(status.samples>0?"accumulating samples":"waiting for first sample");
-      if(status.complete){publish();break;}
+      if(status.complete){
+        publish();
+        // Readiness and capture must share one browser task. A resize or
+        // invalidation between separate CDP requests can reset accumulation.
+        const png=await page.evaluate(()=>{
+          const current=window.__demo.renderStatus();
+          return current.complete && current.mode==="cinematic" && !current.error ? window.__demo.captureFrame() : null;
+        });
+        if(png)return png;
+        phase="frame invalidated; waiting for fresh samples";
+      }
       await sleep(500);
     }
-    return await page.evaluate(()=>window.__demo.captureFrame());
   }finally{clearInterval(heartbeat);}
 }

@@ -1,3 +1,4 @@
+import {createDeskProps} from "../rendering/deskProps";
 import { loadingStage, loadingReady } from "../playback/loading";
 import { bindPreviewViewport, previewPixelRatio } from "../playback/viewport";
 import { PlaybackClock, createPlaybackControls } from "../playback/transport";
@@ -199,6 +200,7 @@ export function startBookDemo(container: HTMLElement): () => void {
 
   addStudioLighting(scene);
   const disposeTable = createStudioTable(scene);
+  const disposeProps = createDeskProps(scene);
 
   // --- Static book parts (closed on the right; gutter at x=0) --------------
   const materials = createBookMaterials();
@@ -831,6 +833,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     spineCoverGeo.dispose();
     headbandGeo.dispose();
     prints.dispose();
+    disposeProps();
     disposeTable();
     clothTexture.dispose();
     scene.environment = null;

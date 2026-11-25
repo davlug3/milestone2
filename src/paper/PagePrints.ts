@@ -1,3 +1,4 @@
+import {createPaperGrain,paintPaperWear} from "./paperWear";
 import * as THREE from "three";
 
 const IDS = [10,11,15,16,17,18,19,20,28,29,31,33,37,43,49,57,61,65,73,77,83,84,88,94];
@@ -6,6 +7,7 @@ const HEIGHT = 660;
 
 /** Shared image cache and a unique, UV-stable printed layout for every face. */
 export function createPagePrints(edge: THREE.Material, anisotropy: number) {
+  const grain=createPaperGrain();
   const images = new Map<number, Promise<HTMLImageElement | null>>();
   const textures: THREE.CanvasTexture[] = [];
   const materials: THREE.MeshStandardMaterial[] = [];
@@ -46,7 +48,7 @@ export function createPagePrints(edge: THREE.Material, anisotropy: number) {
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.anisotropy = Math.min(8, anisotropy);
     textures.push(texture);
-    const material = new THREE.MeshPhysicalMaterial({ map: texture, color: 0xffffff, roughness: 0.76, metalness: 0, clearcoat: 0.12, clearcoatRoughness: 0.78, sheen: 0.12, sheenRoughness: 1, sheenColor: new THREE.Color(0xf4efe4) });
+    const material = new THREE.MeshPhysicalMaterial({ map: texture, color: 0xffffff, roughness: 0.79 + .035*Math.sin(page*2.399), roughnessMap:grain.roughness, bumpMap:grain.bump,bumpScale:.000035, metalness: 0, clearcoat: 0.12, clearcoatRoughness: 0.78, sheen: 0.12, sheenRoughness: 1, sheenColor: new THREE.Color(0xf4efe4) });
     materials.push(material);
     const layouts = [
       [[35,35,442,590]],
@@ -59,6 +61,7 @@ export function createPagePrints(edge: THREE.Material, anisotropy: number) {
       ctx.fillStyle = "#f4efe4";
       ctx.fillRect(0,0,WIDTH,HEIGHT);
       boxes.forEach(([x,y,w,h], i) => drawPhoto(ctx,photos[i] ?? null,x,y,w,h));
+      paintPaperWear(ctx,WIDTH,HEIGHT,page);
       texture.needsUpdate = true;
     }
     paint([]);
@@ -77,6 +80,7 @@ export function createPagePrints(edge: THREE.Material, anisotropy: number) {
       disposed = true;
       textures.forEach(t => t.dispose());
       materials.forEach(m => m.dispose());
+      grain.bump.dispose();grain.roughness.dispose();
       images.clear();
     }
   };

@@ -14,7 +14,7 @@ export function createDeskProps(scene:THREE.Scene){
  const wax=new THREE.MeshStandardMaterial({color:0x71352c,roughness:.67});
  const pencilWood=new THREE.MeshStandardMaterial({color:0x96764d,roughness:.81});
  const graphite=new THREE.MeshStandardMaterial({color:0x30302d,roughness:.62});
- const mats=[brass,black,wood,paper,darkPaper,ink,wax,pencilWood,graphite];
+ const mats:THREE.Material[]=[brass,black,wood,paper,darkPaper,ink,wax,pencilWood,graphite];
  const geometries:THREE.BufferGeometry[]=[];
  function part(g:THREE.BufferGeometry,m:THREE.Material,parent:THREE.Group,x:number,y:number,z:number){
   const mesh=new THREE.Mesh(g,m);mesh.position.set(x,y,z);mesh.castShadow=mesh.receiveShadow=true;parent.add(mesh);geometries.push(g);return mesh;
@@ -70,6 +70,65 @@ export function createDeskProps(scene:THREE.Scene){
   for(let k=0;k<pos.count;k++){const x=pos.getX(k),y=pos.getY(k);pos.setZ(k,.0025*Math.sin(x*83+i)*Math.cos(y*70)+.0015*Math.sin(y*140+i));}
   g.computeVertexNormals();
   const m=part(g,paper,scraps,(i-1)*.052,.004,Math.sin(i*2)*.009);m.rotation.set(-Math.PI/2,0,i*.41-.3);
+ }
+ // Front margin: a worn pocket watch, loose key and delicate chain.
+ const steel=new THREE.MeshStandardMaterial({color:0x888982,metalness:.95,roughness:.42,normalMap:metalDetail.normalMap,normalScale:new THREE.Vector2(.15,.15)});
+ const dial=new THREE.MeshPhysicalMaterial({color:0xe0d2b3,roughness:.68,clearcoat:.22});
+ const leather=new THREE.MeshPhysicalMaterial({color:0x55382a,roughness:.78,clearcoat:.08});
+ const fadedInk=new THREE.MeshStandardMaterial({color:0x665441,roughness:.94});
+ const ribbonMat=new THREE.MeshPhysicalMaterial({color:0x6a3834,roughness:.92,sheen:.4,sheenColor:new THREE.Color(0xb37872),side:THREE.DoubleSide});
+ mats.push(steel,dial,leather,fadedInk,ribbonMat);
+ const watch=group("antique-pocket-watch",.122,.182,.28);
+ part(new THREE.CylinderGeometry(.022,.022,.007,48),brass,watch,0,.0035,0);
+ part(new THREE.CylinderGeometry(.0185,.0185,.001,48),dial,watch,0,.0075,0);
+ const bezel=part(new THREE.TorusGeometry(.020,.0013,8,48),brass,watch,0,.0076,0);bezel.rotation.x=-Math.PI/2;
+ for(let i=0;i<60;i++){
+   const a=i*Math.PI/30,r=i%5===0?.0155:.017;
+   const tick=part(new THREE.BoxGeometry(i%5===0?.0008:.00035,.00025,i%5===0?.003:.0012),fadedInk,watch,Math.sin(a)*r,.0082,Math.cos(a)*r);tick.rotation.y=a;
+ }
+ for(const [a,len,w] of [[.94,.011,.001],[2.6,.014,.00065]]){
+   const hand=part(new THREE.BoxGeometry(w,.00035,len),steel,watch,Math.sin(a)*len*.35,.0086,Math.cos(a)*len*.35);hand.rotation.y=a;
+ }
+ part(new THREE.CylinderGeometry(.0011,.0011,.0008,12),brass,watch,0,.009,0);
+ rod(watch,v(0,.004,-.023),v(0,.004,-.026),.0027,brass);
+ // Small chain meanders beside the watch; alternating link planes.
+ for(let i=0;i<15;i++){
+   const x=-.006-i*.0042,z=.004+Math.sin(i*.44)*.006;
+   const link=part(new THREE.TorusGeometry(.0025,.00055,6,14),brass,watch,x,.0018,z);
+   link.rotation.set(i%2?-.25:-Math.PI/2,0,.25*Math.cos(i*.4));link.scale.set(1.2,.70,1);
+ }
+ const key=group("old-brass-key",-.092,.181,-.18);
+ const bow=part(new THREE.TorusGeometry(.009,.002,8,24),brass,key,-.018,.003,0);bow.rotation.x=-Math.PI/2;bow.scale.set(.88,1,1);
+ rod(key,v(-.010,.003,0),v(.023,.003,0),.0019,brass);
+ part(new THREE.BoxGeometry(.008,.0035,.007),brass,key,.020,.0022,.003);
+ part(new THREE.BoxGeometry(.002,.0035,.004),brass,key,.017,.0022,.008);
+ // Small envelope packet and handwritten slips behind the page sweep.
+ const mail=group("old-letter-packet",.199,-.215,.04);
+ for(let i=0;i<3;i++){
+   const card=part(new RoundedBoxGeometry(.066,.0015,.048,2,.0005),i===2?paper:darkPaper,mail,i*.0015,.0008+i*.0017,0);card.rotation.y=(i-1)*.06;
+ }
+ const fold=part(new THREE.BufferGeometry().setFromPoints([v(-.031,.0058,-.021),v(.031,.0058,-.021),v(0,.006,.009)]),paper,mail,0,0,0);fold.geometry.setIndex([0,2,1]);fold.geometry.computeVertexNormals();
+ for(let i=0;i<4;i++){
+   const line=part(new THREE.BoxGeometry(.019-i*.001,.00015,.00035),fadedInk,mail,.009,.0063,.008+i*.004);line.rotation.y=.04;
+ }
+ const seal=part(new THREE.CylinderGeometry(.006,.0065,.0018,18),wax,mail,0,.0063,.001);seal.scale.set(1,.9,.93);
+ // Closed miniature leather memo book, tucked beside the loose letters.
+ const memo=group("small-leather-memo-book",-.065,-.218,.10);
+ part(new RoundedBoxGeometry(.071,.003,.050,2,.001),leather,memo,0,.0015,0);
+ part(new RoundedBoxGeometry(.066,.011,.046,2,.001),paper,memo,0,.008,0);
+ part(new RoundedBoxGeometry(.071,.003,.050,2,.001),leather,memo,0,.015,0);
+ part(new RoundedBoxGeometry(.006,.016,.050,2,.001),leather,memo,-.034,.008,0);
+ for(let i=0;i<5;i++)part(new THREE.BoxGeometry(.064,.00024,.00025),darkPaper,memo,.001,.004+i*.0019,.0232);
+ // Silk bookmark curling from the memo book (stays behind the main book).
+ const rg=new THREE.PlaneGeometry(.009,.041,5,16),rp=rg.attributes.position;
+ for(let i=0;i<rp.count;i++){const x=rp.getX(i),y=rp.getY(i);rp.setZ(i,.0025*Math.sin(y*160)+.001*x/.0045*Math.sin(y*80));}
+ rg.computeVertexNormals();const ribbon=part(rg,ribbonMat,memo,.042,.004,.003);ribbon.rotation.set(-Math.PI/2,0,Math.PI/2);
+ // Fallen rose petals near the vase and small scattered fragments on the front margin.
+ for(const [x,z,yaw] of [[-.316,-.158,.7],[-.285,-.172,-.8],[-.142,.195,1.1],[.016,.19,-.3]]){
+   const petal=group("fallen-rose-petal",x,z,yaw);
+   const g=new THREE.PlaneGeometry(.014,.018,9,12),a=g.attributes.position;
+   for(let i=0;i<a.count;i++){const xx=a.getX(i),yy=a.getY(i);a.setX(i,xx*(.55+.45*Math.cos(yy/.018*Math.PI)));a.setZ(i,.0014+.0025*Math.pow(xx/.007,2)+.0016*Math.sin(yy*190));}
+   g.computeVertexNormals();const m=part(g,ribbonMat,petal,0,.002,0);m.rotation.x=-Math.PI/2;
  }
  return ()=>{scene.remove(root);geometries.forEach(g=>g.dispose());mats.forEach(m=>m.dispose());metalDetail.dispose();};
 }

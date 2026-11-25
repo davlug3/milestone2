@@ -1,4 +1,4 @@
-import { TRACE_QUALITY } from "./quality";
+import { TRACE_QUALITY, QUALITY_PROFILES, type QualityProfile } from "./quality";
 import * as THREE from "three";
 import { WebGLPathTracer, GradientEquirectTexture, PhysicalCamera, PhysicalSpotLight } from "three-gpu-pathtracer";
 import { TraceScene } from "./traceScene";
@@ -17,7 +17,7 @@ export class StudioTracer {
   private proxy = new TraceScene();
   mode: RenderMode = "real-time";
   error = "";
-  constructor(private renderer:THREE.WebGLRenderer,private scene:THREE.Scene,private camera:PhysicalCamera,private compact=false){}
+  constructor(private renderer:THREE.WebGLRenderer,private scene:THREE.Scene,private camera:PhysicalCamera,private profile:QualityProfile=QUALITY_PROFILES.desktop){}
   invalidate(){this.dirty=true;}
   setMode(mode:RenderMode){
     this.error="";
@@ -26,7 +26,7 @@ export class StudioTracer {
   }
   get samples(){return this.dirty ? 0 : (this.tracer?.samples ?? 0);}
   get phase(){return this.dirty?'preparing scene / BVH':this.complete?'complete':this.samples>0?'accumulating samples':'waiting for shader / first sample';}
-  get goal(){return this.mode==="real-time"?0:(this.mode==='cinematic' && this.exportQuality ? this.exportQuality : TRACE_SETTINGS[this.mode]).samples;}
+  get goal(){return this.mode==="real-time"?0:(this.mode==='cinematic' && this.exportQuality ? this.exportQuality : (this.mode==="cinematic"?this.profile.cinematic:this.profile.preview)).samples;}
   get contextLost(){return this.renderer.getContext().isContextLost();}
   get complete(){return !this.contextLost && !this.dirty && this.samples>=this.goal;}
   recover(){this.mode="real-time";this.error="GPU context lost. Recovered in real-time mode.";this.tracer=null;this.environment?.dispose();this.environment=null;this.proxy.dispose();this.proxy=new TraceScene();this.dirty=true;}
@@ -43,18 +43,18 @@ export class StudioTracer {
         this.environment.bottomColor.set(0x201b17);
         this.environment.update();
         this.tracer=new WebGLPathTracer(this.renderer);
-        this.tracer.textureSize.set(this.compact?256:512,this.compact?330:660);
+        this.tracer.textureSize.set(this.profile.atlas,Math.round(this.profile.atlas*660/512));
         this.tracer.renderDelay=0;
         this.tracer.minSamples=1;
         this.tracer.rasterizeSceneCallback=()=>this.renderer.render(this.scene,this.camera);
         this.tracer.fadeDuration=0;
-        this.tracer.tiles.set(this.compact?2:1,this.compact?2:1);
+        this.tracer.tiles.set(this.profile.tiles,this.profile.tiles);
       }
-      const tracer=this.tracer, settings=this.mode==='cinematic' && this.exportQuality ? this.exportQuality : TRACE_SETTINGS[this.mode];
+      const tracer=this.tracer, settings=this.mode==='cinematic' && this.exportQuality ? this.exportQuality : (this.mode==='cinematic'?this.profile.cinematic:this.profile.preview);
       if(this.dirty){
         this.scene.environment=this.environment;
-        tracer.bounces=this.compact?Math.min(5,settings.bounces):settings.bounces;
-        tracer.renderScale=this.compact?Math.min(.65,settings.scale):settings.scale;
+        tracer.bounces=settings.bounces;
+        tracer.renderScale=settings.scale;
         tracer.pausePathTracing=false;
         tracer.setScene(this.proxy.update(this.scene),this.camera);
         tracer.reset();

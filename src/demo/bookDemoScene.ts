@@ -1,3 +1,4 @@
+import {browserQuality,QUALITY_PROFILES,qualityOptions,changeQuality} from "../rendering/quality";
 import {createOrnamentalPlant} from "../rendering/ornamentalPlant";
 import {createFlowerVase} from "../rendering/flowerVase";
 import {createStudioWall} from "../rendering/studioWall";
@@ -156,7 +157,7 @@ export function startBookDemo(container: HTMLElement): () => void {
   loadingStage("Initializing WebGL renderer…");
   // --- Renderer / scene / camera ------------------------------------------
   const query=new URLSearchParams(location.search);
-  const compact=!query.has("export")&&!query.has("geometry-export")&&(query.has("lite")||matchMedia("(pointer: coarse), (max-width: 720px)").matches);
+  const qualityName=browserQuality(query),quality=QUALITY_PROFILES[qualityName];
   const renderer = new THREE.WebGLRenderer({
     antialias: true,
     preserveDrawingBuffer: new URLSearchParams(location.search).has('export'),
@@ -164,7 +165,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     // is only a hint: browsers without a usable GPU fall back automatically.
     powerPreference: "high-performance",
   });
-  renderer.setPixelRatio(compact?1:previewPixelRatio(query.has('export')));
+  renderer.setPixelRatio(query.has('export')||query.has('geometry-export')?1:Math.min(devicePixelRatio||1,quality.dpr));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -191,7 +192,7 @@ export function startBookDemo(container: HTMLElement): () => void {
   camera.fStop = 4.5;
   camera.apertureBlades = 6;
   camera.apertureRotation = 0.15;
-  const trace = new StudioTracer(renderer, scene, camera,compact);
+  const trace = new StudioTracer(renderer, scene, camera,quality);
   const blenderExport = new BlenderExport(scene,camera);
   const geometryOnly = new URLSearchParams(location.search).has("geometry-export");
   let manualCamera = false;
@@ -205,7 +206,7 @@ export function startBookDemo(container: HTMLElement): () => void {
   updateCamera(0);
 
   addStudioLighting(scene);
-  const disposeTable = createStudioTable(scene,compact);
+  const disposeTable = createStudioTable(scene,quality.woodSize);
   const disposeWall = createStudioWall(scene);
   const disposeProps = createDeskProps(scene);
   const disposeFlowers = createFlowerVase(scene);
@@ -221,7 +222,7 @@ export function startBookDemo(container: HTMLElement): () => void {
   materials.endpaper.bumpMap = clothTexture;
   materials.endpaper.bumpScale = 0.00004;
   loadingStage("Preparing book and paper textures…");
-  const prints = createPagePrints(materials.paperEdge, renderer.capabilities.getMaxAnisotropy(),compact,compact?NUM_TURNS+1:Infinity);
+  const prints = createPagePrints(materials.paperEdge, renderer.capabilities.getMaxAnisotropy(),quality.pageScale,quality.allPrints?Infinity:NUM_TURNS+1);
 
   const backCover = createCover(BOOK_DIMENSIONS, materials, "back");
   backCover.position.set(W / 2, CT / 2, 0);
@@ -466,6 +467,7 @@ export function startBookDemo(container: HTMLElement): () => void {
   let raf=0;
   const playback=new PlaybackClock(TIMELINE.end,PLAYBACK_RATE);
   const controls=createPlaybackControls({
+    quality:{value:qualityName,options:qualityOptions(),onChange:changeQuality},
     modes:[{value:"real-time",label:"Real-time"},{value:"ray-traced",label:"Ray-traced preview"},{value:"cinematic",label:"Cinematic"}],
     onToggle:()=>setPlaying(!playback.playing),
     onRestart:()=>{seek(0);setPlaying(true);},
@@ -717,7 +719,7 @@ export function startBookDemo(container: HTMLElement): () => void {
       if (trace.mode !== 'cinematic' || !trace.complete || trace.error) throw Error('Frame not ready');
       return renderer.domElement.toDataURL('image/png');
     },
-    renderStatus: () => ({mode:trace.mode,samples:trace.samples,target:trace.goal,error:trace.error,complete:trace.complete,phase:trace.phase}),
+    renderStatus: () => ({quality:qualityName,mode:trace.mode,samples:trace.samples,target:trace.goal,error:trace.error,complete:trace.complete,phase:trace.phase}),
     /** WebGL backend actually in use (hardware GPU or software renderer). */
     gpu: () => {
       const gl = renderer.getContext();

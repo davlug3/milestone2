@@ -6,9 +6,8 @@ const WIDTH = 512;
 const HEIGHT = 660;
 
 /** Shared image cache and a unique, UV-stable printed layout for every face. */
-export function createPagePrints(edge: THREE.Material, anisotropy: number, compact=false, printedSheets=Infinity) {
+export function createPagePrints(edge: THREE.Material, anisotropy: number, scale=1, printedSheets=Infinity) {
   const grain=createPaperGrain();
-  const scale=compact?.5:1;
   const blank=new THREE.MeshPhysicalMaterial({color:0xf4efe4,roughness:.82,bumpMap:grain.bump,bumpScale:.000035});
   const images = new Map<number, Promise<HTMLImageElement | null>>();
   const textures: THREE.CanvasTexture[] = [];

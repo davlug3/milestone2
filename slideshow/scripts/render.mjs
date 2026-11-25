@@ -4,8 +4,8 @@ import {resolve,join} from "node:path";
 import {createInterface} from "node:readline";
 import {parseArgs} from "node:util";
 import {createHash} from "node:crypto";
-const {values:o}=parseArgs({options:{width:{type:"string",default:"1920"},height:{type:"string",default:"1080"},fps:{type:"string",default:"60"},duration:{type:"string"},output:{type:"string",default:"renders/slideshow.mp4"},mode:{type:"string",default:"raster"},samples:{type:"string",default:"32"},headed:{type:"boolean",default:false},headless:{type:"boolean",default:false},"frames-only":{type:"boolean",default:false},help:{type:"boolean",default:false}}});
-if(o.help){console.log("npm run render:video -- [--width 1920 --height 1080 --fps 60 --duration seconds --output renders/slideshow.mp4 --mode raster|raytrace --samples 32 --headed|--headless --frames-only]");process.exit(0);}
+const {values:o}=parseArgs({options:{width:{type:"string",default:"1920"},height:{type:"string",default:"1080"},fps:{type:"string",default:"60"},duration:{type:"string"},output:{type:"string",default:"renders/slideshow.mp4"},mode:{type:"string",default:"raytrace"},samples:{type:"string",default:"1536"},headed:{type:"boolean",default:false},headless:{type:"boolean",default:false},"frames-only":{type:"boolean",default:false},help:{type:"boolean",default:false}}});
+if(o.help){console.log("npm run render:video -- [--width 1920 --height 1080 --fps 60 --duration seconds --output renders/slideshow.mp4 --mode raster|raytrace --samples 1536 --headed|--headless --frames-only]");process.exit(0);}
 const integer=k=>{const n=Number(o[k]);if(!Number.isInteger(n)||n<1)throw Error("Invalid "+k);return n;};
 const width=integer("width"),height=integer("height"),fps=integer("fps"),requested=o.duration===undefined?Infinity:Number(o.duration);
 const samples=integer("samples");if(!["raster","raytrace"].includes(o.mode))throw Error("Invalid mode");

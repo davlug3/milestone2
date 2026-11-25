@@ -16,7 +16,7 @@ export class PlaybackClock {
     return changed;
   }
 }
-export function createPlaybackControls(options:{modes:{value:string;label:string}[];onToggle:()=>void;onRestart:()=>void;onSeek:(t:number)=>void;onMode:(mode:string)=>void;hidden?:boolean}){
+export function createPlaybackControls(options:{modes:{value:string;label:string}[];onToggle:()=>void;onRestart:()=>void;onSeek:(t:number)=>void;onMode:(mode:string)=>void;hidden?:boolean;quality?:{value:string;options:{value:string;label:string}[];onChange:(name:string)=>void}}){
  const ui=document.createElement("div");
  ui.className="demo-ui shared-transport";ui.id="controls";
  ui.innerHTML='<div class="timeline-heading"><label for="seek">Timeline</label><span id="time" class="demo-time">0.0 / 0.0s</span></div><input id="seek" type="range" min="0" max="1" step=".01" value="0" aria-label="Playback position"><div class="transport-actions"><button id="play" class="demo-play" type="button">Play</button><button id="restart" type="button">Restart</button><select id="mode" class="demo-render" aria-label="Render mode"></select></div><div class="frame-meter"><div class="frame-heading"><span id="frame-stage">Frame render · Real-time</span><span id="frame-count">—</span></div><progress id="frame-progress" max="1" value="0" aria-label="Current frame render progress"></progress></div><span id="samples" class="demo-samples" aria-live="polite"></span>';
@@ -34,6 +34,7 @@ export function createPlaybackControls(options:{modes:{value:string;label:string
 .shared-transport #seek::-moz-range-thumb{width:20px;height:20px;background:#fff0db;border:2px solid #aa8960;border-radius:50%}
 .shared-transport #seek:focus-visible{outline:2px solid #d9bb91;outline-offset:2px;border-radius:6px}
 .shared-transport .transport-actions{display:grid;grid-template-columns:auto auto minmax(0,1fr);gap:8px}
+.shared-transport.has-quality .transport-actions{grid-template-columns:auto auto minmax(0,1fr) minmax(0,1fr)}
 .shared-transport button,.shared-transport select{box-sizing:border-box;font:inherit;color:#211a14;background:#f2e8d8;border:0;border-radius:7px;padding:8px 10px;cursor:pointer;min-width:0;min-height:40px;width:100%}
 .shared-transport .frame-meter{display:grid;gap:5px}
 .shared-transport .frame-heading{font-size:11px;color:#d9cbb8}
@@ -44,11 +45,12 @@ export function createPlaybackControls(options:{modes:{value:string;label:string
 .shared-transport #frame-progress::-moz-progress-bar{background:#d9bb91;border-radius:6px}
 .shared-transport .demo-samples{font-size:11px;max-width:100%;overflow-wrap:anywhere}
 .shared-transport .demo-samples:empty{display:none}
-@media(max-width:720px),(pointer:coarse){.shared-transport#controls{padding:10px 12px;bottom:max(8px,env(safe-area-inset-bottom))}.shared-transport button,.shared-transport select{min-height:44px;font-size:14px}.shared-transport#controls #seek{height:44px}}
+@media(max-width:720px),(pointer:coarse){.shared-transport.has-quality .transport-actions{grid-template-columns:repeat(2,minmax(0,1fr))}.shared-transport#controls{padding:10px 12px;bottom:max(8px,env(safe-area-inset-bottom))}.shared-transport button,.shared-transport select{min-height:44px;font-size:14px}.shared-transport#controls #seek{height:44px}}
 @media(max-height:450px) and (orientation:landscape){.shared-transport#controls{padding:6px 10px;gap:3px;width:min(640px,calc(100% - 24px))}.shared-transport#controls #seek{height:27px}.shared-transport button,.shared-transport select{min-height:32px;padding:5px 8px}}
 `;
  document.head.appendChild(style);document.body.appendChild(ui);ui.hidden=!!options.hidden;
  const button=ui.querySelector<HTMLButtonElement>("#play")!,restart=ui.querySelector<HTMLButtonElement>("#restart")!,slider=ui.querySelector<HTMLInputElement>("#seek")!,label=ui.querySelector<HTMLSpanElement>("#time")!,mode=ui.querySelector<HTMLSelectElement>("#mode")!,samples=ui.querySelector<HTMLSpanElement>("#samples")!;
+ if(options.quality){const quality=document.createElement("select");quality.id="quality";quality.setAttribute("aria-label","Quality preset (reloads scene)");quality.title="Quality preset — reloads scene";for(const item of options.quality.options){const opt=document.createElement("option");opt.value=item.value;opt.textContent=item.label;quality.appendChild(opt);}quality.value=options.quality.value;quality.onchange=()=>options.quality?.onChange(quality.value);ui.querySelector(".transport-actions")!.appendChild(quality);ui.classList.add("has-quality");}
  const frameStage=ui.querySelector<HTMLSpanElement>("#frame-stage")!,frameCount=ui.querySelector<HTMLSpanElement>("#frame-count")!,frameProgress=ui.querySelector<HTMLProgressElement>("#frame-progress")!;
  for(const item of options.modes){const opt=document.createElement("option");opt.value=item.value;opt.textContent=item.label;mode.appendChild(opt);}
  button.onclick=options.onToggle;restart.onclick=options.onRestart;mode.onchange=()=>options.onMode(mode.value);

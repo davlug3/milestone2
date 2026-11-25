@@ -11,14 +11,14 @@ import { createHash } from "node:crypto";
 
 const {values:o}=parseArgs({options:{
   width:{type:"string",default:"1920"},height:{type:"string",default:"1080"},
-  fps:{type:"string",default:"60"},samples:{type:"string",default:"384"},bounces:{type:"string",default:"10"},
+  fps:{type:"string",default:"60"},samples:{type:"string",default:"1536"},bounces:{type:"string",default:"20"},
   output:{type:"string",default:"renders/final.mp4"},frames:{type:"string"},
   start:{type:"string",default:"0"},duration:{type:"string"},port:{type:"string",default:"4319"},
   "allow-software":{type:"boolean",default:false},headless:{type:"boolean",default:false},
   verbose:{type:"boolean",default:false},"status-interval":{type:"string",default:"5"},
   "frames-only":{type:"boolean",default:false},help:{type:"boolean",default:false}
 }});
-if(o.help){console.log("npm run render:video -- [--width 1920 --height 1080 --fps 60 --samples 384 --bounces 10 --output renders/final.mp4 --start 0 --duration seconds --frames folder --headless --verbose --status-interval 5 --allow-software --frames-only]");process.exit(0);}
+if(o.help){console.log("npm run render:video -- [--width 1920 --height 1080 --fps 60 --samples 1536 --bounces 20 --output renders/final.mp4 --start 0 --duration seconds --frames folder --headless --verbose --status-interval 5 --allow-software --frames-only]");process.exit(0);}
 function positive(s,name){const n=Number(s);if(!Number.isInteger(n)||n<1)throw Error("Invalid "+name);return n;}
 const width=positive(o.width,"width"),height=positive(o.height,"height"),fps=positive(o.fps,"fps"),samples=positive(o.samples,"samples"),bounces=positive(o.bounces,"bounces"),port=positive(o.port,"port");
 const statusInterval=Number(o["status-interval"]);

@@ -1,20 +1,21 @@
 import { frameLaunches } from "./frameLaunches.js";
 import { loadingStage, loadingReady, loadingFailed } from "../../src/playback/loading.ts";
 import { bindPreviewViewport, previewPixelRatio, fitVerticalFov } from "../../src/playback/viewport.ts";
-import { TRACE_QUALITY } from "../../src/rendering/quality.ts";
+import { browserQuality,QUALITY_PROFILES,qualityOptions,changeQuality } from "../../src/rendering/quality.ts";
 import { PlaybackClock, createPlaybackControls } from "../../src/playback/transport.ts";
 import * as THREE from "three";
 import { PhysicalSpotLight, WebGLPathTracer, GradientEquirectTexture } from "three-gpu-pathtracer";
 import { makeShots,pose,duration,cameraPose,random } from "./pose.js";
 import { shapeFor,printTexture,createPhoto,placePhoto } from "./photoDeform.js";
 const q=new URLSearchParams(location.search),exportMode=q.has("export");
+const qualityName=browserQuality(q),profile=QUALITY_PROFILES[qualityName];
 if(exportMode)document.body.classList.add("export");
 loadingStage("Initializing WebGL renderer…");
 // Paint the HTML loading screen before building procedural textures.
 async function boot(){
 await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
 const renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:exportMode,powerPreference:"high-performance"});
-renderer.setPixelRatio(previewPixelRatio(exportMode));
+renderer.setPixelRatio(exportMode?1:Math.min(devicePixelRatio||1,profile.dpr));
 renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;
 renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=.86;
 renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
@@ -29,15 +30,15 @@ const rim=new THREE.DirectionalLight(0xffe8d0,.12);rim.position.set(.1,.6,-.8);s
 scene.add(new THREE.HemisphereLight(0xffecd8,0x66503e,.34));
 const environment=new GradientEquirectTexture(128);environment.topColor.set(0x9ca8c4);environment.bottomColor.set(0x27190f);environment.update();
 scene.environment=environment;scene.environmentIntensity=.27;
-let tracer=null,mode="raster",traceDirty=true,traceError="",target=TRACE_QUALITY.preview.samples;
+let tracer=null,mode="raster",traceDirty=true,traceError="",target=profile.preview.samples;
 
-function setMode(value){mode=value;target=value==="cinematic"?TRACE_QUALITY.cinematic.samples:TRACE_QUALITY.preview.samples;controls.mode.value=value;traceDirty=true;traceError="";controls.samples.textContent="";}
+function setMode(value){mode=value;target=value==="cinematic"?profile.cinematic.samples:profile.preview.samples;controls.mode.value=value;traceDirty=true;traceError="";controls.samples.textContent="";}
 function traceDraw(){
   if(!tracer){
     if(!renderer.extensions.has("EXT_color_buffer_float"))throw Error("GPU lacks float render targets");
-    tracer=new WebGLPathTracer(renderer);tracer.textureSize.set(1024,1024);tracer.bounces=5;tracer.renderDelay=0;tracer.fadeDuration=0;tracer.minSamples=1;tracer.tiles.set(1,1);
+    tracer=new WebGLPathTracer(renderer);tracer.textureSize.set(profile.atlas,profile.atlas);tracer.bounces=5;tracer.renderDelay=0;tracer.fadeDuration=0;tracer.minSamples=1;tracer.tiles.set(profile.tiles,profile.tiles);
   }
-  if(traceDirty){const quality=mode==="cinematic"?TRACE_QUALITY.cinematic:TRACE_QUALITY.preview;tracer.bounces=quality.bounces;tracer.renderScale=exportMode?1:quality.scale;tracer.pausePathTracing=false;tracer.setScene(scene,camera);tracer.reset();traceDirty=false;tracer.renderSample();controls.setFrameProgress({phase:tracer.samples>=target?"Frame complete":tracer.samples>0?"Accumulating samples":"Preparing first sample",samples:tracer.samples,target});return;}
+  if(traceDirty){const quality=exportMode||mode==="cinematic"?profile.cinematic:profile.preview;tracer.bounces=quality.bounces;tracer.renderScale=exportMode?1:quality.scale;tracer.pausePathTracing=false;tracer.setScene(scene,camera);tracer.reset();traceDirty=false;tracer.renderSample();controls.setFrameProgress({phase:tracer.samples>=target?"Frame complete":tracer.samples>0?"Accumulating samples":"Preparing first sample",samples:tracer.samples,target});return;}
   tracer.pausePathTracing=tracer.samples>=target;tracer.renderSample();
   controls.setFrameProgress({phase:tracer.samples>=target?"Frame complete":tracer.samples>0?"Accumulating samples":"Preparing first sample",samples:tracer.samples,target});
 }
@@ -48,7 +49,7 @@ function draw(){
 }
 
 function walnut(){
-  const n=1024,c=document.createElement("canvas");c.width=c.height=n;const ctx=c.getContext("2d"),im=ctx.createImageData(n,n),r=random(91);
+  const n=profile.woodSize,c=document.createElement("canvas");c.width=c.height=n;const ctx=c.getContext("2d"),im=ctx.createImageData(n,n),r=random(91);
   for(let y=0;y<n;y++)for(let x=0;x<n;x++){
     const plank=Math.floor(y/(n/5)),v=y/(n/5)-plank;
     const warp=4*Math.sin(x*.008+plank*2)+2*Math.sin(x*.021+y*.014);
@@ -66,7 +67,7 @@ const paper=new THREE.MeshPhysicalMaterial({color:0xf4eee3,roughness:.82,sheen:.
 const edge=new THREE.MeshStandardMaterial({color:0xe1d8c9,roughness:.9});
 let shots=[],total=0,clock=0;
 const playback=new PlaybackClock(0);
-const controls=createPlaybackControls({modes:[{value:"raster",label:"Real-time"},{value:"raytrace",label:"Ray-traced preview"},{value:"cinematic",label:"Cinematic"}],onToggle:()=>play(!playback.playing),onRestart:()=>{update(0);play(true);},onSeek:t=>{play(false);update(t);},onMode:m=>{play(false);setMode(m);draw();},hidden:exportMode});
+const controls=createPlaybackControls({quality:{value:qualityName,options:qualityOptions(),onChange:changeQuality},modes:[{value:"raster",label:"Real-time"},{value:"raytrace",label:"Ray-traced preview"},{value:"cinematic",label:"Cinematic"}],onToggle:()=>play(!playback.playing),onRestart:()=>{update(0);play(true);},onSeek:t=>{play(false);update(t);},onMode:m=>{play(false);setMode(m);draw();},hidden:exportMode});
 controls.sync(playback);
 
 function update(t,fromTick=false){
@@ -91,7 +92,7 @@ async function init(){
   for(let i=0;i<manifest.photos.length;i++){
     const c=shots[i].config;
     let timer;const source=await Promise.race([loader.loadAsync(manifest.photos[i]),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error("Photo "+(i+1)+" failed to load in time")),20000);})]).finally(()=>clearTimeout(timer));
-    const tex=printTexture(source.image,c,renderer.capabilities.getMaxAnisotropy());source.dispose();
+    const tex=printTexture(source.image,c,renderer.capabilities.getMaxAnisotropy(),profile.photoWidth);source.dispose();
     const front=new THREE.MeshPhysicalMaterial({map:tex,roughness:.43,clearcoat:.22,clearcoatRoughness:.46});
     const card=createPhoto(c,shapeFor(c.seed,i),{front,back:paper,edge});
     scene.add(card);cards.push(card);loadingStage("Loading photo prints…",i+1,manifest.photos.length);

@@ -3,8 +3,8 @@ import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.j
 import { createWalnutTextures } from "./surfaceTextures";
 
 /** Compact antique writing table. The physical book still rests at y=0. */
-export function createStudioTable(scene: THREE.Scene,compact=false) {
-  const textures = createWalnutTextures(compact?512:1024);
+export function createStudioTable(scene: THREE.Scene,textureSize=1024) {
+  const textures = createWalnutTextures(textureSize);
   const wood = new THREE.MeshPhysicalMaterial({...textures, roughness:0.78, metalness:0, bumpScale:0.00055, clearcoat:0.13, clearcoatRoughness:0.58});
   const carved = new THREE.MeshPhysicalMaterial({...textures,color:0xb8a18a,roughness:0.65,bumpScale:0.00025,clearcoat:0.09,clearcoatRoughness:0.74});
   const trim = new THREE.MeshStandardMaterial({color:0x392015,roughness:0.6});

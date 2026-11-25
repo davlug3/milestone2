@@ -5,6 +5,7 @@ import { createBookMaterials } from "../book/materials";
 import { createCover } from "../book/cover";
 import { addStudioLighting } from "../rendering/lighting";
 import { PaperSimulation } from "../physics/PaperSimulation";
+import { TurnHandoff } from "../physics/TurnHandoff";
 import { ThickSheetGeometry } from "../paper/ThickSheetGeometry";
 import { createPagePrints } from "../paper/PagePrints";
 import { createParticle } from "../physics/Particle";
@@ -123,6 +124,7 @@ interface PageInstance {
   geo: ThickSheetGeometry;
   mesh: THREE.Mesh;
   controller: PageTurnController;
+  handoff: TurnHandoff;
   window: TurnWindow;
   stepped: number;
   maxSteps: number;
@@ -412,7 +414,9 @@ export function startBookDemo(container: HTMLElement): () => void {
     geo.update(sim.particles);
 
     const maxSteps = Math.ceil((win.dur + win.settle) / FIXED_DT);
-    pages.push({ sim, geo, mesh, controller, window: win, stepped: 0, maxSteps, restY, index: k, landY, baked: false, geoStep: -1 });
+    const handoff = new TurnHandoff();
+    handoff.capture(sim.particles);
+    pages.push({ sim, geo, mesh, controller, handoff, window: win, stepped: 0, maxSteps, restY, index: k, landY, baked: false, geoStep: -1 });
   }
 
   // Bake a settled sheet's top surface into the heightfield (outer region only).
@@ -462,6 +466,7 @@ export function startBookDemo(container: HTMLElement): () => void {
       pg.controller.setProgress(0);
       pg.controller.apply(pg.sim.particles);
     }
+    pg.handoff.capture(pg.sim.particles);
     pg.geo.update(pg.sim.particles);
     pg.geoStep = pg.stepped;
   }
@@ -503,7 +508,7 @@ export function startBookDemo(container: HTMLElement): () => void {
       }
       // Only rebuild GPU geometry when this page actually moved.
       if (pg.stepped !== pg.geoStep) {
-        pg.geo.update(pg.sim.particles);
+        pg.geo.update(pg.handoff.pose(pg.sim.particles, pg.stepped * FIXED_DT));
         pg.geoStep = pg.stepped;
       }
     }

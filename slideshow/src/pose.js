@@ -32,14 +32,21 @@ export function pose(shot,time){
   const bounce=.018*Math.abs(Math.sin(u*Math.PI*3))*Math.pow(1-u,3);
   return {visible:true,x:shot.x+shot.slideX*remain,z:shot.z+shot.slideZ*remain,height:base+bounce,yaw:shot.yaw+.11*remain,pitch:.10*Math.sin(u*Math.PI*3)*Math.pow(1-u,3),roll:.065*Math.sin(u*Math.PI*2)*Math.pow(1-u,3)};
 }
+// Seeded amplitude keyframes, smoothly interpolated. No frame-dependent RNG.
+export function tremorEnvelope(time){
+  const step=1.25, k=Math.floor(time/step),u=smooth(time/step-k);
+  const level=i=>{const r=random((0x9e3779b9^Math.imul(i+1,0x85ebca6b))>>>0)();return r<.35?0:(r-.35)/.65;};
+  return mix(level(k),level(k+1),u);
+}
 export function cameraPose(time){
+  const tremor=tremorEnvelope(time);
   // Restrained handheld drift with faint, smooth higher-frequency tremor.
   return {
-    x:0.00175*Math.sin(time*.71)+0.0006*Math.sin(time*1.93)+0.0003*Math.sin(time*22.75),
-    y:.78+0.0006*Math.sin(time*.91)+0.000175*Math.sin(time*28.25+.7),
-    z:.35+0.0012*Math.sin(time*.57)+0.00025*Math.sin(time*20.75+1.4),
-    targetX:0.001*Math.sin(time*.63)+0.0002*Math.sin(time*26.75+.3),
-    targetZ:0.0008*Math.cos(time*.81)+0.000175*Math.sin(time*24.25),
-    roll:0.0006*Math.sin(time*.83)+0.000225*Math.sin(time*30.25+.9)
+    x:0.00175*Math.sin(time*.71)+0.0006*Math.sin(time*1.93)+0.0003*tremor*Math.sin(time*22.75),
+    y:.78+0.0006*Math.sin(time*.91)+0.000175*tremor*Math.sin(time*28.25+.7),
+    z:.35+0.0012*Math.sin(time*.57)+0.00025*tremor*Math.sin(time*20.75+1.4),
+    targetX:0.001*Math.sin(time*.63)+0.0002*tremor*Math.sin(time*26.75+.3),
+    targetZ:0.0008*Math.cos(time*.81)+0.000175*tremor*Math.sin(time*24.25),
+    roll:0.0006*Math.sin(time*.83)+0.000225*tremor*Math.sin(time*30.25+.9)
   };
 }

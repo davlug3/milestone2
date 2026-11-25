@@ -4,6 +4,8 @@ import { BOOK_DIMENSIONS } from "../config/bookConfig";
 import { createBookMaterials } from "../book/materials";
 import { createCover } from "../book/cover";
 import { addStudioLighting } from "../rendering/lighting";
+import { createStudioTable } from "../rendering/studioTable";
+import { createClothTexture } from "../rendering/surfaceTextures";
 import { PaperSimulation } from "../physics/PaperSimulation";
 import { TurnHandoff } from "../physics/TurnHandoff";
 import { bindingLoad, bindingLift } from "../book/bindingFlex";
@@ -147,6 +149,8 @@ export function startBookDemo(container: HTMLElement): () => void {
   });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   container.appendChild(renderer.domElement);
@@ -168,27 +172,15 @@ export function startBookDemo(container: HTMLElement): () => void {
   updateCamera(0);
 
   addStudioLighting(scene);
-  const pageKey = new THREE.DirectionalLight(0xffffff, 0.7);
-  pageKey.position.set(0.2, 0.9, 0.3);
-  scene.add(pageKey);
-  // Soft fill over the gutter. The key light comes from the left, so the open
-  // front cover shadows the gutter and the right block; without this fill the
-  // curved spine hollow reads as a black band.
-  const gutterFill = new THREE.DirectionalLight(0xfff4e8, 1.2);
-  gutterFill.position.set(0.1, 1.0, 0.3);
-  scene.add(gutterFill);
-
-  // --- Ground --------------------------------------------------------------
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(8, 8),
-    new THREE.MeshStandardMaterial({ color: 0x111317, roughness: 0.95 }),
-  );
-  ground.rotation.x = -Math.PI / 2;
-  ground.receiveShadow = true;
-  scene.add(ground);
+  const disposeTable = createStudioTable(scene);
 
   // --- Static book parts (closed on the right; gutter at x=0) --------------
   const materials = createBookMaterials();
+  const clothTexture = createClothTexture();
+  materials.cover.bumpMap = clothTexture;
+  materials.cover.bumpScale = 0.00012;
+  materials.endpaper.bumpMap = clothTexture;
+  materials.endpaper.bumpScale = 0.00004;
   const prints = createPagePrints(materials.paperEdge, renderer.capabilities.getMaxAnisotropy());
 
   const backCover = createCover(BOOK_DIMENSIONS, materials, "back");
@@ -242,6 +234,14 @@ export function startBookDemo(container: HTMLElement): () => void {
   }
   bindingGeo.setIndex(bindingIndices);
   const bindingMaterial = materials.spineCloth.clone();
+  const bindingUVs = new Float32Array(NUM_SHEETS * 2 * 2);
+  for (let i=0;i<NUM_SHEETS;i++) for (let j=0;j<2;j++) {
+    bindingUVs[(i*2+j)*2] = i / (NUM_SHEETS-1);
+    bindingUVs[(i*2+j)*2+1] = j * 12;
+  }
+  bindingGeo.setAttribute('uv', new THREE.BufferAttribute(bindingUVs, 2));
+  bindingMaterial.bumpMap = clothTexture;
+  bindingMaterial.bumpScale = 0.00008;
   bindingMaterial.side = THREE.DoubleSide;
   const bindingMesh = new THREE.Mesh(bindingGeo, bindingMaterial);
   bindingMesh.name = "distributed-text-block-binding";
@@ -760,6 +760,8 @@ export function startBookDemo(container: HTMLElement): () => void {
     spineCoverGeo.dispose();
     headbandGeo.dispose();
     prints.dispose();
+    disposeTable();
+    clothTexture.dispose();
     renderer.dispose();
   };
 }

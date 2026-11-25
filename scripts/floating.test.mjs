@@ -1,0 +1,3 @@
+import test from "node:test";import assert from "node:assert/strict";import {makeLayout,floatPose,memoryCamera,SECONDS} from "../floating/src/motion.js";
+test("layout is deterministic and retains hero ordering",()=>{const a=makeLayout(8);assert.deepEqual(a,makeLayout(8));assert.equal(a.length,32);for(let i=0;i<8;i++)assert.equal(a[i*4].photo,i);assert.deepEqual(floatPose(a[0],2),floatPose(a[0],2));});
+test("camera pose remains continuous at transitions",()=>{const a=makeLayout(8);for(let i=1;i<8;i++){const p=memoryCamera(i*SECONDS-.00001,8,a),q=memoryCamera(i*SECONDS,8,a);assert.ok(Math.hypot(p.x-q.x,p.y-q.y,p.z-q.z)<.001);}});

@@ -4,7 +4,7 @@ import {readFileSync,writeFileSync,mkdirSync} from "node:fs";
 import {resolve,extname,sep} from "node:path";
 import {parseArgs} from "node:util";
 const {values:o}=parseArgs({options:{scene:{type:"string",default:"book"},passes:{type:"string",default:"albedo,normal,depth,object-id,mask,clay,emission"},output:{type:"string",default:"renders/passes"},duration:{type:"string"},fps:{type:"string",default:"60"}}});
-const apis={book:"__demo",slideshow:"__slideshow",clothesline:"__clothesline",stats:"__stats"},api=apis[o.scene];if(!api)throw Error("Unknown scene");
+const apis={book:"__demo",slideshow:"__slideshow",clothesline:"__clothesline",floating:"__floating",stats:"__stats"},api=apis[o.scene];if(!api)throw Error("Unknown scene");
 const valid=o.scene==="stats"?["composite","background","foreground","typography","accent","chroma"]:["albedo","normal","depth","object-id","mask","clay","emission"];const passes=o.passes.split(",");if(passes.some(p=>!valid.includes(p)))throw Error("Invalid pass; choose "+valid.join(","));
 const fps=Number(o.fps);if(!Number.isInteger(fps)||fps<1)throw Error("Invalid fps");
 const root=resolve("site-dist"),types={".html":"text/html",".js":"text/javascript",".css":"text/css",".json":"application/json",".jpg":"image/jpeg",".jpeg":"image/jpeg",".png":"image/png",".webp":"image/webp",".svg":"image/svg+xml",".avif":"image/avif"};

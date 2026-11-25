@@ -32,7 +32,9 @@
     "render:stats": "node scripts/render-stats.mjs",
     "test:clothesline": "node --test scripts/clothesline.test.mjs",
     "render:clothesline": "node scripts/render-clothesline.mjs",
-    "render:passes": "node scripts/render-passes.mjs"
+    "render:passes": "node scripts/render-passes.mjs",
+    "render:floating": "node scripts/render-floating.mjs",
+    "test:floating": "node --test scripts/floating.test.mjs"
   },
   "dependencies": {
     "three": "^0.180.0",

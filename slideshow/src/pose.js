@@ -35,11 +35,11 @@ export function pose(shot,time){
 export function cameraPose(time){
   // Restrained handheld drift with faint, smooth higher-frequency tremor.
   return {
-    x:.0035*Math.sin(time*.71)+.0012*Math.sin(time*1.93)+.0006*Math.sin(time*22.75),
-    y:.78+.0012*Math.sin(time*.91)+.00035*Math.sin(time*28.25+.7),
-    z:.35+.0024*Math.sin(time*.57)+.0005*Math.sin(time*20.75+1.4),
-    targetX:.002*Math.sin(time*.63)+.0004*Math.sin(time*26.75+.3),
-    targetZ:.0016*Math.cos(time*.81)+.00035*Math.sin(time*24.25),
-    roll:.0012*Math.sin(time*.83)+.00045*Math.sin(time*30.25+.9)
+    x:0.00175*Math.sin(time*.71)+0.0006*Math.sin(time*1.93)+0.0003*Math.sin(time*22.75),
+    y:.78+0.0006*Math.sin(time*.91)+0.000175*Math.sin(time*28.25+.7),
+    z:.35+0.0012*Math.sin(time*.57)+0.00025*Math.sin(time*20.75+1.4),
+    targetX:0.001*Math.sin(time*.63)+0.0002*Math.sin(time*26.75+.3),
+    targetZ:0.0008*Math.cos(time*.81)+0.000175*Math.sin(time*24.25),
+    roll:0.0006*Math.sin(time*.83)+0.000225*Math.sin(time*30.25+.9)
   };
 }

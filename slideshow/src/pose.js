@@ -1,5 +1,5 @@
 // Analytic, deterministic 2.5D toss. Units: metres, seconds, radians.
-export const defaults={interval:3.0,flight:1.25,settle:.85,hold:2.5,seed:27,width:.35,depth:.245,thickness:.00065};
+export const defaults={interval:3.0,flight:1.25,settle:.85,hold:2.5,seed:27,width:.44,depth:.308,thickness:.00065};
 const clamp=x=>Math.max(0,Math.min(1,x));
 const mix=(a,b,t)=>a+(b-a)*t;
 const smooth=x=>{x=clamp(x);return x*x*(3-2*x);};

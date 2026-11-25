@@ -27,7 +27,9 @@
     "build:site": "node scripts/build-site.mjs",
     "preview:site": "vite preview --outDir site-dist",
     "test:transport": "node --experimental-strip-types --test scripts/transport.test.mjs",
-    "test:page-shape": "esbuild scripts/page-shape-check.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/page-shape-check.mjs && node node_modules/.cache/page-shape-check.mjs"
+    "test:page-shape": "esbuild scripts/page-shape-check.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/page-shape-check.mjs && node node_modules/.cache/page-shape-check.mjs",
+    "test:stats": "node --test scripts/stats.test.mjs",
+    "render:stats": "node scripts/render-stats.mjs"
   },
   "dependencies": {
     "three": "^0.180.0",

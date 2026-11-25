@@ -43,7 +43,7 @@ async function boot(){
  const r=random(51);for(let i=0;i<Math.ceil(span*8);i++){const x=(r()-.5)*(span+2),y=.15+r()*.67,z=-.88+r()*.12;const leaf=mesh(new THREE.SphereGeometry(.065+r()*.065,8,6),leafMat,x,y,z);leaf.scale.set(.55,1,.15);leaf.rotation.z=(r()-.5)*2.7;leaf.rotation.y=(r()-.5)*2;}
  const key=new PhysicalSpotLight(0xffe0b6,14,12,Math.PI/3,.85,2);key.position.set(-1.7,3.2,2.4);key.target.position.set(0,1.4,0);key.radius=.65;key.castShadow=true;key.shadow.mapSize.set(profile.dpr===1?1024:2048,profile.dpr===1?1024:2048);key.shadow.camera.near=.2;key.shadow.camera.far=12;key.shadow.normalBias=.0005;scene.add(key,key.target);
  const fill=new THREE.DirectionalLight(0xc1d5e8,.95);fill.position.set(2,2,1);scene.add(fill);const rim=new THREE.DirectionalLight(0xffd4a0,1.5);rim.position.set(-1,2,-.7);scene.add(rim);scene.add(new THREE.HemisphereLight(0xf7e8cc,0x59634c,.45));
- const loader=new THREE.TextureLoader(),cards=[];
+ const loader=new THREE.TextureLoader(),cards=[],photoMaterials=[];
  function makeGeometry(s,back=false){const n=s.cols*s.rows,uv=new Float32Array(n*2),indices=[];for(let j=0;j<s.rows;j++)for(let i=0;i<s.cols;i++){const k=j*s.cols+i;uv[k*2]=back?1-i/(s.cols-1):i/(s.cols-1);uv[k*2+1]=1-j/(s.rows-1);if(i+1<s.cols&&j+1<s.rows){const a=k,b=k+1,d=k+s.cols,e=d+1;if(back)indices.push(a,b,d,b,e,d);else indices.push(a,d,b,b,d,e);}}const g=new THREE.BufferGeometry();g.setAttribute("position",new THREE.BufferAttribute(new Float32Array(n*3),3).setUsage(THREE.DynamicDrawUsage));g.setAttribute("uv",new THREE.BufferAttribute(uv,2));g.setIndex(indices);return g;}
  function makeEdge(s){const boundary=[];for(let i=0;i<s.cols-1;i++)boundary.push(i);for(let j=0;j<s.rows-1;j++)boundary.push(j*s.cols+s.cols-1);for(let i=s.cols-1;i>0;i--)boundary.push((s.rows-1)*s.cols+i);for(let j=s.rows-1;j>0;j--)boundary.push(j*s.cols);const indices=[];for(let i=0;i<boundary.length;i++){const a=i*2,b=((i+1)%boundary.length)*2;indices.push(a,b,a+1,b,b+1,a+1);}const g=new THREE.BufferGeometry();g.setAttribute("position",new THREE.BufferAttribute(new Float32Array(boundary.length*6),3).setUsage(THREE.DynamicDrawUsage));g.setIndex(indices);return {g,boundary};}
  function syncCard(card){const {s,front,back,edge,boundary}=card,a=front.attributes.position,b=back.attributes.position,e=edge.attributes.position;for(let i=0;i<s.inverse.length;i++){const k=i*3;a.setXYZ(i,s.p[k],s.p[k+1],s.p[k+2]+THICKNESS/2);b.setXYZ(i,s.p[k],s.p[k+1],s.p[k+2]-THICKNESS/2);}for(let i=0;i<boundary.length;i++){const k=boundary[i];e.setXYZ(i*2,a.getX(k),a.getY(k),a.getZ(k));e.setXYZ(i*2+1,b.getX(k),b.getY(k),b.getZ(k));}for(const g of [front,back,edge]){g.attributes.position.needsUpdate=true;g.computeVertexNormals();g.computeBoundingSphere();}}
@@ -52,6 +52,7 @@ async function boot(){
   const source=await loader.loadAsync(new URL(manifest.photos[i],new URL("../slideshow/",location.href)).href);
   const tex=printTexture(source.image,{width:PHOTO_W,depth:PHOTO_H},renderer.capabilities.getMaxAnisotropy(),profile.photoWidth);source.dispose();
   const material=new THREE.MeshPhysicalMaterial({map:tex,roughness:.57,clearcoat:.15,clearcoatRoughness:.48});
+  photoMaterials.push(material);
   const s=makeSheet(i,25,19),x=(i-(count-1)/2)*SPACING,group=new THREE.Group();group.position.set(x,lineY(x,span)-.012,.012);scene.add(group);
   const front=makeGeometry(s),back=makeGeometry(s,true),edge=makeEdge(s);
   mesh(front,material,0,0,0,group);mesh(back,paperBack,0,0,0,group);mesh(edge.g,edgeMat,0,0,0,group);
@@ -62,6 +63,31 @@ async function boot(){
    const spring=mesh(new THREE.TorusGeometry(.005,.0012,6,16),steel,0,.012,0,clip);spring.rotation.y=Math.PI/2;
   }
   const card={s,front,back,edge:edge.g,boundary:edge.boundary};cards.push(card);syncCard(card);
+ }
+ // Two staggered background clotheslines, with independently wind-driven thick prints.
+ // The middle row sits above the hero prints and the rear row below it, creating parallax.
+ const clipJawGeometry=new RoundedBoxGeometry(.016,.058,.009,2,.0015),clipSpringGeometry=new THREE.TorusGeometry(.005,.0012,6,16);
+ const backgroundRows=[{z:-.43,y:.28,offset:.5,scale:.82},{z:-.91,y:-.20,offset:.18,scale:.88}];
+ for(let row=0;row<backgroundRows.length;row++){
+  const spec=backgroundRows[row],rearSpan=span+.65;
+  const height=x=>lineY(x,rearSpan)+spec.y;
+  const line=new THREE.CatmullRomCurve3(Array.from({length:49},(_,j)=>{const x=(j/48-.5)*rearSpan;return new THREE.Vector3(x,height(x),spec.z);}));
+  mesh(new THREE.TubeGeometry(line,Math.max(100,count*20),.003,8,false),ropeMat,0,0,0);
+  for(const x of [-rearSpan/2,rearSpan/2]){mesh(new RoundedBoxGeometry(.07,2.45,.075,2,.005),wood,x,1.21,spec.z);mesh(new THREE.TorusGeometry(.019,.003,8,20),steel,x,height(x),spec.z).rotation.y=Math.PI/2;}
+  const n=count+1;
+  for(let i=0;i<n;i++){
+   const x=(i-(n-1)/2+spec.offset-.25)*SPACING;
+   const sheet=makeSheet(count+row*n+i,17,13),group=new THREE.Group();group.position.set(x,height(x)-.012*spec.scale,spec.z+.012);group.scale.setScalar(spec.scale);scene.add(group);
+   const front=makeGeometry(sheet),back=makeGeometry(sheet,true),edge=makeEdge(sheet);
+   const material=photoMaterials[(i*3+row*5+1)%count];
+   mesh(front,material,0,0,0,group);mesh(back,paperBack,0,0,0,group);mesh(edge.g,edgeMat,0,0,0,group);
+   for(const pin of [sheet.left,sheet.right]){
+    const px=sheet.rest[pin*3],clip=new THREE.Group();clip.position.set(px,.008,-.003);group.add(clip);
+    mesh(clipJawGeometry,wood,0,.009,-.006,clip);mesh(clipJawGeometry,wood,0,.009,.006,clip);
+    mesh(clipSpringGeometry,steel,0,.012,0,clip).rotation.y=Math.PI/2;
+   }
+   const card={s:sheet,front,back,edge:edge.g,boundary:edge.boundary};cards.push(card);syncCard(card);
+  }
  }
  let simStep=0,tracer=null,mode="raster",dirty=true,target=profile.preview.samples,traceError="";
  // Warm up the hanging sheets under gravity so playback starts in equilibrium.
@@ -75,7 +101,7 @@ async function boot(){
  function resize(w,h){renderer.setSize(w,h,false);camera.aspect=w/h;camera.setFocalLength(50);camera.updateProjectionMatrix();seek(clock.time);}
  if(exportMode){resize(innerWidth,innerHeight);addEventListener("resize",()=>resize(innerWidth,innerHeight));}else bindPreviewViewport(renderer.domElement,controls.ui,resize,false,DEFAULT_OUTPUT.aspect);
  seek(0);loadingReady();
- window.__clothesline={duration,count,seek:t=>{clock.setPlaying(false);seek(t);},capture:t=>{clock.setPlaying(false);setMode("raster");seek(t);return renderer.domElement.toDataURL("image/png");},beginTrace:(t,samples)=>{clock.setPlaying(false);setMode("raytrace");target=samples;seek(t);},traceStep:()=>{if(mode!=="raytrace")throw Error(traceError||"Ray tracer unavailable");traceDraw();return {samples:tracer.samples,target};},traceCapture:()=>{if(!tracer||dirty||tracer.samples<target)throw Error("Frame not ready");return renderer.domElement.toDataURL("image/png");},cameraStatus:()=>({focalLength:camera.getFocalLength(),focusDistance:camera.focusDistance}),gpu:()=>{const gl=renderer.getContext(),ext=gl.getExtension("WEBGL_debug_renderer_info");return ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER);}};
+ window.__clothesline={duration,count,backgroundCount:cards.length-count,totalPrints:cards.length,seek:t=>{clock.setPlaying(false);seek(t);},capture:t=>{clock.setPlaying(false);setMode("raster");seek(t);return renderer.domElement.toDataURL("image/png");},beginTrace:(t,samples)=>{clock.setPlaying(false);setMode("raytrace");target=samples;seek(t);},traceStep:()=>{if(mode!=="raytrace")throw Error(traceError||"Ray tracer unavailable");traceDraw();return {samples:tracer.samples,target};},traceCapture:()=>{if(!tracer||dirty||tracer.samples<target)throw Error("Frame not ready");return renderer.domElement.toDataURL("image/png");},cameraStatus:()=>({focalLength:camera.getFocalLength(),focusDistance:camera.focusDistance}),gpu:()=>{const gl=renderer.getContext(),ext=gl.getExtension("WEBGL_debug_renderer_info");return ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER);}};
  if(!exportMode){function tick(now){if(clock.tick(now,mode!=="cinematic"||(!dirty&&tracer&&tracer.samples>=target),mode==="cinematic"?1/60:undefined))seek(clock.time,true);else if(mode==="cinematic"||mode==="raytrace"&&!clock.playing)draw();controls.sync(clock);requestAnimationFrame(tick);}requestAnimationFrame(tick);}
 }
 boot().catch(e=>{loadingFailed(e);window.__clotheslineError=String(e);document.getElementById("error").textContent=String(e);console.error(e);});

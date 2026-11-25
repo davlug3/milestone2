@@ -1,0 +1,81 @@
+import * as THREE from "three";
+import {PhysicalCamera,PhysicalSpotLight,WebGLPathTracer,GradientEquirectTexture} from "three-gpu-pathtracer";
+import {RoundedBoxGeometry} from "three/addons/geometries/RoundedBoxGeometry.js";
+import {printTexture} from "../../slideshow/src/photoDeform.js";
+import {random} from "../../slideshow/src/pose.js";
+import {PlaybackClock,createPlaybackControls} from "../../src/playback/transport.ts";
+import {bindPreviewViewport} from "../../src/playback/viewport.ts";
+import {browserQuality,QUALITY_PROFILES,qualityOptions,changeQuality,DEFAULT_OUTPUT} from "../../src/rendering/quality.ts";
+import {loadingStage,loadingReady,loadingFailed} from "../../src/playback/loading.ts";
+import {DT,SPACING,PHOTO_W,PHOTO_H,THICKNESS,lineY,galleryCamera,makeSheet,resetSheet,stepSheet} from "./physics.js";
+const query=new URLSearchParams(location.search),exportMode=query.has("export"),qualityName=browserQuality(query),profile=QUALITY_PROFILES[qualityName];
+async function boot(){
+ await new Promise(r=>requestAnimationFrame(r));loadingStage("Preparing hanging gallery…");
+ const renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:exportMode,powerPreference:"high-performance"});
+ renderer.setPixelRatio(exportMode?1:Math.min(devicePixelRatio||1,profile.dpr));renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=.95;renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;document.body.prepend(renderer.domElement);
+ const scene=new THREE.Scene();scene.background=new THREE.Color(0x343d32);
+ const camera=new PhysicalCamera(39.6,16/9,.03,35);camera.filmGauge=36;camera.fStop=3.5;camera.focusDistance=1.05;camera.setFocalLength(50);
+ const env=new GradientEquirectTexture(128);env.topColor.set(0xd0c1a7);env.bottomColor.set(0x363e32);env.update();scene.environment=env;scene.environmentIntensity=.36;
+ const response=await fetch("../slideshow/slides.json",{signal:AbortSignal.timeout(20000)});if(!response.ok)throw Error("Photo manifest unavailable");const manifest=await response.json();if(!manifest.photos.length)throw Error("No photos");
+ const count=manifest.photos.length,span=Math.max(1.5,(count-1)*SPACING+.9),duration=Math.max(8,count*3.2),clock=new PlaybackClock(duration,1);
+ const wood=new THREE.MeshStandardMaterial({color:0x715339,roughness:.84});
+ const ropeMat=new THREE.MeshStandardMaterial({color:0xb7a080,roughness:.98});
+ const paperBack=new THREE.MeshStandardMaterial({color:0xe8dfcf,roughness:.93});
+ const edgeMat=new THREE.MeshStandardMaterial({color:0xd7c9b1,roughness:.85,side:THREE.DoubleSide});
+ const steel=new THREE.MeshStandardMaterial({color:0x77766d,metalness:.8,roughness:.45});
+ function mesh(g,m,x,y,z,parent=scene){const o=new THREE.Mesh(g,m);o.position.set(x,y,z);o.castShadow=o.receiveShadow=true;parent.add(o);return o;}
+ // Old timber veranda with a muted plaster backdrop, slatted openings and a secondary string of warm bulbs.
+ const wallMat=new THREE.MeshStandardMaterial({color:0x58634f,roughness:1});
+ mesh(new THREE.BoxGeometry(span+7,4,.12),wallMat,0,1.3,-1.2);
+ const floor=new THREE.MeshStandardMaterial({color:0x635a48,roughness:.92});mesh(new THREE.BoxGeometry(span+7,.1,5),floor,0,-.07,0);
+ for(const x of [-span/2,span/2]){mesh(new RoundedBoxGeometry(.09,2.7,.10,3,.008),wood,x,1.34,0);mesh(new THREE.TorusGeometry(.023,.004,8,24),steel,x,lineY(x,span),0).rotation.y=Math.PI/2;}
+ mesh(new RoundedBoxGeometry(span+.3,.10,.13,2,.008),wood,0,2.56,0);
+ const curve=new THREE.CatmullRomCurve3(Array.from({length:41},(_,i)=>{const x=(i/40-.5)*span;return new THREE.Vector3(x,lineY(x,span),0);}));
+ mesh(new THREE.TubeGeometry(curve,Math.max(100,count*24),.0035,8,false),ropeMat,0,0,0);
+ // Fine twisted strands around the load-bearing rope.
+ for(let k=0;k<2;k++){const strand=new THREE.CatmullRomCurve3(Array.from({length:Math.ceil(span*180)},(_,i)=>{const u=i/(Math.ceil(span*180)-1),x=(u-.5)*span,a=x*230+k*Math.PI;return new THREE.Vector3(x,lineY(x,span)+.003*Math.cos(a),.003*Math.sin(a));}));mesh(new THREE.TubeGeometry(strand,Math.ceil(span*180),.0008,4,false),ropeMat,0,0,0);}
+ const lightWire=new THREE.MeshStandardMaterial({color:0x3b3429,roughness:.95}),bulb=new THREE.MeshStandardMaterial({color:0xffdcb1,emissive:0xffbd73,emissiveIntensity:1.8,roughness:.32});
+ const lightCurve=new THREE.CatmullRomCurve3(Array.from({length:25},(_,i)=>{const x=(i/24-.5)*(span+1);return new THREE.Vector3(x,2.11-.17*(1-(2*x/(span+1))**2),-.55);}));
+ mesh(new THREE.TubeGeometry(lightCurve,100,.0018,5,false),lightWire,0,0,0);
+ for(let i=0;i<Math.ceil(span/.23);i++){const v=lightCurve.getPoint(i/Math.max(1,Math.ceil(span/.23)-1));mesh(new THREE.CylinderGeometry(.006,.006,.018,8),lightWire,v.x,v.y-.012,v.z);mesh(new THREE.SphereGeometry(.012,12,10),bulb,v.x,v.y-.03,v.z);}
+ // Muted greenery along the back wall, actual geometry rather than a flat backdrop.
+ const leafMat=new THREE.MeshPhysicalMaterial({color:0x33492c,roughness:.77,side:THREE.DoubleSide,sheen:.15});
+ const r=random(51);for(let i=0;i<Math.ceil(span*8);i++){const x=(r()-.5)*(span+2),y=.15+r()*.67,z=-.88+r()*.12;const leaf=mesh(new THREE.SphereGeometry(.065+r()*.065,8,6),leafMat,x,y,z);leaf.scale.set(.55,1,.15);leaf.rotation.z=(r()-.5)*2.7;leaf.rotation.y=(r()-.5)*2;}
+ const key=new PhysicalSpotLight(0xffe0b6,14,12,Math.PI/3,.85,2);key.position.set(-1.7,3.2,2.4);key.target.position.set(0,1.4,0);key.radius=.65;key.castShadow=true;key.shadow.mapSize.set(profile.dpr===1?1024:2048,profile.dpr===1?1024:2048);key.shadow.camera.near=.2;key.shadow.camera.far=12;key.shadow.normalBias=.0005;scene.add(key,key.target);
+ const fill=new THREE.DirectionalLight(0xc1d5e8,.95);fill.position.set(2,2,1);scene.add(fill);const rim=new THREE.DirectionalLight(0xffd4a0,1.5);rim.position.set(-1,2,-.7);scene.add(rim);scene.add(new THREE.HemisphereLight(0xf7e8cc,0x59634c,.45));
+ const loader=new THREE.TextureLoader(),cards=[];
+ function makeGeometry(s,back=false){const n=s.cols*s.rows,uv=new Float32Array(n*2),indices=[];for(let j=0;j<s.rows;j++)for(let i=0;i<s.cols;i++){const k=j*s.cols+i;uv[k*2]=back?1-i/(s.cols-1):i/(s.cols-1);uv[k*2+1]=1-j/(s.rows-1);if(i+1<s.cols&&j+1<s.rows){const a=k,b=k+1,d=k+s.cols,e=d+1;if(back)indices.push(a,b,d,b,e,d);else indices.push(a,d,b,b,d,e);}}const g=new THREE.BufferGeometry();g.setAttribute("position",new THREE.BufferAttribute(new Float32Array(n*3),3).setUsage(THREE.DynamicDrawUsage));g.setAttribute("uv",new THREE.BufferAttribute(uv,2));g.setIndex(indices);return g;}
+ function makeEdge(s){const boundary=[];for(let i=0;i<s.cols-1;i++)boundary.push(i);for(let j=0;j<s.rows-1;j++)boundary.push(j*s.cols+s.cols-1);for(let i=s.cols-1;i>0;i--)boundary.push((s.rows-1)*s.cols+i);for(let j=s.rows-1;j>0;j--)boundary.push(j*s.cols);const indices=[];for(let i=0;i<boundary.length;i++){const a=i*2,b=((i+1)%boundary.length)*2;indices.push(a,b,a+1,b,b+1,a+1);}const g=new THREE.BufferGeometry();g.setAttribute("position",new THREE.BufferAttribute(new Float32Array(boundary.length*6),3).setUsage(THREE.DynamicDrawUsage));g.setIndex(indices);return {g,boundary};}
+ function syncCard(card){const {s,front,back,edge,boundary}=card,a=front.attributes.position,b=back.attributes.position,e=edge.attributes.position;for(let i=0;i<s.inverse.length;i++){const k=i*3;a.setXYZ(i,s.p[k],s.p[k+1],s.p[k+2]+THICKNESS/2);b.setXYZ(i,s.p[k],s.p[k+1],s.p[k+2]-THICKNESS/2);}for(let i=0;i<boundary.length;i++){const k=boundary[i];e.setXYZ(i*2,a.getX(k),a.getY(k),a.getZ(k));e.setXYZ(i*2+1,b.getX(k),b.getY(k),b.getZ(k));}for(const g of [front,back,edge]){g.attributes.position.needsUpdate=true;g.computeVertexNormals();g.computeBoundingSphere();}}
+ for(let i=0;i<count;i++){
+  loadingStage("Preparing suspended photographs…",i,count);
+  const source=await loader.loadAsync(new URL(manifest.photos[i],new URL("../slideshow/",location.href)).href);
+  const tex=printTexture(source.image,{width:PHOTO_W,depth:PHOTO_H},renderer.capabilities.getMaxAnisotropy(),profile.photoWidth);source.dispose();
+  const material=new THREE.MeshPhysicalMaterial({map:tex,roughness:.57,clearcoat:.15,clearcoatRoughness:.48});
+  const s=makeSheet(i,25,19),x=(i-(count-1)/2)*SPACING,group=new THREE.Group();group.position.set(x,lineY(x,span)-.012,.012);scene.add(group);
+  const front=makeGeometry(s),back=makeGeometry(s,true),edge=makeEdge(s);
+  mesh(front,material,0,0,0,group);mesh(back,paperBack,0,0,0,group);mesh(edge.g,edgeMat,0,0,0,group);
+  // Each clip is aligned with an actual fixed solver vertex; two wooden jaws and a steel spring.
+  for(const pin of [s.left,s.right]){const px=s.rest[pin*3],clip=new THREE.Group();clip.position.set(px,.008,-.003);group.add(clip);
+   mesh(new RoundedBoxGeometry(.016,.058,.009,2,.0015),wood,0,.009,-.006,clip);
+   mesh(new RoundedBoxGeometry(.016,.058,.009,2,.0015),wood,0,.009,.006,clip);
+   const spring=mesh(new THREE.TorusGeometry(.005,.0012,6,16),steel,0,.012,0,clip);spring.rotation.y=Math.PI/2;
+  }
+  const card={s,front,back,edge:edge.g,boundary:edge.boundary};cards.push(card);syncCard(card);
+ }
+ let simStep=0,tracer=null,mode="raster",dirty=true,target=profile.preview.samples,traceError="";
+ // Warm up the hanging sheets under gravity so playback starts in equilibrium.
+ function reset(){for(const card of cards)resetSheet(card.s);for(let i=0;i<90;i++)for(const card of cards)stepSheet(card.s,(i-90)*DT);simStep=0;}
+ reset();
+ const controls=createPlaybackControls({modes:[{value:"raster",label:"Real-time"},{value:"raytrace",label:"Ray-traced preview"},{value:"cinematic",label:"Cinematic"}],quality:{value:qualityName,options:qualityOptions(),onChange:changeQuality},onToggle:()=>{if(clock.time>=duration)seek(0);clock.setPlaying(!clock.playing);controls.sync(clock);},onRestart:()=>{seek(0);clock.setPlaying(true);},onSeek:t=>{clock.setPlaying(false);seek(t);},onMode:m=>{clock.setPlaying(false);setMode(m);draw();},hidden:exportMode});
+ function setMode(m){mode=m;target=m==="cinematic"?profile.cinematic.samples:profile.preview.samples;dirty=true;traceError="";controls.mode.value=m;}
+ function traceDraw(){if(!tracer){if(!renderer.extensions.has("EXT_color_buffer_float"))throw Error("Floating point render targets unavailable");tracer=new WebGLPathTracer(renderer);tracer.textureSize.set(profile.atlas,profile.atlas);tracer.renderDelay=0;tracer.minSamples=1;tracer.fadeDuration=0;tracer.tiles.set(profile.tiles,profile.tiles);}if(dirty){const q=mode==="cinematic"||exportMode?profile.cinematic:profile.preview;tracer.bounces=q.bounces;tracer.renderScale=exportMode?1:q.scale;tracer.setScene(scene,camera);tracer.reset();dirty=false;}tracer.pausePathTracing=tracer.samples>=target;tracer.renderSample();controls.setFrameProgress({phase:"Accumulating samples",samples:tracer.samples,target});}
+ function draw(){if(mode==="cinematic"||(mode==="raytrace"&&!clock.playing)){try{traceDraw();return;}catch(e){traceError=String(e);setMode("raster");controls.samples.textContent="Ray trace failed: "+e;}}renderer.render(scene,camera);controls.setFrameProgress({phase:"Frame render · Real-time",ready:true});}
+ function seek(t,fromTick=false){if(!fromTick)clock.seek(t);const step=Math.floor(clock.time/DT+1e-8);if(step<simStep)reset();while(simStep<step){simStep++;for(const card of cards)stepSheet(card.s,simStep*DT);}for(const card of cards)syncCard(card);const p=galleryCamera(clock.time,count,duration);camera.position.set(p.x,p.y,p.z);camera.lookAt(p.targetX,p.targetY,p.targetZ);camera.rotateZ(p.roll);camera.focusDistance=camera.position.distanceTo(new THREE.Vector3(p.targetX,p.targetY,p.targetZ));dirty=true;draw();controls.sync(clock);}
+ function resize(w,h){renderer.setSize(w,h,false);camera.aspect=w/h;camera.setFocalLength(50);camera.updateProjectionMatrix();seek(clock.time);}
+ if(exportMode){resize(innerWidth,innerHeight);addEventListener("resize",()=>resize(innerWidth,innerHeight));}else bindPreviewViewport(renderer.domElement,controls.ui,resize,false,DEFAULT_OUTPUT.aspect);
+ seek(0);loadingReady();
+ window.__clothesline={duration,count,seek:t=>{clock.setPlaying(false);seek(t);},capture:t=>{clock.setPlaying(false);setMode("raster");seek(t);return renderer.domElement.toDataURL("image/png");},beginTrace:(t,samples)=>{clock.setPlaying(false);setMode("raytrace");target=samples;seek(t);},traceStep:()=>{if(mode!=="raytrace")throw Error(traceError||"Ray tracer unavailable");traceDraw();return {samples:tracer.samples,target};},traceCapture:()=>{if(!tracer||dirty||tracer.samples<target)throw Error("Frame not ready");return renderer.domElement.toDataURL("image/png");},cameraStatus:()=>({focalLength:camera.getFocalLength(),focusDistance:camera.focusDistance}),gpu:()=>{const gl=renderer.getContext(),ext=gl.getExtension("WEBGL_debug_renderer_info");return ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER);}};
+ if(!exportMode){function tick(now){if(clock.tick(now,mode!=="cinematic"||(!dirty&&tracer&&tracer.samples>=target),mode==="cinematic"?1/60:undefined))seek(clock.time,true);else if(mode==="cinematic"||mode==="raytrace"&&!clock.playing)draw();controls.sync(clock);requestAnimationFrame(tick);}requestAnimationFrame(tick);}
+}
+boot().catch(e=>{loadingFailed(e);window.__clotheslineError=String(e);document.getElementById("error").textContent=String(e);console.error(e);});

@@ -29,7 +29,9 @@
     "test:transport": "node --experimental-strip-types --test scripts/transport.test.mjs",
     "test:page-shape": "esbuild scripts/page-shape-check.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/page-shape-check.mjs && node node_modules/.cache/page-shape-check.mjs",
     "test:stats": "node --test scripts/stats.test.mjs",
-    "render:stats": "node scripts/render-stats.mjs"
+    "render:stats": "node scripts/render-stats.mjs",
+    "test:clothesline": "node --test scripts/clothesline.test.mjs",
+    "render:clothesline": "node scripts/render-clothesline.mjs"
   },
   "dependencies": {
     "three": "^0.180.0",

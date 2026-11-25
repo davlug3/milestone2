@@ -40,7 +40,7 @@ export class TraceScene {
             const mat=o.material[g.materialIndex ?? 0];
             if(!mat || !g.count)continue;
             const geo=new THREE.BufferGeometry();
-            for(const [key,attr] of Object.entries(o.geometry.attributes))geo.setAttribute(key,attr);
+            for(const [key,attr] of Object.entries(o.geometry.attributes))geo.setAttribute(key,attr as THREE.BufferAttribute | THREE.InterleavedBufferAttribute);
             const idx=o.geometry.index;
             const indices=new Uint32Array(g.count);
             for(let j=0;j<g.count;j++)indices[j]=idx?idx.getX(g.start+j):g.start+j;
@@ -63,7 +63,7 @@ export class TraceScene {
       this.entries.delete(mesh);
     }
     for(const child of [...this.root.children])if(!(child instanceof THREE.Group))this.root.remove(child);
-    this.root.add(...lights);
+    if(lights.length)this.root.add(...lights);
     return this.root;
   }
   dispose(){

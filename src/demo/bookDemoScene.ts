@@ -155,27 +155,29 @@ export function startBookDemo(container: HTMLElement): () => void {
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.95;
+  renderer.toneMappingExposure = 0.78;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   container.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x101216);
-  scene.fog = new THREE.Fog(0x101216, 1.4, 3.6);
+  scene.background = new THREE.Color(0x0c0d10);
+  scene.fog = new THREE.Fog(0x0c0d10, 1.15, 3.2);
   const pmrem = new THREE.PMREMGenerator(renderer);
   const room = new RoomEnvironment();
   const environment = pmrem.fromScene(room, 0.04);
   room.dispose();
   pmrem.dispose();
   scene.environment = environment.texture;
-  scene.environmentIntensity = 0.28;
+  scene.environmentIntensity = 0.16;
 
   // Full-frame 35mm prime; fit the full sensor gate to the viewport.
   const aspect = window.innerWidth / window.innerHeight;
   const camera = new PhysicalCamera(cameraVerticalFov(aspect), aspect, 0.01, 100);
   camera.filmGauge = CAMERA_SENSOR_W_MM;
-  camera.fStop = 8;
+  camera.fStop = 4.5;
+  camera.apertureBlades = 6;
+  camera.apertureRotation = 0.15;
   const trace = new StudioTracer(renderer, scene, camera);
   let manualCamera = false;
   function updateCamera(t: number): void {

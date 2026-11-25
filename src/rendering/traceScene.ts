@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { PhysicalSpotLight } from "three-gpu-pathtracer";
 
 /** The path tracer's merger assigns one material slot per mesh, not per
  * geometry group. Preserve face/edge materials by giving it single-material
@@ -18,6 +19,10 @@ export class TraceScene {
     source.traverseVisible(o=>{
       if((o as THREE.Light).isLight){
         const light=(o as THREE.Light).clone();
+        if(o instanceof PhysicalSpotLight && light instanceof PhysicalSpotLight){
+          light.radius=o.radius;
+          light.iesTexture=o.iesTexture;
+        }
         light.position.setFromMatrixPosition(o.matrixWorld);
         light.quaternion.setFromRotationMatrix(o.matrixWorld);
         if(light instanceof THREE.SpotLight || light instanceof THREE.DirectionalLight){

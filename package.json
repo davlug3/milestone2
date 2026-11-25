@@ -23,7 +23,9 @@
     "test:trace": "esbuild scripts/trace-check.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/trace-check.mjs && node node_modules/.cache/trace-check.mjs",
     "render:video": "node scripts/render-video.mjs",
     "test:render-progress": "node scripts/render-progress-check.mjs",
-    "render:blender": "node scripts/render-blender.mjs"
+    "render:blender": "node scripts/render-blender.mjs",
+    "build:site": "node scripts/build-site.mjs",
+    "preview:site": "vite preview --outDir site-dist"
   },
   "dependencies": {
     "three": "^0.180.0",

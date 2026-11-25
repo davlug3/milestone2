@@ -23,3 +23,6 @@ blender/__pycache__/
 
 # Offline cinematic render output
 renders/
+
+site-dist/
+slideshow/public/shared-photos/

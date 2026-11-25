@@ -35,7 +35,8 @@
     "render:passes": "node scripts/render-passes.mjs",
     "render:floating": "node scripts/render-floating.mjs",
     "test:floating": "node --test scripts/floating.test.mjs",
-    "dev:book": "vite"
+    "dev:book": "vite",
+    "render": "node scripts/render-scene.mjs"
   },
   "dependencies": {
     "three": "^0.180.0",

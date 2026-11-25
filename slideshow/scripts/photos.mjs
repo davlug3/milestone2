@@ -1,0 +1,10 @@
+import { readdirSync,writeFileSync,mkdirSync,readFileSync,existsSync } from "node:fs";
+import { join } from "node:path";
+const dir="public/photos";mkdirSync(dir,{recursive:true});
+const names=readdirSync(dir).filter(x=>/\.(jpe?g|png|webp|avif)$/i.test(x)).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+const config=existsSync("slideshow.config.json")?JSON.parse(readFileSync("slideshow.config.json","utf8")):{};
+for(const k of ["interval","flight","settle","hold","width","depth","thickness"])if(k in config&&(!Number.isFinite(config[k])||config[k]<=0))throw Error("Invalid "+k);
+if((config.interval??2)<(config.flight??.64)+(config.settle??.62))throw Error("interval must allow each print to settle");
+const photos=names.length?names.map(x=>"./photos/"+encodeURIComponent(x)):Array.from({length:6},(_,i)=>"./demo/"+(i+1)+".svg");
+writeFileSync("public/slides.json",JSON.stringify({photos,config},null,2));
+console.log("[photos]",photos.length,names.length?"local photos":"bundled illustration placeholders");

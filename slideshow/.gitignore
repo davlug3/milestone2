@@ -1,0 +1,6 @@
+node_modules/
+dist/
+renders/
+public/photos/*
+!public/photos/.gitkeep
+public/slides.json

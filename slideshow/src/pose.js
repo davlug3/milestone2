@@ -33,6 +33,13 @@ export function pose(shot,time){
   return {visible:true,x:shot.x+shot.slideX*remain,z:shot.z+shot.slideZ*remain,height:base+bounce,yaw:shot.yaw+.11*remain,pitch:.10*Math.sin(u*Math.PI*3)*Math.pow(1-u,3),roll:.065*Math.sin(u*Math.PI*2)*Math.pow(1-u,3)};
 }
 export function cameraPose(time){
-  // Low-frequency, millimetre-scale movement: no pans or cuts.
-  return {x:.009*Math.sin(time*.71)+.003*Math.sin(time*1.93),y:.78+.003*Math.sin(time*.91),z:.35+.006*Math.sin(time*.57),targetX:.005*Math.sin(time*.63),targetZ:.004*Math.cos(time*.81),roll:.003*Math.sin(time*.83)};
+  // Restrained handheld drift with faint, smooth higher-frequency tremor.
+  return {
+    x:.0035*Math.sin(time*.71)+.0012*Math.sin(time*1.93)+.0006*Math.sin(time*9.1),
+    y:.78+.0012*Math.sin(time*.91)+.00035*Math.sin(time*11.3+.7),
+    z:.35+.0024*Math.sin(time*.57)+.0005*Math.sin(time*8.3+1.4),
+    targetX:.002*Math.sin(time*.63)+.0004*Math.sin(time*10.7+.3),
+    targetZ:.0016*Math.cos(time*.81)+.00035*Math.sin(time*9.7),
+    roll:.0012*Math.sin(time*.83)+.00045*Math.sin(time*12.1+.9)
+  };
 }

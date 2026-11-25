@@ -27,6 +27,11 @@ async function boot(){
  const env=new GradientEquirectTexture(128);env.topColor.set(0xd0c1a7);env.bottomColor.set(0x363e32);env.update();scene.environment=env;scene.environmentIntensity=.36;
  const response=await fetch("../slideshow/slides.json",{signal:AbortSignal.timeout(20000)});if(!response.ok)throw Error("Photo manifest unavailable");const manifest=await response.json();if(!manifest.photos.length)throw Error("No photos");
  const count=manifest.photos.length,span=Math.max(1.5,(count-1)*SPACING+.9),duration=Math.max(8,count*3.2),clock=new PlaybackClock(duration,1);
+ const labelsKey="milestone2.clothesline.labels.v1";
+ const cleanLabels=value=>{if(!Array.isArray(value)||value.some(v=>typeof v!=="string"||v.length>100))throw Error("Use a JSON array of caption strings (maximum 100 characters each).");return Array.from({length:count},(_,i)=>(value[i]||"").trim());};
+ let labels=cleanLabels(Array.isArray(manifest.config?.labels)?manifest.config.labels:[]);
+ let labelsEnabled=query.get("labels")==="1"||query.get("labels")!=="0"&&labels.some(Boolean);
+ if(!exportMode){try{const saved=JSON.parse(localStorage.getItem(labelsKey)||"null");if(saved&&Array.isArray(saved.labels)){labels=cleanLabels(saved.labels);if(!query.has("labels"))labelsEnabled=!!saved.enabled;}}catch{}}
  const wood=new THREE.MeshStandardMaterial({color:0x715339,roughness:.84});
  const ropeMat=new THREE.MeshStandardMaterial({color:0xb7a080,roughness:.98});
  const paperBack=new THREE.MeshStandardMaterial({color:0xe8dfcf,roughness:.93});
@@ -52,7 +57,7 @@ async function boot(){
  const r=random(51);for(let i=0;i<Math.ceil(span*8);i++){const x=(r()-.5)*(span+2),y=.15+r()*.67,z=-.88+r()*.12;const leaf=mesh(new THREE.SphereGeometry(.065+r()*.065,8,6),leafMat,x,y,z);leaf.scale.set(.55,1,.15);leaf.rotation.z=(r()-.5)*2.7;leaf.rotation.y=(r()-.5)*2;}
  const key=new PhysicalSpotLight(0xffe0b6,14,12,Math.PI/3,.85,2);key.position.set(-1.7,3.2,2.4);key.target.position.set(0,1.4,0);key.radius=.65;key.castShadow=true;key.shadow.mapSize.set(profile.dpr===1?1024:2048,profile.dpr===1?1024:2048);key.shadow.camera.near=.2;key.shadow.camera.far=12;key.shadow.normalBias=.0005;scene.add(key,key.target);
  const fill=new THREE.DirectionalLight(0xc1d5e8,.95);fill.position.set(2,2,1);scene.add(fill);const rim=new THREE.DirectionalLight(0xffd4a0,1.5);rim.position.set(-1,2,-.7);scene.add(rim);scene.add(new THREE.HemisphereLight(0xf7e8cc,0x59634c,.45));
- const loader=new THREE.TextureLoader(),cards=[],photoMaterials=[];
+ const loader=new THREE.TextureLoader(),cards=[],photoMaterials=[],originalPrints=[];
  function makeGeometry(s,back=false){const n=s.cols*s.rows,uv=new Float32Array(n*2),indices=[];for(let j=0;j<s.rows;j++)for(let i=0;i<s.cols;i++){const k=j*s.cols+i;uv[k*2]=back?1-i/(s.cols-1):i/(s.cols-1);uv[k*2+1]=1-j/(s.rows-1);if(i+1<s.cols&&j+1<s.rows){const a=k,b=k+1,d=k+s.cols,e=d+1;if(back)indices.push(a,b,d,b,e,d);else indices.push(a,d,b,b,d,e);}}const g=new THREE.BufferGeometry();g.setAttribute("position",new THREE.BufferAttribute(new Float32Array(n*3),3).setUsage(THREE.DynamicDrawUsage));g.setAttribute("uv",new THREE.BufferAttribute(uv,2));g.setIndex(indices);return g;}
  function makeEdge(s){const boundary=[];for(let i=0;i<s.cols-1;i++)boundary.push(i);for(let j=0;j<s.rows-1;j++)boundary.push(j*s.cols+s.cols-1);for(let i=s.cols-1;i>0;i--)boundary.push((s.rows-1)*s.cols+i);for(let j=s.rows-1;j>0;j--)boundary.push(j*s.cols);const indices=[];for(let i=0;i<boundary.length;i++){const a=i*2,b=((i+1)%boundary.length)*2;indices.push(a,b,a+1,b,b+1,a+1);}const g=new THREE.BufferGeometry();g.setAttribute("position",new THREE.BufferAttribute(new Float32Array(boundary.length*6),3).setUsage(THREE.DynamicDrawUsage));g.setIndex(indices);return {g,boundary};}
  function syncCard(card){const {s,front,back,edge,boundary}=card,a=front.attributes.position,b=back.attributes.position,e=edge.attributes.position;for(let i=0;i<s.inverse.length;i++){const k=i*3;a.setXYZ(i,s.p[k],s.p[k+1],s.p[k+2]+THICKNESS/2);b.setXYZ(i,s.p[k],s.p[k+1],s.p[k+2]-THICKNESS/2);}for(let i=0;i<boundary.length;i++){const k=boundary[i];e.setXYZ(i*2,a.getX(k),a.getY(k),a.getZ(k));e.setXYZ(i*2+1,b.getX(k),b.getY(k),b.getZ(k));}for(const g of [front,back,edge]){g.attributes.position.needsUpdate=true;g.computeVertexNormals();g.computeBoundingSphere();}}
@@ -61,7 +66,7 @@ async function boot(){
   const source=await loader.loadAsync(new URL(manifest.photos[i],new URL("../slideshow/",location.href)).href);
   const tex=printTexture(source.image,{width:PHOTO_W,depth:PHOTO_H},renderer.capabilities.getMaxAnisotropy(),profile.photoWidth);source.dispose();
   const material=new THREE.MeshPhysicalMaterial({map:tex,roughness:.57,clearcoat:.15,clearcoatRoughness:.48});
-  photoMaterials.push(material);
+  photoMaterials.push(material);originalPrints.push(tex);
   const s=makeSheet(i,25,19),x=(i-(count-1)/2)*SPACING,group=new THREE.Group();group.position.set(x,lineY(x,span)-.012,.012);scene.add(group);
   const front=makeGeometry(s),back=makeGeometry(s,true),edge=makeEdge(s);
   mesh(front,material,0,0,0,group);mesh(back,paperBack,0,0,0,group);mesh(edge.g,edgeMat,0,0,0,group);
@@ -98,6 +103,27 @@ async function boot(){
    const card={s:sheet,front,back,edge:edge.g,boundary:edge.boundary};cards.push(card);syncCard(card);
   }
  }
+ // Captions are painted into the actual photo texture and deform with the paper.
+ // Rear prints keep their original material, so only the hero row carries editorial captions.
+ const captionMaterials=photoMaterials.map(m=>m.clone());
+ for(let i=0;i<count;i++){const card=cards[i];const obj=scene.children.find(o=>o.isGroup&&o.children.some(ch=>ch.geometry===card.front));if(obj){const face=obj.children.find(ch=>ch.geometry===card.front);face.material=captionMaterials[i];}}
+ function updateLabels(){
+  for(let i=0;i<count;i++){
+   const m=captionMaterials[i],source=originalPrints[i];
+   if(m.map&&m.map!==source)m.map.dispose();
+   if(!labelsEnabled||!labels[i]){m.map=source;m.needsUpdate=true;continue;}
+   const canvas=document.createElement("canvas");canvas.width=source.image.width;canvas.height=source.image.height;
+   const ctx=canvas.getContext("2d"),w=canvas.width,h=canvas.height,border=h*.14;
+   ctx.fillStyle="#f5f0e6";ctx.fillRect(0,0,w,h);
+   ctx.drawImage(source.image,0,0,w,h-border+h*.035);
+   ctx.fillStyle="#f5f0e6";ctx.fillRect(0,h-border,w,border);
+   let size=border*.55;ctx.font="500 "+size+"px Georgia, serif";
+   while(ctx.measureText(labels[i]).width>w*.88&&size>8){size-=1;ctx.font="500 "+size+"px Georgia, serif";}
+   ctx.fillStyle="#463d32";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(labels[i],w/2,h-border/2,w*.88);
+   const tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;tex.anisotropy=source.anisotropy;m.map=tex;m.needsUpdate=true;
+  }
+ }
+ updateLabels();
  let simStep=0,tracer=null,mode="raster",dirty=true,target=profile.preview.samples,traceError="";
  // Warm up the hanging sheets under gravity so playback starts in equilibrium.
  function reset(){for(const card of cards)resetSheet(card.s);for(let i=0;i<90;i++)for(const card of cards)stepSheet(card.s,(i-90)*DT);simStep=0;}
@@ -110,8 +136,16 @@ async function boot(){
  function seek(t,fromTick=false){if(!fromTick)clock.seek(t);const step=Math.floor(clock.time/DT+1e-8);if(step<simStep)reset();while(simStep<step){simStep++;for(const card of cards)stepSheet(card.s,simStep*DT);}for(const card of cards)syncCard(card);const p=galleryCamera(clock.time,count,duration);camera.position.set(p.x,p.y,p.z);camera.lookAt(p.targetX,p.targetY,p.targetZ);camera.rotateZ(p.roll);camera.focusDistance=camera.position.distanceTo(new THREE.Vector3(p.targetX,p.targetY,p.targetZ));dirty=true;draw();controls.sync(clock);}
  function resize(w,h){renderer.setSize(w,h,false);composer.setSize(w,h);camera.aspect=w/h;camera.setFocalLength(50);camera.updateProjectionMatrix();seek(clock.time);}
  if(exportMode){resize(innerWidth,innerHeight);addEventListener("resize",()=>resize(innerWidth,innerHeight));}else bindPreviewViewport(renderer.domElement,controls.ui,resize,false,DEFAULT_OUTPUT.aspect);
+ const labelPanel=document.getElementById("label-panel"),labelToggle=document.getElementById("label-toggle"),labelEdit=document.getElementById("label-edit"),labelDialog=document.getElementById("label-dialog"),labelInput=document.getElementById("label-input"),labelError=document.getElementById("label-error");
+ labelPanel.hidden=exportMode;labelToggle.checked=labelsEnabled;
+ function saveLabels(){try{localStorage.setItem(labelsKey,JSON.stringify({labels,enabled:labelsEnabled}));}catch{}}
+ function setLabels(value,enabled=true){labels=cleanLabels(value);labelsEnabled=!!enabled;labelToggle.checked=labelsEnabled;updateLabels();dirty=true;draw();}
+ labelToggle.onchange=()=>{setLabels(labels,labelToggle.checked);saveLabels();};
+ labelEdit.onclick=()=>{clock.setPlaying(false);controls.sync(clock);labelInput.value=JSON.stringify(labels,null,2);labelError.textContent="";labelDialog.showModal();};
+ document.getElementById("label-cancel").onclick=()=>labelDialog.close();
+ document.getElementById("label-apply").onclick=()=>{try{setLabels(JSON.parse(labelInput.value),true);saveLabels();labelDialog.close();}catch(e){labelError.textContent=String(e.message||e);}};
  seek(0);loadingReady();
- window.__clothesline={duration,count,backgroundCount:cards.length-count,totalPrints:cards.length,seek:t=>{clock.setPlaying(false);seek(t);},capture:t=>{clock.setPlaying(false);setMode("raster");seek(t);return renderer.domElement.toDataURL("image/png");},beginTrace:(t,samples)=>{clock.setPlaying(false);setMode("raytrace");target=samples;seek(t);},traceStep:()=>{if(mode!=="raytrace")throw Error(traceError||"Ray tracer unavailable");traceDraw();return {samples:tracer.samples,target};},traceCapture:()=>{if(!tracer||dirty||tracer.samples<target)throw Error("Frame not ready");return renderer.domElement.toDataURL("image/png");},cameraStatus:()=>({focalLength:camera.getFocalLength(),fStop:camera.fStop,focusDistance:camera.focusDistance,previewDof:!previewDofError}),gpu:()=>{const gl=renderer.getContext(),ext=gl.getExtension("WEBGL_debug_renderer_info");return ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER);}};
+ window.__clothesline={duration,count,setLabels,backgroundCount:cards.length-count,totalPrints:cards.length,seek:t=>{clock.setPlaying(false);seek(t);},capture:t=>{clock.setPlaying(false);setMode("raster");seek(t);return renderer.domElement.toDataURL("image/png");},beginTrace:(t,samples)=>{clock.setPlaying(false);setMode("raytrace");target=samples;seek(t);},traceStep:()=>{if(mode!=="raytrace")throw Error(traceError||"Ray tracer unavailable");traceDraw();return {samples:tracer.samples,target};},traceCapture:()=>{if(!tracer||dirty||tracer.samples<target)throw Error("Frame not ready");return renderer.domElement.toDataURL("image/png");},cameraStatus:()=>({focalLength:camera.getFocalLength(),fStop:camera.fStop,focusDistance:camera.focusDistance,previewDof:!previewDofError}),gpu:()=>{const gl=renderer.getContext(),ext=gl.getExtension("WEBGL_debug_renderer_info");return ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER);}};
  if(!exportMode){function tick(now){if(clock.tick(now,mode!=="cinematic"||(!dirty&&tracer&&tracer.samples>=target),mode==="cinematic"?1/60:undefined))seek(clock.time,true);else if(mode==="cinematic"||mode==="raytrace"&&!clock.playing)draw();controls.sync(clock);requestAnimationFrame(tick);}requestAnimationFrame(tick);}
 }
 boot().catch(e=>{loadingFailed(e);window.__clotheslineError=String(e);document.getElementById("error").textContent=String(e);console.error(e);});

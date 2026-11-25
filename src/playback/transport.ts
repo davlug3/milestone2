@@ -23,6 +23,22 @@ export function createPlaybackControls(options:{modes:{value:string;label:string
   ui.innerHTML='<button id="play" class="demo-play" type="button">Play</button><button id="restart" type="button">Restart</button><input id="seek" type="range" min="0" max="1" step=".01" value="0" aria-label="Playback position"><span id="time" class="demo-time">0.0s</span><select id="mode" class="demo-render" aria-label="Render mode"></select><span id="samples" class="demo-samples" aria-live="polite"></span>';
   const style=document.createElement("style");
   style.textContent=".shared-transport#controls{box-sizing:border-box;position:fixed;z-index:20;bottom:max(12px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:max-content;max-width:calc(100vw - 24px);display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:8px;padding:10px 12px;background:#171717e8;border:1px solid #ffffff20;border-radius:14px;color:#f2e8d8;font:13px system-ui;white-space:normal}.shared-transport#controls[hidden]{display:none}.shared-transport button,.shared-transport select{font:inherit;color:#211a14;background:#f2e8d8;border:0;border-radius:7px;padding:8px 10px;cursor:pointer;min-width:0}.shared-transport input{width:clamp(80px,24vw,280px);accent-color:#cdb18d}.shared-transport .demo-time{min-width:0;white-space:nowrap}.shared-transport .demo-samples{font-size:11px;max-width:100%;overflow-wrap:anywhere}";
+  style.textContent += `
+@media(max-width:720px),(pointer:coarse){
+.shared-transport#controls{width:calc(100% - 24px);max-width:560px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:10px;bottom:max(10px,env(safe-area-inset-bottom));}
+.shared-transport#controls[hidden]{display:none}
+.shared-transport #seek{grid-column:1/-1;width:100%;height:36px;margin:0;touch-action:pan-y}
+.shared-transport #time{text-align:center;white-space:nowrap}
+.shared-transport button,.shared-transport select{min-height:44px;width:100%;font-size:16px}
+.shared-transport #samples{grid-column:1/-1;text-align:center}
+.shared-transport #samples:empty{display:none}
+}
+@media(max-height:450px) and (orientation:landscape){
+.shared-transport#controls{display:flex;max-width:calc(100vw - 24px);width:max-content;gap:6px;padding:6px}
+.shared-transport button,.shared-transport select{width:auto;font-size:14px;min-height:36px}
+.shared-transport #seek{width:clamp(70px,20vw,200px);height:32px}
+}
+`;
   document.head.appendChild(style);document.body.appendChild(ui);ui.hidden=!!options.hidden;
   const button=ui.querySelector<HTMLButtonElement>("#play")!;
   const restart=ui.querySelector<HTMLButtonElement>("#restart")!;

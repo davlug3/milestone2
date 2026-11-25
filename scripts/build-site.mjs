@@ -1,4 +1,4 @@
-import {spawnSync} from 'node:child_process';
+import {spawnSync,execFileSync} from 'node:child_process';
 import {mkdirSync,cpSync,rmSync,readFileSync,writeFileSync,readdirSync,existsSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -23,4 +23,10 @@ for(const name of ['book','slideshow']){
 }
 cpSync('site/index.html',resolve(out,'index.html'));
 for(const name of ['book','slideshow'])if(!existsSync(resolve(out,name,'index.html')))throw Error('Missing '+name);
-console.log('Unified site ready in '+out);
+let sha=process.env.VERCEL_GIT_COMMIT_SHA||'';
+if(!/^[a-f0-9]{40}$/i.test(sha)){try{sha=execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim();}catch{sha='';}}
+const verified=/^[a-f0-9]{40}$/i.test(sha);
+const label=verified?sha.slice(0,7):'local';
+const version='<a id="build-version" '+(verified?'href="https://github.com/davlug3/milestone2/commit/'+sha+'" ':'')+'title="Build '+(verified?sha:'local')+'" style="position:fixed;z-index:100;right:max(12px,env(safe-area-inset-right));top:max(12px,env(safe-area-inset-top));font:11px monospace;color:#eee;background:#151515bb;padding:6px 9px;border-radius:6px;text-decoration:none">v '+label+'</a><script>if(new URLSearchParams(location.search).has("export")||new URLSearchParams(location.search).has("geometry-export"))document.getElementById("build-version").hidden=true;</script>';
+for(const name of ['index.html','book/index.html','slideshow/index.html']){const path=resolve(out,name);writeFileSync(path,readFileSync(path,'utf8').replace('</body>',version+'</body>'));}
+console.log('Unified site ready in '+out+' ('+label+')');

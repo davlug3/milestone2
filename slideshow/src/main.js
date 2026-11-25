@@ -1,3 +1,5 @@
+import { bindPreviewViewport, previewPixelRatio, fitVerticalFov } from "../../src/playback/viewport.ts";
+import { TRACE_QUALITY } from "../../src/rendering/quality.ts";
 import { PlaybackClock, createPlaybackControls } from "../../src/playback/transport.ts";
 import * as THREE from "three";
 import { PhysicalSpotLight, WebGLPathTracer, GradientEquirectTexture } from "three-gpu-pathtracer";
@@ -6,13 +8,13 @@ import { shapeFor,printTexture,createPhoto,placePhoto } from "./photoDeform.js";
 const q=new URLSearchParams(location.search),exportMode=q.has("export");
 if(exportMode)document.body.classList.add("export");
 const renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:exportMode,powerPreference:"high-performance"});
-renderer.setPixelRatio(exportMode?1:Math.min(devicePixelRatio,2));
+renderer.setPixelRatio(previewPixelRatio(exportMode));
 renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;
 renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=.86;
 renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 document.body.prepend(renderer.domElement);
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x1d150f);
-const camera=new THREE.PerspectiveCamera(40,innerWidth/innerHeight,.02,8);
+const camera=new THREE.PerspectiveCamera(exportMode?40:fitVerticalFov(40,innerWidth/innerHeight),innerWidth/innerHeight,.02,8);
 const key=new PhysicalSpotLight(0xffd6ad,5.1,4,Math.PI/4,.85,2);
 key.radius=.24;key.position.set(-.55,.94,.30);key.target.position.set(0,0,0);key.castShadow=true;key.shadow.mapSize.set(2048,2048);
 key.shadow.camera.near=.08;key.shadow.camera.far=3;key.shadow.bias=-.00004;key.shadow.normalBias=.0003;scene.add(key,key.target);
@@ -21,20 +23,20 @@ const rim=new THREE.DirectionalLight(0xffe2bd,.22);rim.position.set(.1,.6,-.8);s
 scene.add(new THREE.HemisphereLight(0xffe6cd,0x322015,.18));
 const environment=new GradientEquirectTexture(128);environment.topColor.set(0x9ca8c4);environment.bottomColor.set(0x27190f);environment.update();
 scene.environment=environment;scene.environmentIntensity=.16;
-let tracer=null,mode="raster",traceDirty=true,traceError="",target=64;
+let tracer=null,mode="raster",traceDirty=true,traceError="",target=TRACE_QUALITY.preview.samples;
 
-function setMode(value){mode=value;controls.mode.value=value;traceDirty=true;traceError="";controls.samples.textContent="";}
+function setMode(value){mode=value;target=value==="cinematic"?TRACE_QUALITY.cinematic.samples:TRACE_QUALITY.preview.samples;controls.mode.value=value;traceDirty=true;traceError="";controls.samples.textContent="";}
 function traceDraw(){
   if(!tracer){
     if(!renderer.extensions.has("EXT_color_buffer_float"))throw Error("GPU lacks float render targets");
     tracer=new WebGLPathTracer(renderer);tracer.textureSize.set(1024,1024);tracer.bounces=5;tracer.renderDelay=0;tracer.fadeDuration=0;tracer.minSamples=1;tracer.tiles.set(1,1);
   }
-  if(traceDirty){tracer.setScene(scene,camera);tracer.reset();traceDirty=false;}
+  if(traceDirty){const quality=mode==="cinematic"?TRACE_QUALITY.cinematic:TRACE_QUALITY.preview;tracer.bounces=quality.bounces;tracer.renderScale=exportMode?1:quality.scale;tracer.pausePathTracing=false;tracer.setScene(scene,camera);tracer.reset();traceDirty=false;tracer.renderSample();controls.samples.textContent=Math.floor(tracer.samples)+" / "+target+" spp";return;}
   tracer.pausePathTracing=tracer.samples>=target;tracer.renderSample();
   controls.samples.textContent=Math.floor(tracer.samples)+" / "+target+" spp";
 }
 function draw(){
-  if(mode==="raytrace"&&!playback.playing){try{traceDraw();return;}catch(e){setMode("raster");traceError=String(e);controls.samples.textContent="Ray tracing failed: "+String(e);}}
+  if(mode==="cinematic"||(mode==="raytrace"&&!playback.playing)){try{traceDraw();return;}catch(e){setMode("raster");traceError=String(e);controls.samples.textContent="Ray tracing failed: "+String(e);}}
   renderer.render(scene,camera);
 }
 
@@ -57,7 +59,7 @@ const paper=new THREE.MeshPhysicalMaterial({color:0xf4eee3,roughness:.82,sheen:.
 const edge=new THREE.MeshStandardMaterial({color:0xe1d8c9,roughness:.9});
 let shots=[],total=0,clock=0;
 const playback=new PlaybackClock(0);
-const controls=createPlaybackControls({modes:[{value:"raster",label:"Real-time"},{value:"raytrace",label:"Ray-traced preview"}],onToggle:()=>play(!playback.playing),onRestart:()=>{update(0);play(true);},onSeek:t=>{play(false);update(t);},onMode:m=>{play(false);setMode(m);draw();},hidden:exportMode});
+const controls=createPlaybackControls({modes:[{value:"raster",label:"Real-time"},{value:"raytrace",label:"Ray-traced preview"},{value:"cinematic",label:"Cinematic"}],onToggle:()=>play(!playback.playing),onRestart:()=>{update(0);play(true);},onSeek:t=>{play(false);update(t);},onMode:m=>{play(false);setMode(m);draw();},hidden:exportMode});
 controls.sync(playback);
 
 function update(t,fromTick=false){
@@ -70,7 +72,9 @@ function update(t,fromTick=false){
   traceDirty=true;draw();controls.sync(playback);
 }
 function play(value){if(value&&clock>=total)update(0);playback.setPlaying(value);controls.sync(playback);}
-addEventListener("resize",()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);update(clock);});
+function resizeScene(w,h){camera.aspect=w/h;camera.fov=exportMode?40:fitVerticalFov(40,camera.aspect);camera.updateProjectionMatrix();renderer.setSize(w,h,false);update(clock);}
+bindPreviewViewport(renderer.domElement,controls.ui,resizeScene,exportMode);
+if(exportMode)addEventListener("resize",()=>resizeScene(innerWidth,innerHeight));
 async function init(){
   const response=await fetch("./slides.json");if(!response.ok)throw Error("Missing slides.json; run npm run build or npm run dev");
   const manifest=await response.json();if(!manifest.photos.length)throw Error("No photos found");
@@ -83,7 +87,7 @@ async function init(){
     scene.add(card);cards.push(card);
   }
   update(0);
-  window.__slideshow={duration:total,count:cards.length,seek:t=>{play(false);update(t);},capture:t=>{play(false);setMode("raster");update(t);return renderer.domElement.toDataURL("image/png");},beginTrace:(t,samples)=>{play(false);target=samples;setMode("raytrace");update(t);},traceStep:()=>{if(mode!=="raytrace")throw Error(traceError||"Ray tracer unavailable");traceDraw();return {samples:traceDirty?0:tracer.samples,target};},traceCapture:()=>{if(mode!=="raytrace"||traceDirty||tracer.samples<target)throw Error("Frame not ready");return renderer.domElement.toDataURL("image/png");},gpu:()=>{const gl=renderer.getContext(),ext=gl.getExtension("WEBGL_debug_renderer_info");return ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER);}};
-  if(!exportMode){function tick(now){if(playback.tick(now))update(playback.time,true);else if(!playback.playing&&mode==="raytrace")draw();controls.sync(playback);requestAnimationFrame(tick);}requestAnimationFrame(tick);}
+  window.__slideshow={duration:total,count:cards.length,seek:t=>{play(false);update(t);},capture:t=>{play(false);setMode("raster");update(t);return renderer.domElement.toDataURL("image/png");},beginTrace:(t,samples)=>{play(false);setMode("raytrace");target=samples;update(t);},traceStep:()=>{if(mode!=="raytrace")throw Error(traceError||"Ray tracer unavailable");traceDraw();return {samples:traceDirty?0:tracer.samples,target};},traceCapture:()=>{if(mode!=="raytrace"||traceDirty||tracer.samples<target)throw Error("Frame not ready");return renderer.domElement.toDataURL("image/png");},gpu:()=>{const gl=renderer.getContext(),ext=gl.getExtension("WEBGL_debug_renderer_info");return ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER);}};
+  if(!exportMode){function tick(now){if(playback.tick(now,mode!=="cinematic"||(!traceDirty&&tracer&&tracer.samples>=target),mode==="cinematic"?1/60:undefined))update(playback.time,true);else if(mode==="cinematic"||(!playback.playing&&mode==="raytrace"))draw();controls.sync(playback);requestAnimationFrame(tick);}requestAnimationFrame(tick);}
 }
 init().catch(e=>{document.querySelector("#error").textContent=String(e);window.__slideshowError=String(e);console.error(e);});

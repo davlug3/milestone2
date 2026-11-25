@@ -1,8 +1,9 @@
+import { TRACE_QUALITY } from "./quality";
 import * as THREE from "three";
 import { WebGLPathTracer, GradientEquirectTexture, PhysicalCamera, PhysicalSpotLight } from "three-gpu-pathtracer";
 import { TraceScene } from "./traceScene";
 export type RenderMode = "real-time" | "ray-traced" | "cinematic";
-export const TRACE_SETTINGS = { "ray-traced": {samples:96,bounces:5,scale:0.85}, cinematic:{samples:384,bounces:10,scale:1} } as const;
+export const TRACE_SETTINGS = { "ray-traced": TRACE_QUALITY.preview, cinematic: TRACE_QUALITY.cinematic } as const;
 export { PhysicalCamera, PhysicalSpotLight };
 export class StudioTracer {
   private tracer: WebGLPathTracer | null = null;

@@ -1,3 +1,4 @@
+import { bindPreviewViewport, previewPixelRatio } from "../playback/viewport";
 import { PlaybackClock, createPlaybackControls } from "../playback/transport";
 import * as THREE from "three";
 import { BlenderExport } from "../rendering/blenderExport";
@@ -154,7 +155,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     // is only a hint: browsers without a usable GPU fall back automatically.
     powerPreference: "high-performance",
   });
-  renderer.setPixelRatio(new URLSearchParams(location.search).has('export') ? 1 : Math.min(window.devicePixelRatio, 2));
+  renderer.setPixelRatio(previewPixelRatio(new URLSearchParams(location.search).has('export')));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -638,13 +639,16 @@ export function startBookDemo(container: HTMLElement): () => void {
   }
   raf = requestAnimationFrame(frame);
 
-  function onResize(): void {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.fov = cameraVerticalFov(camera.aspect);
+  function resizeScene(width:number,height:number):void {
+    camera.aspect=width/height;
+    camera.fov=cameraVerticalFov(camera.aspect);
     camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setSize(width,height,false);
     trace.invalidate();
   }
+  const fixedViewport=geometryOnly||new URLSearchParams(location.search).has("export");
+  const unbindViewport=bindPreviewViewport(renderer.domElement,controls.ui,resizeScene,fixedViewport);
+  function onResize():void { if(fixedViewport)resizeScene(window.innerWidth,window.innerHeight); }
   window.addEventListener("resize", onResize);
 
   (window as unknown as { __demo: unknown }).__demo = {
@@ -812,6 +816,7 @@ export function startBookDemo(container: HTMLElement): () => void {
   return () => {
     cancelAnimationFrame(raf);
     window.removeEventListener("resize", onResize);
+    unbindViewport();
     controls.dispose();
     for (const pg of pages) pg.geo.dispose();
     bindingGeo.dispose();

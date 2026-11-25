@@ -1,12 +1,14 @@
 import * as THREE from "three";
 import { WebGLPathTracer, GradientEquirectTexture, PhysicalCamera, PhysicalSpotLight } from "three-gpu-pathtracer";
+import { TraceScene } from "./traceScene";
 export type RenderMode = "real-time" | "ray-traced" | "cinematic";
-export const TRACE_SETTINGS = { "ray-traced": {samples:16,bounces:4,scale:0.5}, cinematic:{samples:128,bounces:8,scale:1} } as const;
+export const TRACE_SETTINGS = { "ray-traced": {samples:64,bounces:4,scale:0.75}, cinematic:{samples:128,bounces:8,scale:1} } as const;
 export { PhysicalCamera, PhysicalSpotLight };
 export class StudioTracer {
   private tracer: WebGLPathTracer | null = null;
   private environment: GradientEquirectTexture | null = null;
   private dirty = true;
+  private proxy = new TraceScene();
   mode: RenderMode = "real-time";
   error = "";
   constructor(private renderer:THREE.WebGLRenderer,private scene:THREE.Scene,private camera:PhysicalCamera){}
@@ -33,6 +35,7 @@ export class StudioTracer {
         this.tracer.textureSize.set(512, 660);
         this.tracer.renderDelay=0;
         this.tracer.minSamples=1;
+        this.tracer.rasterizeSceneCallback=()=>this.renderer.render(this.scene,this.camera);
         this.tracer.fadeDuration=0;
         this.tracer.tiles.set(1,1);
       }
@@ -41,7 +44,7 @@ export class StudioTracer {
         this.scene.environment=this.environment;
         tracer.bounces=settings.bounces;
         tracer.renderScale=settings.scale;
-        tracer.setScene(this.scene,this.camera);
+        tracer.setScene(this.proxy.update(this.scene),this.camera);
         this.dirty=false;
       }
       tracer.pausePathTracing=this.samples>=settings.samples;
@@ -52,5 +55,5 @@ export class StudioTracer {
       this.renderer.render(this.scene,this.camera);
     }finally{this.scene.environment=original;}
   }
-  dispose(){this.tracer?.dispose();this.environment?.dispose();}
+  dispose(){this.tracer?.dispose();this.environment?.dispose();this.proxy.dispose();}
 }

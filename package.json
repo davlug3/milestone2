@@ -15,7 +15,8 @@
     "test:spine": "esbuild scripts/spine-check.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/spine-check.mjs && node node_modules/.cache/spine-check.mjs",
     "test:clearance": "esbuild scripts/clearance-check.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/clearance-check.mjs && node node_modules/.cache/clearance-check.mjs",
     "test:binding": "esbuild scripts/binding-check.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/binding-check.mjs && node node_modules/.cache/binding-check.mjs",
-    "photos:download": "node scripts/download-page-images.mjs"
+    "photos:download": "node scripts/download-page-images.mjs",
+    "test:camera": "esbuild scripts/camera-check.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/camera-check.mjs && node node_modules/.cache/camera-check.mjs"
   },
   "dependencies": {
     "three": "^0.180.0"

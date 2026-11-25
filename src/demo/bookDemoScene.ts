@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { cameraVerticalFov, cinematicCameraPose, CAMERA_SENSOR_W_MM, CAMERA_FOCAL_MM } from "../rendering/cinematicCamera";
 import { BOOK_DIMENSIONS } from "../config/bookConfig";
 import { createBookMaterials } from "../book/materials";
 import { createCover } from "../book/cover";
@@ -150,16 +151,18 @@ export function startBookDemo(container: HTMLElement): () => void {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0a0b0d);
 
-  // A slightly wider field and a raised look-at give headroom for lifted
-  // pages so the fore-edge no longer clips at the top of the frame.
-  const camera = new THREE.PerspectiveCamera(
-    50,
-    window.innerWidth / window.innerHeight,
-    0.01,
-    100,
-  );
-  camera.position.set(0.03, 0.52, 0.72);
-  camera.lookAt(0, 0.06, 0);
+  // Full-frame 35mm prime; fit the full sensor gate to the viewport.
+  const aspect = window.innerWidth / window.innerHeight;
+  const camera = new THREE.PerspectiveCamera(cameraVerticalFov(aspect), aspect, 0.01, 100);
+  camera.filmGauge = CAMERA_SENSOR_W_MM;
+  let manualCamera = false;
+  function updateCamera(t: number): void {
+    if (manualCamera) return;
+    const pose = cinematicCameraPose(t, TIMELINE.end);
+    camera.position.set(...pose.position);
+    camera.lookAt(...pose.target);
+  }
+  updateCamera(0);
 
   addStudioLighting(scene);
   const pageKey = new THREE.DirectionalLight(0xffffff, 0.7);
@@ -476,6 +479,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     stepPagesTo(time);
     lastBindingU = -1;
     updateCover(time);
+    updateCamera(time);
   }
 
   function stepPagesTo(t: number): void {
@@ -618,6 +622,7 @@ export function startBookDemo(container: HTMLElement): () => void {
       }
       stepPagesTo(time);
       updateCover(time);
+      updateCamera(time);
     }
 
     timeLabel.textContent = `${time.toFixed(1)}s`;
@@ -628,6 +633,7 @@ export function startBookDemo(container: HTMLElement): () => void {
 
   function onResize(): void {
     camera.aspect = window.innerWidth / window.innerHeight;
+    camera.fov = cameraVerticalFov(camera.aspect);
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
   }
@@ -666,9 +672,12 @@ export function startBookDemo(container: HTMLElement): () => void {
       position: [number, number, number],
       lookAt: [number, number, number],
     ) => {
+      manualCamera = true;
       camera.position.set(...position);
       camera.lookAt(lookAt[0], lookAt[1], lookAt[2]);
     },
+    cinematicCamera: () => { manualCamera = false; updateCamera(time); },
+    cameraStatus: () => ({ focalLength: CAMERA_FOCAL_MM, sensor: [36,24], fov: camera.fov, position: camera.position.toArray(), manual: manualCamera }),
     /** Current cover pose + the open-cover collision surface (debug aid). */
     cover: () => {
       const u = clamp01(

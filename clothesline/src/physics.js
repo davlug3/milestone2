@@ -3,10 +3,12 @@ import {random,cameraPose} from "../../slideshow/src/pose.js";
 export const DT=1/120,SPACING=.49,PHOTO_W=.39,PHOTO_H=.274,THICKNESS=.00065;
 export const lineY=(x,span)=>1.66-.12*(1-Math.pow(2*x/span,2));
 export function galleryCamera(t,count,duration){
- const span=Math.max(SPACING,(count-1)*SPACING),u=Math.max(0,Math.min(1,t/duration));
+ const span=Math.max(0,(count-1)*SPACING),ropeSpan=Math.max(1.5,span+.9),u=Math.max(0,Math.min(1,t/duration));
  const f=u-.075*Math.sin(2*Math.PI*u)/(2*Math.PI);
  const x=-span/2+span*f,h=cameraPose(t);
- return {x:x-.14+h.x,y:1.37+h.y-.78,z:1.03+h.z-.35,targetX:x+.035+h.targetX,targetY:1.39,targetZ:h.targetZ,roll:h.roll};
+ // Track the middle of the hanging prints along the actual sag of the hero line.
+ const centerY=lineY(x,ropeSpan)-.012-PHOTO_H/2;
+ return {x:x-.24+h.x,y:centerY+.035+h.y-.78,z:1.24+h.z-.35,targetX:x+h.targetX,targetY:centerY,targetZ:.012+h.targetZ,roll:h.roll};
 }
 export function makeSheet(index,cols=25,rows=19){
  const n=cols*rows,r=random(137+index*915),rest=new Float64Array(n*3),p=new Float64Array(n*3),prev=new Float64Array(n*3),inverse=new Float64Array(n),links=[];

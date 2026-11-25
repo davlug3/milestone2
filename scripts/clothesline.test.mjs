@@ -1,3 +1,5 @@
 import test from "node:test";import assert from "node:assert/strict";import {makeSheet,stepSheet,resetSheet,DT,galleryCamera,PHOTO_H} from "../clothesline/src/physics.js";
 test("fixed pins, finite dynamics and deterministic replay",()=>{const s=makeSheet(1,17,13);for(let i=0;i<120;i++)stepSheet(s,i*DT);const result=Array.from(s.p);assert.ok(result.every(Number.isFinite));for(const k of [s.left,s.right])assert.deepEqual(Array.from(s.p.slice(k*3,k*3+3)),Array.from(s.rest.slice(k*3,k*3+3)));assert.ok(result.some((v,i)=>Math.abs(v-s.rest[i])>1e-4));assert.ok(Math.max(...result.filter((_,i)=>i%3===1).map(Math.abs))<PHOTO_H*1.25);resetSheet(s);for(let i=0;i<120;i++)stepSheet(s,i*DT);assert.deepEqual(Array.from(s.p),result);});
 test("camera dollies across the complete gallery",()=>{const a=galleryCamera(0,8,25.6),b=galleryCamera(25.6,8,25.6);assert.ok(b.x-a.x>3);assert.ok(Math.abs(b.z-a.z)<.01);});
+
+test("dolly tracks the center of the sagging hero row",()=>{for(const t of [0,12.8,25.6]){const p=galleryCamera(t,8,25.6);assert.ok(Math.abs(p.y-p.targetY)<.04);assert.ok(p.z-p.targetZ>1.2);assert.ok(Math.abs(p.x-p.targetX)<.25);}});

@@ -20,14 +20,14 @@ renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 document.body.prepend(renderer.domElement);
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x1d150f);
 const camera=new THREE.PerspectiveCamera(exportMode?40:fitVerticalFov(40,innerWidth/innerHeight),innerWidth/innerHeight,.02,8);
-const key=new PhysicalSpotLight(0xffd6ad,5.1,4,Math.PI/4,.85,2);
-key.radius=.24;key.position.set(-.55,.94,.30);key.target.position.set(0,0,0);key.castShadow=true;key.shadow.mapSize.set(2048,2048);
-key.shadow.camera.near=.08;key.shadow.camera.far=3;key.shadow.bias=-.00004;key.shadow.normalBias=.0003;scene.add(key,key.target);
-const fill=new THREE.DirectionalLight(0xb7cdff,.27);fill.position.set(.8,.85,-.6);scene.add(fill);
-const rim=new THREE.DirectionalLight(0xffe2bd,.22);rim.position.set(.1,.6,-.8);scene.add(rim);
-scene.add(new THREE.HemisphereLight(0xffe6cd,0x322015,.18));
+const key=new PhysicalSpotLight(0xffe3c7,3.6,4,Math.PI/3,.95,2);
+key.radius=.48;key.position.set(-.55,.94,.30);key.target.position.set(0,0,0);key.castShadow=true;key.shadow.mapSize.set(2048,2048);
+key.shadow.camera.near=.08;key.shadow.camera.far=3;key.shadow.radius=5;key.shadow.blurSamples=16;key.shadow.bias=-.00004;key.shadow.normalBias=.0003;scene.add(key,key.target);
+const fill=new THREE.DirectionalLight(0xd8e5ff,.48);fill.position.set(.8,.85,-.6);scene.add(fill);
+const rim=new THREE.DirectionalLight(0xffe8d0,.12);rim.position.set(.1,.6,-.8);scene.add(rim);
+scene.add(new THREE.HemisphereLight(0xffecd8,0x66503e,.34));
 const environment=new GradientEquirectTexture(128);environment.topColor.set(0x9ca8c4);environment.bottomColor.set(0x27190f);environment.update();
-scene.environment=environment;scene.environmentIntensity=.16;
+scene.environment=environment;scene.environmentIntensity=.27;
 let tracer=null,mode="raster",traceDirty=true,traceError="",target=TRACE_QUALITY.preview.samples;
 
 function setMode(value){mode=value;target=value==="cinematic"?TRACE_QUALITY.cinematic.samples:TRACE_QUALITY.preview.samples;controls.mode.value=value;traceDirty=true;traceError="";controls.samples.textContent="";}

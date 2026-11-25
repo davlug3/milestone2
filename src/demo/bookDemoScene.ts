@@ -1,3 +1,4 @@
+import {restingPageWear,freePageWear} from "../paper/pageShape";
 import {createDeskProps} from "../rendering/deskProps";
 import { loadingStage, loadingReady } from "../playback/loading";
 import { bindPreviewViewport, previewPixelRatio } from "../playback/viewport";
@@ -52,8 +53,8 @@ import {
 /**
  * Animated hardcover book demo with a play/pause button.
  *
- * All configured sheets are represented individually. Only the first eight
- * are simulated; the other sheets use lightweight procedural profiles. The
+ * All configured sheets are represented individually. All sheets have a deterministic curved rest state from initialization;
+ * the first eight use the high-resolution XPBD turn solver. The
  * full material spine unfolds as a constant-length arc, independent of the
  * hardcover's outer spine. No solid page wedge remains.
  *
@@ -226,13 +227,14 @@ export function startBookDemo(container: HTMLElement): () => void {
 
   const staticSheetGeo = (index: number, u: number, existing?: ThickSheetGeometry): ThickSheetGeometry => {
     // Same material groups and material-coordinate UVs as the turning shells.
-    const segments = 48;
-    const shell = existing ?? new ThickSheetGeometry(segments + 1, 2, TEXT_SHEET_THICKNESS);
+    const segments = 32;
+    const rows = 9;
+    const shell = existing ?? new ThickSheetGeometry(segments + 1, rows, TEXT_SHEET_THICKNESS);
     const particles = [];
-    for (let r = 0; r < 2; r++) {
+    for (let r = 0; r < rows; r++) {
       for (let c = 0; c <= segments; c++) {
         const x = W * c / segments;
-        particles.push(createParticle(x, textPageY(BOOK_DIMENSIONS, index, x, u), (r - 0.5) * H));
+        particles.push(createParticle(x, textPageY(BOOK_DIMENSIONS, index, x, u)+restingPageWear(index,c/segments,r/(rows-1),u), (r/(rows-1) - 0.5) * H));
       }
     }
     shell.update(particles);
@@ -363,7 +365,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     // shell thickness above it so the turning page cannot lie flush with it.
     const root = textRoot(BOOK_DIMENSIONS, k);
     const groundHeight = (x: number, z: number): number =>
-      Math.max(heightfield.heightAt(x, z), textPageFloor(BOOK_DIMENSIONS, k, x + W / 2, COVER_FLOOR_Y));
+      Math.max(heightfield.heightAt(x, z), textPageFloor(BOOK_DIMENSIONS, k, x + W / 2, COVER_FLOOR_Y) + (x+W/2>=0&&k+1<NUM_SHEETS?restingPageWear(k+1,(x+W/2-textRoot(BOOK_DIMENSIONS,k+1).x)/W,z/H+.5,1):0));
 
     const sim = new PaperSimulation({
       cols,
@@ -480,7 +482,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     for (const p of pg.sim.particles) {
       const localX = p.x + W / 2;
       p.x = p.px = p.x + root.x;
-      p.y = p.py = textPageY(BOOK_DIMENSIONS, pg.index, localX, u);
+      p.y = p.py = textPageY(BOOK_DIMENSIONS, pg.index, localX, u)+restingPageWear(pg.index,localX/W,p.z/H+.5,u);
     }
     // Pin the simulation's actual open attachment before it starts stepping.
     if (u === 1) {
@@ -537,7 +539,11 @@ export function startBookDemo(container: HTMLElement): () => void {
         const elapsed = Math.max(0, t - pg.window.start);
         const alpha = moving ? clamp01(elapsed / FIXED_DT - pg.stepped) : 1;
         const display = pg.renderPose.sample(pg.sim.particles, alpha);
-        pg.geo.update(pg.handoff.pose(display, Math.max(0, (pg.stepped - 1 + alpha) * FIXED_DT)));
+        const blended=pg.handoff.pose(display, Math.max(0, (pg.stepped - 1 + alpha) * FIXED_DT));
+        const progress=clamp01(elapsed/pg.window.dur);
+        // Material coordinates survive the turn; do not mutate the solver particles.
+        const shaped=progress>0&&progress<1?blended.map((p,i)=>({...p,y:p.y+freePageWear(pg.index,(i%cols)/(cols-1),Math.floor(i/cols)/(rows-1),progress)})):blended;
+        pg.geo.update(shaped);
         flexBases.delete(pg.geo.geometry);
         pg.geoStep = pg.stepped;
       }

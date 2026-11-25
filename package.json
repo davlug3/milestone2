@@ -18,7 +18,8 @@
     "photos:download": "node scripts/download-page-images.mjs",
     "test:camera": "esbuild scripts/camera-check.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/camera-check.mjs && node node_modules/.cache/camera-check.mjs",
     "test:handoff": "esbuild scripts/handoff-check.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/handoff-check.mjs && node node_modules/.cache/handoff-check.mjs",
-    "test:flex": "esbuild scripts/flex-check.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/flex-check.mjs && node node_modules/.cache/flex-check.mjs"
+    "test:flex": "esbuild scripts/flex-check.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/flex-check.mjs && node node_modules/.cache/flex-check.mjs",
+    "test:playback": "esbuild scripts/playback-check.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/playback-check.mjs && node node_modules/.cache/playback-check.mjs"
   },
   "dependencies": {
     "three": "^0.180.0"

@@ -8,6 +8,7 @@ import { createStudioTable } from "../rendering/studioTable";
 import { createClothTexture } from "../rendering/surfaceTextures";
 import { PaperSimulation } from "../physics/PaperSimulation";
 import { TurnHandoff } from "../physics/TurnHandoff";
+import { RenderPose, PLAYBACK_RATE } from "../physics/RenderPose";
 import { bindingLoad, bindingLift } from "../book/bindingFlex";
 import { ThickSheetGeometry } from "../paper/ThickSheetGeometry";
 import { createPagePrints } from "../paper/PagePrints";
@@ -128,6 +129,7 @@ interface PageInstance {
   mesh: THREE.Mesh;
   controller: PageTurnController;
   handoff: TurnHandoff;
+  renderPose: RenderPose;
   window: TurnWindow;
   stepped: number;
   maxSteps: number;
@@ -195,10 +197,10 @@ export function startBookDemo(container: HTMLElement): () => void {
   boundBlock.name = "bound-text-block";
   scene.add(boundBlock);
 
-  const staticSheetGeo = (index: number, u: number): THREE.BufferGeometry => {
+  const staticSheetGeo = (index: number, u: number, existing?: ThickSheetGeometry): ThickSheetGeometry => {
     // Same material groups and material-coordinate UVs as the turning shells.
     const segments = 48;
-    const shell = new ThickSheetGeometry(segments + 1, 2, TEXT_SHEET_THICKNESS);
+    const shell = existing ?? new ThickSheetGeometry(segments + 1, 2, TEXT_SHEET_THICKNESS);
     const particles = [];
     for (let r = 0; r < 2; r++) {
       for (let c = 0; c <= segments; c++) {
@@ -207,20 +209,21 @@ export function startBookDemo(container: HTMLElement): () => void {
       }
     }
     shell.update(particles);
-    return shell.geometry;
+    return shell;
   };
-  const staticSheets: { mesh: THREE.Mesh; index: number }[] = [];
+  const staticSheets: { mesh: THREE.Mesh; index: number; shell: ThickSheetGeometry }[] = [];
   for (let i = 0; i < NUM_STATIC; i++) {
     const sheetIndex = NUM_TURNS + i;
     const isBackFlyleaf = sheetIndex === NUM_SHEETS - 1;
+    const shell = staticSheetGeo(sheetIndex, 0);
     const m = new THREE.Mesh(
-      staticSheetGeo(sheetIndex, 0),
+      shell.geometry,
       prints.sheet(sheetIndex),
     );
     m.name = isBackFlyleaf ? "back-flyleaf" : "static-sheet";
     m.receiveShadow = true;
     boundBlock.add(m);
-    staticSheets.push({ mesh: m, index: sheetIndex });
+    staticSheets.push({ mesh: m, index: sheetIndex, shell });
   }
 
   // Separate deforming text-block binding ribbon; not the outer case spine.
@@ -404,7 +407,9 @@ export function startBookDemo(container: HTMLElement): () => void {
     const maxSteps = Math.ceil((win.dur + win.settle) / FIXED_DT);
     const handoff = new TurnHandoff();
     handoff.capture(sim.particles);
-    pages.push({ sim, geo, mesh, controller, handoff, window: win, stepped: 0, maxSteps, restY, index: k, landY, baked: false, geoStep: -1 });
+    const renderPose = new RenderPose();
+    renderPose.reset(sim.particles);
+    pages.push({ sim, geo, mesh, controller, handoff, renderPose, window: win, stepped: 0, maxSteps, restY, index: k, landY, baked: false, geoStep: -1 });
   }
 
   // Bake a settled sheet's top surface into the heightfield (outer region only).
@@ -432,7 +437,6 @@ export function startBookDemo(container: HTMLElement): () => void {
   let time = 0;
   let playing = false;
   let last = performance.now();
-  let acc = 0;
   let raf = 0;
 
   function setPlaying(next: boolean): void {
@@ -455,6 +459,7 @@ export function startBookDemo(container: HTMLElement): () => void {
       pg.controller.apply(pg.sim.particles);
     }
     pg.handoff.capture(pg.sim.particles);
+    pg.renderPose.reset(pg.sim.particles);
     pg.geo.update(pg.sim.particles);
     flexBases.delete(pg.geo.geometry);
     pg.geoStep = pg.stepped;
@@ -485,6 +490,7 @@ export function startBookDemo(container: HTMLElement): () => void {
       while (pg.stepped < target) {
         const local = pg.stepped * FIXED_DT;
         const progress = clamp01(local / pg.window.dur);
+        pg.renderPose.capture(pg.sim.particles);
         pg.controller.setProgress(progress);
         pg.controller.apply(pg.sim.particles);
         pg.sim.step();
@@ -495,9 +501,13 @@ export function startBookDemo(container: HTMLElement): () => void {
         bakePage(pg);
         pg.baked = true;
       }
-      // Only rebuild GPU geometry when this page actually moved.
-      if (pg.stepped !== pg.geoStep) {
-        pg.geo.update(pg.handoff.pose(pg.sim.particles, pg.stepped * FIXED_DT));
+      // Draw between the two most recent solver states, one fixed tick behind.
+      const moving = pg.stepped > 0 && pg.stepped < pg.maxSteps;
+      if (moving || pg.stepped !== pg.geoStep) {
+        const elapsed = Math.max(0, t - pg.window.start);
+        const alpha = moving ? clamp01(elapsed / FIXED_DT - pg.stepped) : 1;
+        const display = pg.renderPose.sample(pg.sim.particles, alpha);
+        pg.geo.update(pg.handoff.pose(display, Math.max(0, (pg.stepped - 1 + alpha) * FIXED_DT)));
         flexBases.delete(pg.geo.geometry);
         pg.geoStep = pg.stepped;
       }
@@ -505,12 +515,15 @@ export function startBookDemo(container: HTMLElement): () => void {
   }
 
   const flexBases = new WeakMap<THREE.BufferGeometry, Float32Array>();
+  const flexLoads = new WeakMap<THREE.BufferGeometry, number>();
   function flexGeometry(mesh: THREE.Mesh, load: number): void {
     const geo = mesh.geometry;
     const attr = geo.getAttribute("position") as THREE.BufferAttribute;
     const arr = attr.array as Float32Array;
     let base = flexBases.get(geo);
+    if (base && flexLoads.get(geo) === load) return;
     if (!base) { base = arr.slice(); flexBases.set(geo, base); }
+    flexLoads.set(geo, load);
     for (let i = 0; i < arr.length; i += 3) {
       arr[i + 1] = base[i + 1] + bindingLift(base[i] + mesh.position.x, SPINE_PANEL_W, load);
     }
@@ -541,8 +554,8 @@ export function startBookDemo(container: HTMLElement): () => void {
       for (const pg of pages) if (pg.stepped === 0) poseUnturned(pg, u);
       for (const entry of staticSheets) {
         const root = textRoot(BOOK_DIMENSIONS, entry.index, u);
-        entry.mesh.geometry.dispose();
-        entry.mesh.geometry = staticSheetGeo(entry.index, u);
+        staticSheetGeo(entry.index, u, entry.shell);
+        flexBases.delete(entry.mesh.geometry);
         entry.mesh.position.x = root.x;
       }
       for (let i = 0; i < NUM_SHEETS; i++) {
@@ -587,13 +600,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     last = now;
 
     if (playing) {
-      acc += dt;
-      let steps = 0;
-      while (acc >= FIXED_DT && steps < 12) {
-        time += FIXED_DT;
-        acc -= FIXED_DT;
-        steps++;
-      }
+      time += dt * PLAYBACK_RATE;
       if (time >= TIMELINE.end) {
         time = TIMELINE.end;
         setPlaying(false);
@@ -625,6 +632,7 @@ export function startBookDemo(container: HTMLElement): () => void {
       return time;
     },
     duration: TIMELINE.end,
+    playbackRate: PLAYBACK_RATE,
     photoStatus: prints.status,
     /** WebGL backend actually in use (hardware GPU or software renderer). */
     gpu: () => {

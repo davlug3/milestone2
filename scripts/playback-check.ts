@@ -1,0 +1,10 @@
+import { RenderPose, PLAYBACK_RATE } from "../src/physics/RenderPose";
+import { createParticle } from "../src/physics/Particle";
+const p=[createParticle(0,0,0)];
+const r=new RenderPose();r.reset(p);r.capture(p);p[0].x=0.01;
+if(Math.abs(r.sample(p,0.5)[0].x-0.005)>1e-12)throw Error("Interpolation failed");
+if(p[0].x!==0.01)throw Error("Simulation mutated");
+if(r.sample(p,0)[0].x!==0||r.sample(p,1)[0].x!==0.01)throw Error("Endpoint mismatch");
+r.reset(p);if(r.sample(p,0)[0].x!==0.01)throw Error("Seek reset failed");
+if(PLAYBACK_RATE!==0.85)throw Error("Playback rate");
+console.log("PASS: smooth interpolation, fixed solver untouched, seek reset, 85% speed");

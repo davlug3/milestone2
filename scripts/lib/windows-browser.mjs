@@ -16,7 +16,7 @@ export async function launchWindowsChrome({headless=false}={}){
   ].find(existsSync);
   if(!exe)throw Error("Native Windows Chrome/Edge not found. Set WINDOWS_CHROME_PATH to its WSL path.");
   // Dedicated temporary Windows profile; never use the user's regular browser profile.
-  const temp=execFileSync("cmd.exe",["/d","/c","echo","%TEMP%"],{encoding:"utf8",stdio:["ignore","pipe","ignore"]}).trim();
+  const temp=execFileSync("/mnt/c/Windows/System32/cmd.exe",["/d","/c","echo","%TEMP%"],{encoding:"utf8",stdio:["ignore","pipe","ignore"]}).trim();
   const tempLinux=execFileSync("wslpath",["-u",temp],{encoding:"utf8"}).trim();
   const profile=mkdtempSync(join(tempLinux,"book-render-"));
   const profileWin=execFileSync("wslpath",["-w",profile],{encoding:"utf8"}).trim();

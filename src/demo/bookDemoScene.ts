@@ -1,3 +1,4 @@
+import {createOrnamentalPlant} from "../rendering/ornamentalPlant";
 import {createFlowerVase} from "../rendering/flowerVase";
 import {createStudioWall} from "../rendering/studioWall";
 import {restingPageWear,freePageWear} from "../paper/pageShape";
@@ -206,6 +207,7 @@ export function startBookDemo(container: HTMLElement): () => void {
   const disposeWall = createStudioWall(scene);
   const disposeProps = createDeskProps(scene);
   const disposeFlowers = createFlowerVase(scene);
+  const disposePlant = createOrnamentalPlant(scene);
 
   // --- Static book parts (closed on the right; gutter at x=0) --------------
   const materials = createBookMaterials();
@@ -843,6 +845,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     spineCoverGeo.dispose();
     headbandGeo.dispose();
     prints.dispose();
+    disposePlant();
     disposeFlowers();
     disposeProps();
     disposeWall();

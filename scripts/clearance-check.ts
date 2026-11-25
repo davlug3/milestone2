@@ -23,9 +23,8 @@ import { openCoverSurface } from "../src/book/coverRig";
 import {
   bindingFloorY,
   blockRampY,
-  fanIndex,
-  rightSheetY,
-  spineFanY,
+  sheetBinding,
+  distributedRightSheetY,
 } from "../src/book/spineBinding";
 
 const W = BOOK_DIMENSIONS.width;
@@ -56,7 +55,6 @@ const DT = 1 / 120;
 const DUR = 2.5;
 const SETTLE = 0.5;
 const gutterX = -W / 2;
-const blockLeftLocal = gutterX;
 
 const topSheetY = restBase + (NUM_SHEETS - 1) * vStep;
 const closedCenterY = topSheetY + 0.0005 + CT / 2;
@@ -87,15 +85,16 @@ function runTurn(k: number): TurnReport {
   const restY = restBase + (NUM_SHEETS - 1 - k) * vStep;
   const landY = landBase + k * landStep;
   const belowRestY = restBase + (NUM_SHEETS - 1 - (k + 1)) * vStep;
-  const belowSpineY = spineFanY(BOOK_DIMENSIONS, fanIndex(k + 1, NUM_SHEETS));
+  const root = sheetBinding(BOOK_DIMENSIONS, k, NUM_SHEETS);
+  const belowRoot = sheetBinding(BOOK_DIMENSIONS, k + 1, NUM_SHEETS);
 
   const hf = new Heightfield({ width: W, height: H, nx: 110, nz: 110 });
   hf.setBase((x) => floorAt(x + W / 2));
 
   const groundHeight = (x: number, z: number): number => {
     const h = hf.heightAt(x, z);
-    if (x < blockLeftLocal) return h;
-    const below = rightSheetY(x + W / 2, belowSpineY, belowRestY) + 0.00025;
+    if (x + W / 2 < belowRoot.x) return h;
+    const below = distributedRightSheetY(x + W / 2 - belowRoot.x, belowRoot.y, belowRestY) + 0.00025;
     return Math.max(below, h);
   };
 
@@ -112,9 +111,10 @@ function runTurn(k: number): TurnReport {
     plane: "xz",
     groundHeight,
   });
-  const spineRestY = spineFanY(BOOK_DIMENSIONS, fanIndex(k, NUM_SHEETS));
+  const spineRestY = root.y;
   for (const p of sim.particles) {
-    p.y = p.py = rightSheetY(p.x + W / 2, spineRestY, restY);
+    p.y = p.py = distributedRightSheetY(p.x + W / 2, root.y, restY);
+    p.x = p.px = p.x + root.x;
   }
 
   const spineIndices: number[] = [];
@@ -127,12 +127,12 @@ function runTurn(k: number): TurnReport {
   const controller = new PageTurnController({
     foreEdgeIndices,
     spineIndices,
-    gutterX,
+    gutterX: gutterX + root.x,
     restY,
     spineRestY,
     landY,
-    landSpineY: spineFanY(BOOK_DIMENSIONS, k),
-    spineTargetX: gutterX,
+    landSpineY: root.y,
+    spineTargetX: gutterX + root.x,
     landSpineStart: 0.5,
       width: W,
     duration: DUR,
@@ -157,6 +157,12 @@ function runTurn(k: number): TurnReport {
     controller.setProgress(progress);
     controller.apply(sim.particles);
     sim.step();
+    for (const i of spineIndices) {
+      const p = sim.particles[i];
+      if (Math.abs(p.x - gutterX - root.x) > 1e-9 || Math.abs(p.y - root.y) > 1e-9) {
+        fail(`sheet ${k} detached from its material root`);
+      }
+    }
 
     for (const p of sim.particles) {
       if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) nan = true;

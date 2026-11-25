@@ -14,10 +14,8 @@ import { HINGE_DROP_START, coverPose } from "./coverRig";
  *
  * A cloth mull rises from this plane and the text block fans out of it: every
  * sheet's inner edge starts on the plane and ramps up to its own height in the
- * stack. All sheets, on BOTH sides of the open book, are bound on ONE line, the
- * centre of the spine panel (`openBindingLineX`). The panel is wider than the
- * bound line: it is covered by the two page stacks, as on a real book, instead
- * of showing as a bare strip between two separately hinged stacks.
+ * stack. The group has a central reference line; individual sheets attach to distinct
+ * material coordinates on a deforming strip (see sheetBinding).
  *
  * All binding-relative functions below take x measured FROM the binding line.
  * The demo moves the binding line (and the text block with it) with
@@ -94,6 +92,44 @@ export function spinePlaneY(dims: BookDimensions): number {
 /** Particle-centre spine height for a sheet at fan index (0 = bottom sheet). */
 export function spineFanY(dims: BookDimensions, fanIndex: number): number {
   return spinePlaneY(dims) + fanIndex * SPINE_FAN_STEP;
+}
+
+/** Nominal spacing of the visible sheets along the open binding strip. */
+export const BINDING_PITCH = 0.0008;
+export const BINDING_CROWN = 0.00012;
+
+/** Permanent material attachment, relative to the text-block group. */
+export function sheetBinding(
+  dims: BookDimensions, sheetIndex: number, count: number, u = 1,
+): SpinePlaneEdge {
+  if (!Number.isInteger(count) || count < 2 ||
+      !Number.isInteger(sheetIndex) || sheetIndex < 0 || sheetIndex >= count) {
+    throw new RangeError("Invalid binding sheet index/count");
+  }
+  const t = sheetIndex / (count - 1);
+  const span = Math.min((count - 1) * BINDING_PITCH, 0.012);
+  const k = smootherstep(clamp01((u - BIND_SLIDE_START) / (1 - BIND_SLIDE_START)));
+  const closedY = spineFanY(dims, fanIndex(sheetIndex, count));
+  const openY = spinePlaneY(dims) + BINDING_CROWN * Math.sin(Math.PI * t);
+  return { x: -span * (1 - t) * k, y: closedY + (openY - closedY) * k };
+}
+
+/** Open right-side profile from a sheet's own root. A finite departure slope
+ * keeps neighboring roots separated, then eases flat onto the stack. */
+export function distributedRightSheetY(localX: number, spineY: number, stackY: number): number {
+  const t = clamp01(localX / BIND_RAMP);
+  return spineY + (stackY - spineY) * t * (2 - t);
+}
+
+/** The unturned sheet follows the binding as the case opens. */
+export function openingRightSheetY(
+  localX: number, dims: BookDimensions, index: number, count: number,
+  stackY: number, u: number,
+): number {
+  const k = smootherstep(clamp01((u - BIND_SLIDE_START) / (1 - BIND_SLIDE_START)));
+  const closed = rightSheetY(localX, sheetBinding(dims, index, count, 0).y, stackY);
+  const open = distributedRightSheetY(localX, sheetBinding(dims, index, count).y, stackY);
+  return closed + (open - closed) * k;
 }
 
 /**

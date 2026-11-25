@@ -19,11 +19,11 @@ import {
   bindingFloorY,
   blockRampY,
   bindingLineX,
-  fanIndex,
+  sheetBinding,
+  distributedRightSheetY,
+  openingRightSheetY,
   openBindingLineX,
-  rightSheetY,
   spineClothTopY,
-  spineFanY,
   spinePlaneEdges,
   spinePlaneY,
 } from "../book/spineBinding";
@@ -46,17 +46,9 @@ import {
  *    its hinge line stays at the top of the block until past vertical, then
  *    settles to the table. No centre-line slide, no hop, no clipping through
  *    the page block or the table.
- *  - The gutter is a BOUND SPINE, not a trough. Every sheet, on both sides of
- *    the open book, is bound on ONE line: the centre of the spine panel
- *    (world x = -SPINE_PANEL_W / 2). Its inner edge starts on the cloth plane
- *    there and ramps up to its own height in the stack, so the text block fans
- *    out of a continuous bound line. The panel itself is covered by the two
- *    stacks, as on a real book.
- *  - The binding line is FIXED during page turns. A turning page rotates about
- *    it and its spine edge never moves in x, only down the small per-sheet fan
- *    to its place in the left stack. (The old model hinged the right stack at
- *    x = 0 and the left stack at x = -SPINE_PANEL_W and slid every page 27 mm
- *    across the spine during the turn, which read as the page flying.)
+ *  - Each visible sheet has its own permanent attachment line on a shallow
+ *    curved text-block spine. The strip unfolds with the cover and remains
+ *    fixed during page turns; the outer case spine moves independently.
  *  - The whole text block (wedge, mull, static sheets, turning sheets) is one
  *    group that slides to the open binding line at the end of the cover swing,
  *    after the spine has flattened and before the first page turn.
@@ -154,6 +146,7 @@ interface PageInstance {
   stepped: number;
   maxSteps: number;
   restY: number;
+  index: number;
   landY: number;
   baked: boolean;
   /** Last `stepped` value at which the GPU geometry was refreshed. */
@@ -286,19 +279,20 @@ export function startBookDemo(container: HTMLElement): () => void {
   // Static (never-turning) sheets: thin curved sheets that start on the spine
   // binding and fan up to their own stack heights, so the closed block reads as
   // pages bound at the spine rather than a solid slab.
-  const staticSheetGeo = (stackY: number, spineY: number): THREE.ExtrudeGeometry => {
+  const staticSheetGeo = (stackY: number, index: number, u: number): THREE.ExtrudeGeometry => {
+    const profile = (x: number) => openingRightSheetY(x, BOOK_DIMENSIONS, index, NUM_SHEETS, stackY, u);
     const half = (sheetVStep * 0.9) / 2;
     const segs = 24;
     const shape = new THREE.Shape();
     for (let i = 0; i <= segs; i++) {
       const x = (W * i) / segs;
-      const y = rightSheetY(x, spineY, stackY) - half;
+      const y = profile(x) - half;
       if (i === 0) shape.moveTo(x, y);
       else shape.lineTo(x, y);
     }
     for (let i = segs; i >= 0; i--) {
       const x = (W * i) / segs;
-      shape.lineTo(x, rightSheetY(x, spineY, stackY) + half);
+      shape.lineTo(x, profile(x) + half);
     }
     shape.closePath();
     const depth = H * 0.97;
@@ -310,18 +304,36 @@ export function startBookDemo(container: HTMLElement): () => void {
     g.translate(0, 0, -depth / 2);
     return g;
   };
+  const staticSheets: { mesh: THREE.Mesh; index: number; stackY: number }[] = [];
   for (let i = 0; i < NUM_STATIC; i++) {
     const sheetIndex = NUM_TURNS + i; // 8..14
     const stackY = restBase + (NUM_SHEETS - 1 - sheetIndex) * sheetVStep;
-    const spineY = spineFanY(BOOK_DIMENSIONS, fanIndex(sheetIndex, NUM_SHEETS));
     const m = new THREE.Mesh(
-      staticSheetGeo(stackY, spineY),
+      staticSheetGeo(stackY, sheetIndex, 0),
       i % 2 === 0 ? materials.paper : materials.paperEdge,
     );
     m.name = "static-sheet";
     m.receiveShadow = true;
     boundBlock.add(m);
+    staticSheets.push({ mesh: m, index: sheetIndex, stackY });
   }
+
+  // Separate deforming text-block binding ribbon; not the outer case spine.
+  const bindingGeo = new THREE.BufferGeometry();
+  const bindingPositions = new Float32Array(NUM_SHEETS * 2 * 3);
+  bindingGeo.setAttribute("position", new THREE.BufferAttribute(bindingPositions, 3));
+  const bindingIndices: number[] = [];
+  for (let i = 0; i < NUM_SHEETS - 1; i++) {
+    const a = i * 2;
+    bindingIndices.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
+  }
+  bindingGeo.setIndex(bindingIndices);
+  const bindingMaterial = materials.spineCloth.clone();
+  bindingMaterial.side = THREE.DoubleSide;
+  const bindingMesh = new THREE.Mesh(bindingGeo, bindingMaterial);
+  bindingMesh.name = "distributed-text-block-binding";
+  bindingMesh.receiveShadow = true;
+  boundBlock.add(bindingMesh);
 
   // Inner hollow lining: the cloth spine plane between the two cover hinges.
   // Its front edge is the FRONT COVER's inner lining point at the hinge, so the
@@ -397,7 +409,6 @@ export function startBookDemo(container: HTMLElement): () => void {
   const gutterX = -W / 2; // local x of the spine
   // The right-hand stack starts at the spine (x = 0). Pages there must stay
   // above the sheet below them.
-  const blockLeftLocal = gutterX;
   const bakeMinX = gutterX - 0.04; // leave a 4cm gutter strip free (natural fan)
   function resetHeightfield(): void {
     heightfield.setBase((x) => {
@@ -424,15 +435,13 @@ export function startBookDemo(container: HTMLElement): () => void {
     // the spine plane, so its surface is a ramp, not a flat height. Clamp a
     // shell thickness above it so the turning page cannot lie flush with it.
     const belowRestY = restBase + (NUM_SHEETS - 1 - (k + 1)) * sheetVStep;
-    const belowSpineY = spineFanY(
-      BOOK_DIMENSIONS,
-      fanIndex(k + 1, NUM_SHEETS),
-    );
+    const root = sheetBinding(BOOK_DIMENSIONS, k, NUM_SHEETS);
+    const belowRoot = sheetBinding(BOOK_DIMENSIONS, k + 1, NUM_SHEETS);
     const groundHeight = (x: number, z: number): number => {
       const h = heightfield.heightAt(x, z);
-      if (x < blockLeftLocal) return h;
       const worldX = x + W / 2;
-      const below = rightSheetY(worldX, belowSpineY, belowRestY) + 0.00025;
+      if (worldX < belowRoot.x) return h;
+      const below = distributedRightSheetY(worldX - belowRoot.x, belowRoot.y, belowRestY) + 0.00025;
       return Math.max(below, h);
     };
 
@@ -452,10 +461,11 @@ export function startBookDemo(container: HTMLElement): () => void {
     // The sheet is bound on the spine plane: its inner edge starts at the
     // binding height for its place in the closed stack and ramps up to the
     // fore-edge stack height over BIND_RAMP.
-    const spineRestY = spineFanY(BOOK_DIMENSIONS, fanIndex(k, NUM_SHEETS));
+    const spineRestY = root.y;
     for (const p of sim.particles) {
-      const worldX = p.x + W / 2;
-      p.y = p.py = rightSheetY(worldX, spineRestY, restY);
+      const localX = p.x + W / 2;
+      p.x = p.px = p.x + root.x;
+      p.y = p.py = distributedRightSheetY(localX, root.y, restY);
     }
 
     const spineIndices: number[] = [];
@@ -467,20 +477,18 @@ export function startBookDemo(container: HTMLElement): () => void {
 
     // On the left the sheet binds at the front cover hinge; the first sheet
     // turned is the bottom of the left stack, so its fan index is k.
-    const landSpineY = spineFanY(BOOK_DIMENSIONS, k);
+    const landSpineY = root.y;
 
     const controller = new PageTurnController({
       foreEdgeIndices,
       spineIndices,
-      gutterX,
+      gutterX: gutterX + root.x,
       restY,
       spineRestY,
       landY,
       landSpineY,
-      // Single binding line: the spine edge keeps x = gutterX for the whole
-      // turn (no landing offset), so the page rotates about a fixed line and
-      // never slides across the spine. Only its height changes, down the fan.
-      spineTargetX: gutterX,
+      // Preserve both coordinates of the material attachment through the turn.
+      spineTargetX: gutterX + root.x,
       landSpineStart: 0.5,
       width: W,
       duration: win.dur,
@@ -517,7 +525,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     geo.update(sim.particles);
 
     const maxSteps = Math.ceil((win.dur + win.settle) / FIXED_DT);
-    pages.push({ sim, geo, mesh, controller, window: win, stepped: 0, maxSteps, restY, landY, baked: false, geoStep: -1 });
+    pages.push({ sim, geo, mesh, controller, window: win, stepped: 0, maxSteps, restY, index: k, landY, baked: false, geoStep: -1 });
   }
 
   // Bake a settled sheet's top surface into the heightfield (outer region only).
@@ -554,15 +562,27 @@ export function startBookDemo(container: HTMLElement): () => void {
     button.textContent = playing ? "❚❚ Pause" : "▶ Play";
   }
 
+  function poseUnturned(pg: PageInstance, u: number): void {
+    const root = sheetBinding(BOOK_DIMENSIONS, pg.index, NUM_SHEETS, u);
+    pg.sim.reset();
+    for (const p of pg.sim.particles) {
+      const localX = p.x + W / 2;
+      p.x = p.px = p.x + root.x;
+      p.y = p.py = openingRightSheetY(localX, BOOK_DIMENSIONS, pg.index, NUM_SHEETS, pg.restY, u);
+    }
+    // Pin the simulation's actual open attachment before it starts stepping.
+    if (u === 1) {
+      pg.controller.setProgress(0);
+      pg.controller.apply(pg.sim.particles);
+    }
+    pg.geo.update(pg.sim.particles);
+    pg.geoStep = pg.stepped;
+  }
+
   function resetPage(pg: PageInstance): void {
     pg.stepped = 0;
     pg.baked = false;
-    pg.sim.reset();
-    for (const p of pg.sim.particles) p.y = p.py = pg.restY;
-    pg.controller.setProgress(0);
-    pg.controller.apply(pg.sim.particles);
-    pg.geo.update(pg.sim.particles);
-    pg.geoStep = pg.stepped;
+    poseUnturned(pg, 1);
   }
 
   function seek(t: number): void {
@@ -570,6 +590,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     resetHeightfield();
     for (const pg of pages) resetPage(pg);
     stepPagesTo(time);
+    lastBindingU = -1;
     updateCover(time);
   }
 
@@ -600,6 +621,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     }
   }
 
+  let lastBindingU = -1;
   function updateCover(t: number): void {
     const u = clamp01(
       (t - TIMELINE.coverStart) / (TIMELINE.coverEnd - TIMELINE.coverStart),
@@ -617,6 +639,28 @@ export function startBookDemo(container: HTMLElement): () => void {
     // The text block slides to the open binding line at the end of the cover
     // swing (u > 0.8, after the spine strip has flattened) and stays there.
     boundBlock.position.x = bindingLineX(u, SPINE_PANEL_W);
+    if (u !== lastBindingU) {
+      for (const pg of pages) if (pg.stepped === 0) poseUnturned(pg, u);
+      for (const entry of staticSheets) {
+        const root = sheetBinding(BOOK_DIMENSIONS, entry.index, NUM_SHEETS, u);
+        entry.mesh.geometry.dispose();
+        entry.mesh.geometry = staticSheetGeo(entry.stackY, entry.index, u);
+        entry.mesh.position.x = root.x;
+      }
+      for (let i = 0; i < NUM_SHEETS; i++) {
+        const root = sheetBinding(BOOK_DIMENSIONS, i, NUM_SHEETS, u);
+        for (let j = 0; j < 2; j++) {
+          const offset = (i * 2 + j) * 3;
+          bindingPositions[offset] = root.x;
+          bindingPositions[offset + 1] = root.y - PAGE_SHELL_HALF;
+          bindingPositions[offset + 2] = (j - 0.5) * H;
+        }
+      }
+      bindingGeo.getAttribute("position").needsUpdate = true;
+      bindingGeo.computeVertexNormals();
+      bindingGeo.computeBoundingSphere();
+      lastBindingU = u;
+    }
     // The hollow cover-spine ribbon stays convex while the cover opens.
     updateSpineCover(u);
     // Closed, the binding plane is hidden inside the case. Showing it there
@@ -767,10 +811,10 @@ export function startBookDemo(container: HTMLElement): () => void {
         bindingLineX: boundBlock.position.x,
         bindings: pages.map((_, k) => ({
           right: {
-            x: BIND_X_OPEN,
-            y: spineFanY(BOOK_DIMENSIONS, fanIndex(k, NUM_SHEETS)),
+            x: BIND_X_OPEN + sheetBinding(BOOK_DIMENSIONS, k, NUM_SHEETS).x,
+            y: sheetBinding(BOOK_DIMENSIONS, k, NUM_SHEETS).y,
           },
-          left: { x: BIND_X_OPEN, y: spineFanY(BOOK_DIMENSIONS, k) },
+          left: { x: BIND_X_OPEN + sheetBinding(BOOK_DIMENSIONS, k, NUM_SHEETS).x, y: sheetBinding(BOOK_DIMENSIONS, k, NUM_SHEETS).y },
         })),
       };
     },
@@ -828,6 +872,9 @@ export function startBookDemo(container: HTMLElement): () => void {
     window.removeEventListener("resize", onResize);
     ui.remove();
     for (const pg of pages) pg.geo.dispose();
+    bindingGeo.dispose();
+    bindingMaterial.dispose();
+    for (const entry of staticSheets) entry.mesh.geometry.dispose();
     spineCoverGeo.dispose();
     hollowGeo.dispose();
     headbandGeo.dispose();

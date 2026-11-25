@@ -21,9 +21,8 @@ import { BOOK_DIMENSIONS } from "../src/config/bookConfig";
 import { openCoverSurface } from "../src/book/coverRig";
 import {
   bindingFloorY,
-  fanIndex,
-  rightSheetY,
-  spineFanY,
+  sheetBinding,
+  distributedRightSheetY,
 } from "../src/book/spineBinding";
 
 const W = BOOK_DIMENSIONS.width;
@@ -58,7 +57,6 @@ const bakeTop = 0.0006;
 const PAGES = Number(process.env.PAGES ?? 8);
 
 // Spine binding (mirrors the demo).
-const blockLeftLocal = gutterX;
 
 const hf = new Heightfield({ width: W, height: H, nx: 110, nz: 110 });
 hf.setBase((x) => bindingFloorY(x + W / 2, BOOK_DIMENSIONS, blockTop, COVER_FLOOR));
@@ -68,11 +66,12 @@ interface Settled {
 }
 
 function makePage(restY: number, landY: number, belowRestY: number, k: number) {
-  const belowSpineY = spineFanY(BOOK_DIMENSIONS, fanIndex(k + 1, NUM_SHEETS));
+  const root = sheetBinding(BOOK_DIMENSIONS, k, NUM_SHEETS);
+  const belowRoot = sheetBinding(BOOK_DIMENSIONS, k + 1, NUM_SHEETS);
   const groundHeight = (x: number, z: number): number => {
     const h = hf.heightAt(x, z);
-    if (x < blockLeftLocal) return h;
-    const below = rightSheetY(x + W / 2, belowSpineY, belowRestY) + 0.00025;
+    if (x + W / 2 < belowRoot.x) return h;
+    const below = distributedRightSheetY(x + W / 2 - belowRoot.x, belowRoot.y, belowRestY) + 0.00025;
     return Math.max(below, h);
   };
   const sim = new PaperSimulation({
@@ -88,9 +87,10 @@ function makePage(restY: number, landY: number, belowRestY: number, k: number) {
     plane: "xz",
     groundHeight,
   });
-  const spineRestY = spineFanY(BOOK_DIMENSIONS, fanIndex(k, NUM_SHEETS));
+  const spineRestY = root.y;
   for (const p of sim.particles) {
-    p.y = p.py = rightSheetY(p.x + W / 2, spineRestY, restY);
+    p.y = p.py = distributedRightSheetY(p.x + W / 2, root.y, restY);
+    p.x = p.px = p.x + root.x;
   }
   const spine: number[] = [];
   const fe: number[] = [];
@@ -101,12 +101,12 @@ function makePage(restY: number, landY: number, belowRestY: number, k: number) {
   const ctrl = new PageTurnController({
     foreEdgeIndices: fe,
     spineIndices: spine,
-    gutterX,
+    gutterX: gutterX + root.x,
     restY,
     spineRestY,
     landY,
-    landSpineY: spineFanY(BOOK_DIMENSIONS, k),
-    spineTargetX: gutterX,
+    landSpineY: root.y,
+    spineTargetX: gutterX + root.x,
     landSpineStart: 0.5,
       width: W,
     duration: 2.5,

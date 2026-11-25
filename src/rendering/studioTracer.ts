@@ -35,8 +35,8 @@ export class StudioTracer {
       if(!this.tracer){
         if(!this.renderer.extensions.has("EXT_color_buffer_float"))throw Error("GPU lacks floating-point render targets");
         this.environment=new GradientEquirectTexture(256);
-        this.environment.topColor.set(0xa9b6cc);
-        this.environment.bottomColor.set(0x241a13);
+        this.environment.topColor.set(0x929eaf);
+        this.environment.bottomColor.set(0x201b17);
         this.environment.update();
         this.tracer=new WebGLPathTracer(this.renderer);
         this.tracer.textureSize.set(512, 660);

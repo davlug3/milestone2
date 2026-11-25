@@ -1,22 +1,18 @@
 import * as THREE from "three";
 import { PhysicalSpotLight } from "three-gpu-pathtracer";
 
-/** Photographic lighting with restrained contrast and environment bounce. */
+/** Low-key three-point photographic lighting. Warm key, cool fill, copper rim. */
 export function addStudioLighting(scene: THREE.Scene): void {
-  const key = new PhysicalSpotLight(0xffdfc2, 4.4, 4.2, Math.PI/4.8, 0.82, 2);
-  key.radius = 0.22;
-  key.position.set(-0.62,0.88,0.34);
-  key.target.position.set(0,0.035,-0.03);
-  key.castShadow = true;
-  key.shadow.mapSize.set(2048,2048);
-  key.shadow.camera.near=0.15;
-  key.shadow.camera.far=2.8;
-  key.shadow.bias=-0.00008;
-  key.shadow.normalBias=0.0008;
-  scene.add(key,key.target);
-  const rim = new THREE.DirectionalLight(0xbfd2ff,0.42);
-  rim.position.set(0.95,0.64,-0.9);scene.add(rim);
-  const fill = new THREE.DirectionalLight(0xfff1e2,0.12);
-  fill.position.set(0.18,0.42,0.58);scene.add(fill);
-  scene.add(new THREE.HemisphereLight(0xd9e4f5,0x1d140f,0.08));
+ function spot(color:number,intensity:number,radius:number,position:[number,number,number],target:[number,number,number],angle:number,shadow:boolean){
+   const light=new PhysicalSpotLight(color,intensity,5,angle,.80,2);
+   light.radius=radius;light.position.set(...position);light.target.position.set(...target);
+   light.castShadow=shadow;
+   if(shadow){light.shadow.mapSize.set(2048,2048);light.shadow.camera.near=.12;light.shadow.camera.far=4;light.shadow.bias=-.00006;light.shadow.normalBias=.0005;light.shadow.radius=4;}
+   scene.add(light,light.target);
+ }
+ spot(0xffd6a6,4.9,.25,[-.65,.83,.40],[0,.035,-.02],Math.PI/4.7,true);
+ spot(0x9cbfff,0.85,.33,[.66,.49,.52],[0,.03,0],Math.PI/3.7,false);
+ // Keep the rear light in front of the physical backdrop.
+ spot(0xffb184,2.2,.17,[.41,.65,-.58],[-.10,.07,-.08],Math.PI/4.4,true);
+ scene.add(new THREE.HemisphereLight(0xc0d3e1,0x29201b,.055));
 }

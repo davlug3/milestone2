@@ -165,7 +165,7 @@ export function startBookDemo(container: HTMLElement): () => void {
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.78;
+  renderer.toneMappingExposure = 0.72;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   container.appendChild(renderer.domElement);
@@ -179,7 +179,7 @@ export function startBookDemo(container: HTMLElement): () => void {
   room.dispose();
   pmrem.dispose();
   scene.environment = environment.texture;
-  scene.environmentIntensity = 0.16;
+  scene.environmentIntensity = 0.085;
 
   // Full-frame 85mm prime; fit the full sensor gate to the viewport.
   const aspect = BOOK_ASPECT;

@@ -71,7 +71,7 @@ async function boot(){
   const front=makeGeometry(s),back=makeGeometry(s,true),edge=makeEdge(s);
   mesh(front,material,0,0,0,group);mesh(back,paperBack,0,0,0,group);mesh(edge.g,edgeMat,0,0,0,group);
   // Each clip is aligned with an actual fixed solver vertex; two wooden jaws and a steel spring.
-  for(const pin of [s.left,s.right]){const px=s.rest[pin*3],clip=new THREE.Group();clip.position.set(px,.008,-.003);group.add(clip);
+  for(const pin of [s.left,s.right]){const px=s.rest[pin*3],clip=new THREE.Group();clip.position.set(px,.008,-.003);clip.scale.set(1.25,1.25,1.15);group.add(clip);
    mesh(new RoundedBoxGeometry(.016,.058,.009,2,.0015),wood,0,.009,-.006,clip);
    mesh(new RoundedBoxGeometry(.016,.058,.009,2,.0015),wood,0,.009,.006,clip);
    const spring=mesh(new THREE.TorusGeometry(.005,.0012,6,16),steel,0,.012,0,clip);spring.rotation.y=Math.PI/2;
@@ -96,7 +96,7 @@ async function boot(){
    const material=photoMaterials[(i*3+row*5+1)%count];
    mesh(front,material,0,0,0,group);mesh(back,paperBack,0,0,0,group);mesh(edge.g,edgeMat,0,0,0,group);
    for(const pin of [sheet.left,sheet.right]){
-    const px=sheet.rest[pin*3],clip=new THREE.Group();clip.position.set(px,.008,-.003);group.add(clip);
+    const px=sheet.rest[pin*3],clip=new THREE.Group();clip.position.set(px,.008,-.003);clip.scale.set(1.25,1.25,1.15);group.add(clip);
     mesh(clipJawGeometry,wood,0,.009,-.006,clip);mesh(clipJawGeometry,wood,0,.009,.006,clip);
     mesh(clipSpringGeometry,steel,0,.012,0,clip).rotation.y=Math.PI/2;
    }

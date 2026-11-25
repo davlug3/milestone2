@@ -19,8 +19,7 @@ export function numberText(value,progress=1){
 }
 
 export const unit=x=>Math.max(0,Math.min(1,x));
-export const easeOut=x=>1-Math.pow(1-unit(x),4);
+export const easeOut=x=>{const t=unit(x);return t*t*t*(t*(t*6-15)+10);};
 export function motionPose(local,index,count){
- const tail=index<count-1?unit((local-4.28)/.72):0;
- return {number:easeOut(local/.92),title:easeOut((local-.48)/.85),subtitle:easeOut((local-.88)/.8),accent:easeOut((local-.24)/1.05),exit:tail*tail*tail,shine:unit((local-1.35)/1.25),count:1-Math.pow(1-unit((local-.17)/1.7),3)};
+ return {number:easeOut((local-.12)/1.05),title:easeOut((local-.68)/.82),subtitle:easeOut((local-.92)/.8),accent:easeOut(local/.85),exit:index<count-1?easeOut((local-4.28)/.72):0,shine:unit((local-1.15)/1.6),count:1};
 }

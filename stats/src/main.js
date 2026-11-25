@@ -27,31 +27,28 @@ function layoutLines(str,max,size,font,limit){
  let list=wrap(str,max,size,font,limit);while(!list&&size>18){size-=2;list=wrap(str,max,size,font,limit);}
  list=list||[str];return {list,size,height:list.length*size*1.13};
 }
-// All motion is a pure function of the timeline: seeking and layer exports stay synchronized.
-function rollingNumber(value,progress,x,y,max,size,color){
- const final=numberText(value),current=numberText(value,progress),font="700 SIZEpx Georgia, serif";
- ctx.font=font.replace("SIZE",String(size));while(ctx.measureText(final).width>max&&size>12){size-=2;ctx.font=font.replace("SIZE",String(size));}
- const glyphWidth=Math.max(...Array.from("0123456789",ch=>ctx.measureText(ch).width));
- const widths=Array.from(final,ch=>/\d/.test(ch)?glyphWidth:ctx.measureText(ch).width);
- let left=x-widths.reduce((a,b)=>a+b,0)/2;
- // The integer counter uses fixed digit slots, so the center never jumps as digits appear.
- const digits=Array.from(current).filter(ch=>/\d/.test(ch)),total=Array.from(final).filter(ch=>/\d/.test(ch)).length;
- const padded=Array(Math.max(0,total-digits.length)).fill("0").concat(digits);let k=0;
- for(let i=0;i<final.length;i++){
-   const ch=final[i],w=widths[i],cx=left+w/2;left+=w;
-   if(!/\d/.test(ch)){ctx.fillStyle=color;ctx.fillText(ch,cx,y);continue;}
-   const digit=Number(padded[k++]||0);
-   const phase=progress>=1?0:Math.sin(Math.PI*progress)*.32*Math.sin(progress*15+i*.8);
-   ctx.save();ctx.beginPath();ctx.rect(cx-w/2-3,y-size*.57,w+6,size*1.14);ctx.clip();ctx.fillStyle=color;
-   ctx.fillText(String(digit),cx,y+phase*size);
-   if(Math.abs(phase)>.03){ctx.globalAlpha*=Math.abs(phase)*.6;ctx.fillText(String((digit+(phase>0?9:1))%10),cx,y+phase*size-Math.sign(phase)*size);}
-   ctx.restore();
+// A feathered traveling matte reveals intact typography, not animated digit slots.
+// The offscreen canvas is composited over either the background or transparency.
+const matte=document.createElement("canvas"),mc=matte.getContext("2d");
+function reveal(str,x,y,max,size,font,color,progress,exit=0,metallic=false){
+ if(progress<=0||exit>=1)return;
+ ctx.font=font.replace("SIZE",String(size));
+ while(ctx.measureText(str).width>max&&size>12){size-=2;ctx.font=font.replace("SIZE",String(size));}
+ const metrics=ctx.measureText(str),width=Math.ceil(metrics.width+48),height=Math.ceil(size*1.65);
+ const density=Math.min(2,Math.max(.35,canvas.width/W));
+ matte.width=Math.max(1,Math.ceil(width*density));matte.height=Math.max(1,Math.ceil(height*density));
+ mc.setTransform(matte.width/width,0,0,matte.height/height,0,0);
+ mc.font=ctx.font;mc.textAlign="center";mc.textBaseline="middle";
+ if(metallic){const foil=mc.createLinearGradient(0,height*.18,0,height*.82);foil.addColorStop(0,"#fff5df");foil.addColorStop(.42,color);foil.addColorStop(1,"#bc9858");mc.fillStyle=foil;}else mc.fillStyle=color;
+ mc.fillText(str,width/2,height/2);
+ if(progress<1||exit>0){
+   const feather=Math.min(100,width*.25),edge=progress*(width+2*feather)-feather;
+   mc.globalCompositeOperation="destination-in";
+   if(progress<1){const wipe=mc.createLinearGradient(edge-feather,0,edge+feather,0);wipe.addColorStop(0,"#fff");wipe.addColorStop(1,"#fff0");mc.fillStyle=wipe;mc.fillRect(0,0,width,height);}
+   if(exit>0){const e=exit*(width+2*feather)-feather;const wipe=mc.createLinearGradient(e-feather,0,e+feather,0);wipe.addColorStop(0,"#fff0");wipe.addColorStop(1,"#fff");mc.fillStyle=wipe;mc.fillRect(0,0,width,height);}
+   mc.globalCompositeOperation="source-over";
  }
-}
-function revealLine(line,x,y,max,size,font,color,progress,exit){
- const q=unit(progress),lift=(1-q)*size*.82-exit*size*.45;
- ctx.save();ctx.globalAlpha*=q*(1-exit);ctx.beginPath();ctx.rect(x-max/2-4,y-size*.64,max+8,size*1.28);ctx.clip();
- text(line,x,y+lift,max,size,font,color);ctx.restore();
+ ctx.save();ctx.globalAlpha=unit(progress*3)*(1-exit*.35);ctx.drawImage(matte,x-width/2,y-height/2,width,height);ctx.restore();
 }
 function draw(){
  const p=slidePose(clock.time,slides.length),s=slides[p.index],palette=palettes[p.index%palettes.length];
@@ -61,39 +58,34 @@ function draw(){
  if(layer==="composite"||layer==="background"){
  const bg=ctx.createLinearGradient(0,0,W,H);bg.addColorStop(0,a);bg.addColorStop(1,b);ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
  const glow=ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,850);glow.addColorStop(0,gold+"18");glow.addColorStop(1,gold+"00");ctx.fillStyle=glow;ctx.fillRect(0,0,W,H);
- // Fine graphic contours, decorative only: no fabricated quantitative chart.
- ctx.save();ctx.translate(W/2,H/2);ctx.rotate(-.28+clock.time*.025);
- for(let i=0;i<9;i++){ctx.strokeStyle=gold+(i%3===0?"1c":"0c");ctx.lineWidth=i%3===0?2:1;ctx.beginPath();const breathing=1+.035*Math.sin(clock.time*.95+i*.4);ctx.ellipse(0,0,(190+i*43)*breathing,(270+i*34)*breathing,0,0,Math.PI*2);ctx.stroke();}
- ctx.restore();
- // Soft drifting light, and sparse deterministic dust motes (background pass only).
- const lx=W/2+Math.cos(clock.time*.35)*560,ly=H/2+Math.sin(clock.time*.29)*320;
- const bloom=ctx.createRadialGradient(lx,ly,0,lx,ly,620);bloom.addColorStop(0,gold+"12");bloom.addColorStop(1,gold+"00");ctx.fillStyle=bloom;ctx.fillRect(0,0,W,H);
- for(let i=0;i<48;i++){const x=((i*173.37+clock.time*(7+i%5))%W),y=((i*91.7-clock.time*(9+i%7))%H+H)%H;ctx.globalAlpha=.04+.10*(.5+.5*Math.sin(i*2.7+clock.time*.8));ctx.fillStyle=gold;ctx.beginPath();ctx.arc(x,y,.8+i%3*.65,0,Math.PI*2);ctx.fill();}ctx.globalAlpha=1;
+ // Quiet silk-like diagonal lighting and two fine architectural corner details.
+ ctx.save();ctx.translate(W/2,H/2);ctx.rotate(-.47);
+ const drift=Math.sin(clock.time*.24)*145;
+ const silk=ctx.createLinearGradient(-800+drift,0,800+drift,0);
+ silk.addColorStop(0,gold+"00");silk.addColorStop(.42,gold+"00");silk.addColorStop(.52,gold+"15");silk.addColorStop(.63,gold+"00");silk.addColorStop(1,gold+"00");
+ ctx.fillStyle=silk;ctx.fillRect(-1600,-1200,3200,2400);ctx.restore();
+ ctx.strokeStyle=gold+"32";ctx.lineWidth=1.5;
+ for(const sign of [-1,1]){ctx.save();ctx.translate(W/2+sign*824,H/2+sign*414);ctx.scale(sign,sign);ctx.beginPath();ctx.moveTo(-148,0);ctx.lineTo(0,0);ctx.lineTo(0,-94);ctx.stroke();ctx.restore();}
+
  }
  if(layer!=="background"){
  ctx.textAlign="center";ctx.textBaseline="middle";
- const title=layoutLines(s.title,1510,86,"600 SIZEpx system-ui",2);
+ const title=layoutLines(s.title,1510,78,"500 SIZEpx system-ui",2);
  const subtitle=s.subtitle?layoutLines(s.subtitle,1400,38,"400 SIZEpx system-ui",2):null;
- const numberBlock=340,gap=42,divider=5,afterDivider=55,subtitleGap=subtitle?26:0;
- const blockHeight=numberBlock+gap+divider+afterDivider+title.height+subtitleGap+(subtitle?.height||0);
+ const numberBlock=310,gap=24,divider=2,afterDivider=42,subtitleGap=24;
+ const blockHeight=numberBlock+gap+divider+afterDivider+title.height+(subtitle?subtitleGap+subtitle.height:0);
  let y=(H-blockHeight)/2;
- // Subtle overshoot and masked rolling digits, rather than a flat crossfade.
- ctx.save();ctx.globalAlpha=m.number*(1-m.exit);const cy=y+numberBlock/2;
- ctx.translate(W/2,cy+(1-m.number)*82-m.exit*60);
- const scale=.86+.14*m.number+.025*Math.sin(Math.PI*m.number);ctx.scale(scale,scale);
- ctx.beginPath();ctx.rect(-800,-numberBlock*.61,1600,numberBlock*1.22);ctx.clip();
- const tint=ctx.createLinearGradient(0,-180,0,180);tint.addColorStop(0,"#ffffff");tint.addColorStop(.48,ivory);tint.addColorStop(1,gold);
- rollingNumber(s.number,m.count,0,0,1570,360,tint);
- ctx.restore();y+=numberBlock+gap;
- // Accent extends from the center, followed by a restrained moving highlight.
- ctx.save();ctx.globalAlpha=(1-m.exit)*m.accent;
- const bar=110*m.accent;ctx.fillStyle=gold;ctx.fillRect(W/2-bar/2,y,bar,divider);
- if(m.shine>0&&m.shine<1){const sx=W/2-bar/2+bar*m.shine;const shine=ctx.createLinearGradient(sx-12,0,sx+12,0);shine.addColorStop(0,gold+"00");shine.addColorStop(.5,"#ffffff");shine.addColorStop(1,gold+"00");ctx.fillStyle=shine;ctx.fillRect(W/2-bar/2,y,bar,divider);}
- ctx.restore();y+=divider+afterDivider;
- for(let i=0;i<title.list.length;i++){revealLine(title.list[i],W/2,y+title.size*.565,1510,title.size,"600 SIZEpx system-ui",ivory,easeOut((p.local-.48-i*.11)/.85),m.exit);y+=title.size*1.13;}
- if(subtitle){y+=subtitleGap;for(let i=0;i<subtitle.list.length;i++){revealLine(subtitle.list[i],W/2,y+subtitle.size*.565,1400,subtitle.size,"400 SIZEpx system-ui","#c8cec3",easeOut((p.local-.88-i*.10)/.8),m.exit);y+=subtitle.size*1.13;}}
- ctx.fillStyle=gold;ctx.font="500 23px system-ui";ctx.fillText(String(p.index+1).padStart(2,"0")+" / "+String(slides.length).padStart(2,"0"),W/2,968);
- const track=720,progress=track*clock.time/clock.duration;ctx.fillStyle=gold+"35";ctx.fillRect((W-track)/2,1002,track,3);ctx.fillStyle=gold;ctx.fillRect((W-progress)/2,1002,progress,3);
+ reveal(numberText(s.number),W/2,y+numberBlock/2,1570,350,"400 SIZEpx Georgia, serif","#ebd6a9",m.number,m.exit,true);
+ y+=numberBlock+gap;
+ // Thin centered rule with a diamond at its center; opens smoothly before the text.
+ ctx.save();ctx.globalAlpha=m.accent*(1-m.exit);
+ const bar=220*m.accent;ctx.fillStyle=gold;ctx.fillRect(W/2-bar/2,y,bar,divider);
+ ctx.translate(W/2,y+divider/2);ctx.rotate(Math.PI/4);ctx.fillRect(-4,-4,8,8);ctx.restore();
+ y+=divider+afterDivider;
+ for(let i=0;i<title.list.length;i++){reveal(title.list[i],W/2,y+title.size*.565,1510,title.size,"500 SIZEpx system-ui",ivory,easeOut((p.local-.68-i*.12)/.82),m.exit);y+=title.size*1.13;}
+ if(subtitle){y+=subtitleGap;for(let i=0;i<subtitle.list.length;i++){reveal(subtitle.list[i],W/2,y+subtitle.size*.565,1400,subtitle.size,"400 SIZEpx system-ui","#d9d3c6",easeOut((p.local-.92-i*.1)/.8),m.exit);y+=subtitle.size*1.13;}}
+ // No counter or progress bar is burned into the editorial overlay.
+
  }
  canvas.style.background=(!exportMode&&layer==="foreground")?"repeating-conic-gradient(#303030 0% 25%,#484848 0% 50%) 50% / 24px 24px":"transparent";
  controls.sync(clock);controls.setFrameProgress({phase:"Frame render · Motion graphics",ready:true});

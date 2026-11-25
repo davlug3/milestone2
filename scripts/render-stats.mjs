@@ -4,17 +4,19 @@ import {createServer} from "node:http";
 import {readFileSync,writeFileSync,mkdirSync,statSync} from "node:fs";
 import {resolve,extname,sep,dirname} from "node:path";
 import {parseArgs} from "node:util";
-const {values:o}=parseArgs({options:{data:{type:"string",default:"stats/src/data.json"},output:{type:"string",default:"renders/stats.mp4"},frames:{type:"string",default:"renders/stats-frames"},layer:{type:"string",default:"composite"},"frames-only":{type:"boolean",default:false},help:{type:"boolean",default:false}}});
-if(o.help){console.log("npm run render:stats -- [--data stats/src/data.json --output renders/stats.mp4 --frames renders/stats-frames --layer composite|background|foreground|chroma|separate --frames-only]");process.exit(0);}
+const {values:o}=parseArgs({options:{data:{type:"string",default:"stats/src/data.json"},output:{type:"string",default:"renders/stats.mp4"},frames:{type:"string",default:"renders/stats-frames"},layer:{type:"string",default:"composite"},background:{type:"string",default:"luxury"},"frames-only":{type:"boolean",default:false},help:{type:"boolean",default:false}}});
+if(o.help){console.log("npm run render:stats -- [--data stats/src/data.json --output renders/stats.mp4 --frames renders/stats-frames --background luxury|tabletop --layer composite|background|foreground|chroma|separate --frames-only]");process.exit(0);}
 if(!["composite","background","foreground","chroma","separate"].includes(o.layer))throw Error("Invalid layer");
+if(!["luxury","tabletop"].includes(o.background))throw Error("Invalid background");
 const root=resolve("site-dist");if(!statSync(root).isDirectory())throw Error("Run npm run build:site first.");
-const types={".html":"text/html",".js":"text/javascript",".css":"text/css",".json":"application/json"};
+const types={".html":"text/html",".js":"text/javascript",".css":"text/css",".json":"application/json",".jpg":"image/jpeg",".jpeg":"image/jpeg",".png":"image/png",".webp":"image/webp",".svg":"image/svg+xml"};
 const server=createServer((req,res)=>{try{const pathname=decodeURIComponent(new URL(req.url,"http://localhost").pathname),file=resolve(root,"."+ (pathname.endsWith("/")?pathname+"index.html":pathname));if(!file.startsWith(root+sep))throw Error();res.writeHead(200,{"Content-Type":types[extname(file)]||"application/octet-stream"}).end(readFileSync(file));}catch{res.writeHead(404).end();}});
 await new Promise(ok=>server.listen(0,"127.0.0.1",ok));
 let browser;try{
  browser=await chromium.launch({headless:true});const page=await browser.newPage({viewport:{width:1920,height:1080},deviceScaleFactor:1});
  await page.goto("http://127.0.0.1:"+server.address().port+"/stats/?export",{waitUntil:"networkidle"});await page.waitForFunction(()=>window.__stats);
  await page.evaluate(data=>window.__stats.setData(data),JSON.parse(readFileSync(o.data,"utf8")));
+ if(o.background==="tabletop"&&!["foreground","chroma"].includes(o.layer))await page.evaluate(()=>window.__stats.setBackground("tabletop"));
  const duration=await page.evaluate(()=>window.__stats.duration),count=Math.ceil(duration*60);
  const passes=o.layer==="separate"?["background","foreground"]:[o.layer];
  for(const pass of passes){

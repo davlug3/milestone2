@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { cameraVerticalFov, cinematicCameraPose, CAMERA_SENSOR_W_MM, CAMERA_FOCAL_MM } from "../rendering/cinematicCamera";
 import { BOOK_DIMENSIONS } from "../config/bookConfig";
 import { createBookMaterials } from "../book/materials";
@@ -151,14 +152,23 @@ export function startBookDemo(container: HTMLElement): () => void {
   });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 0.95;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   container.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0a0b0d);
+  scene.background = new THREE.Color(0x101216);
+  scene.fog = new THREE.Fog(0x101216, 1.4, 3.6);
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const room = new RoomEnvironment();
+  const environment = pmrem.fromScene(room, 0.04);
+  room.dispose();
+  pmrem.dispose();
+  scene.environment = environment.texture;
+  scene.environmentIntensity = 0.28;
 
   // Full-frame 35mm prime; fit the full sensor gate to the viewport.
   const aspect = window.innerWidth / window.innerHeight;
@@ -770,6 +780,8 @@ export function startBookDemo(container: HTMLElement): () => void {
     prints.dispose();
     disposeTable();
     clothTexture.dispose();
+    scene.environment = null;
+    environment.dispose();
     renderer.dispose();
   };
 }

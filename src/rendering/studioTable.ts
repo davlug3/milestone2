@@ -5,10 +5,10 @@ import { createWalnutTextures } from "./surfaceTextures";
 /** Compact antique writing table. The physical book still rests at y=0. */
 export function createStudioTable(scene: THREE.Scene) {
   const textures = createWalnutTextures();
-  const wood = new THREE.MeshStandardMaterial({...textures, roughness:0.66, metalness:0, bumpScale:0.00045});
-  const carved = new THREE.MeshStandardMaterial({...textures,color:0xb8a18a,roughness:0.67,bumpScale:0.00025});
+  const wood = new THREE.MeshPhysicalMaterial({...textures, roughness:0.58, metalness:0, bumpScale:0.00045, clearcoat:0.14, clearcoatRoughness:0.65});
+  const carved = new THREE.MeshPhysicalMaterial({...textures,color:0xb8a18a,roughness:0.65,bumpScale:0.00025,clearcoat:0.09,clearcoatRoughness:0.74});
   const trim = new THREE.MeshStandardMaterial({color:0x392015,roughness:0.6});
-  const brass = new THREE.MeshStandardMaterial({color:0x9f8050,metalness:0.72,roughness:0.42});
+  const brass = new THREE.MeshStandardMaterial({color:0x9f8050,metalness:0.88,roughness:0.38});
   const floorMat = new THREE.MeshStandardMaterial({color:0x121416,roughness:0.96});
   const group = new THREE.Group();
   group.name = "antique-writing-table";

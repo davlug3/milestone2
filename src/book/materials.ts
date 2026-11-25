@@ -7,7 +7,8 @@ import * as THREE from "three";
  * page textures and fine paper grain arrive in later milestones.
  */
 export function createBookMaterials() {
-  const cover = new THREE.MeshStandardMaterial({
+  const cover = new THREE.MeshPhysicalMaterial({
+    sheen: 0.32, sheenRoughness: 0.9, sheenColor: new THREE.Color(0x718292),
     color: 0x1c2733, // deep desaturated blue-grey cloth
     roughness: 0.82,
     metalness: 0.0,
@@ -15,7 +16,8 @@ export function createBookMaterials() {
 
   // Endpaper (pastedown + flyleaf). Slightly deeper than the paper so the
   // pastedown reads as a different stock from the text block.
-  const endpaper = new THREE.MeshStandardMaterial({
+  const endpaper = new THREE.MeshPhysicalMaterial({
+    sheen: 0.12, sheenRoughness: 1,
     color: 0xcdbfa4, // warm stone / oatmeal
     roughness: 0.96,
     metalness: 0.0,
@@ -40,7 +42,8 @@ export function createBookMaterials() {
     metalness: 0.0,
   });
 
-  const spine = new THREE.MeshStandardMaterial({
+  const spine = new THREE.MeshPhysicalMaterial({
+    sheen: 0.25, sheenRoughness: 0.9, sheenColor: new THREE.Color(0x718292),
     color: 0x16202a, // darker spine cloth
     roughness: 0.78,
     metalness: 0.0,
@@ -52,7 +55,8 @@ export function createBookMaterials() {
   // The binding cloth: the plane the page inner edges are glued to, spanning
   // the two cover hinges. Distinct from both the cover cloth and the endpaper
   // so the bound spine reads as a continuous surface instead of a dark gap.
-  const spineCloth = new THREE.MeshStandardMaterial({
+  const spineCloth = new THREE.MeshPhysicalMaterial({
+    sheen: 0.35, sheenRoughness: 0.9, sheenColor: new THREE.Color(0xa78665),
     color: 0x9a7248, // warm ochre bookbinding cloth
     roughness: 0.9,
     metalness: 0.0,

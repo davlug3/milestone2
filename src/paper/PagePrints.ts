@@ -44,7 +44,7 @@ export function createPagePrints(edge: THREE.Material, anisotropy: number) {
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.anisotropy = Math.min(8, anisotropy);
     textures.push(texture);
-    const material = new THREE.MeshStandardMaterial({ map: texture, color: 0xffffff, roughness: 0.92, metalness: 0 });
+    const material = new THREE.MeshPhysicalMaterial({ map: texture, color: 0xffffff, roughness: 0.76, metalness: 0, clearcoat: 0.12, clearcoatRoughness: 0.78, sheen: 0.12, sheenRoughness: 1, sheenColor: new THREE.Color(0xf4efe4) });
     materials.push(material);
     const layouts = [
       [[35,35,442,590]],

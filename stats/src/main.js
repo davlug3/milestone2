@@ -30,17 +30,32 @@ function layoutLines(str,max,size,font,limit){
 // A feathered traveling matte reveals intact typography, not animated digit slots.
 // The offscreen canvas is composited over either the background or transparency.
 const matte=document.createElement("canvas"),mc=matte.getContext("2d");
-function reveal(str,x,y,max,size,font,color,progress,exit=0,metallic=false){
+function reveal(str,x,y,max,size,font,color,progress,exit=0,metallic=false,local=0){
  if(progress<=0||exit>=1)return;
  ctx.font=font.replace("SIZE",String(size));
  while(ctx.measureText(str).width>max&&size>12){size-=2;ctx.font=font.replace("SIZE",String(size));}
- const metrics=ctx.measureText(str),width=Math.ceil(metrics.width+48),height=Math.ceil(size*1.65);
+ const metrics=ctx.measureText(str),width=Math.ceil(metrics.width+100),height=Math.ceil(size*1.65);
  const density=Math.min(2,Math.max(.35,canvas.width/W));
  matte.width=Math.max(1,Math.ceil(width*density));matte.height=Math.max(1,Math.ceil(height*density));
  mc.setTransform(matte.width/width,0,0,matte.height/height,0,0);
  mc.font=ctx.font;mc.textAlign="center";mc.textBaseline="middle";
- if(metallic){const foil=mc.createLinearGradient(0,height*.18,0,height*.82);foil.addColorStop(0,"#fff5df");foil.addColorStop(.42,color);foil.addColorStop(1,"#bc9858");mc.fillStyle=foil;}else mc.fillStyle=color;
- mc.fillText(str,width/2,height/2);
+ if(metallic){
+   const depth=12,dx=4+5*(1-progress),dy=9+5*(1-progress);
+   // Shallow simulated extrusion with shaded sidewalls, bevel highlights and a gold face.
+   for(let i=depth;i>=1;i--){const t=i/depth;mc.fillStyle=i%2?"#70502e":"#795735";mc.fillText(str,width/2+dx*t,height/2+dy*t);}
+   mc.lineJoin="round";mc.lineWidth=4.5;mc.strokeStyle="#8b642f";mc.strokeText(str,width/2,height/2);
+   const foil=mc.createLinearGradient(0,height*.22,width*.16,height*.79);
+   foil.addColorStop(0,"#f3dba8");foil.addColorStop(.22,"#fff3d5");foil.addColorStop(.43,"#cda66b");foil.addColorStop(.52,"#f0d19b");foil.addColorStop(.77,"#b68b4f");foil.addColorStop(1,"#e5c58d");
+   mc.fillStyle=foil;mc.fillText(str,width/2,height/2);
+   mc.lineWidth=1.25;mc.strokeStyle="#ffe9bba8";mc.strokeText(str,width/2-.8,height/2-1);
+   const sweep=unit((local-1.35)/1.55);
+   if(sweep>0&&sweep<1){
+     const x=-width*.30+sweep*width*1.6;
+     const gleam=mc.createLinearGradient(x-65,0,x+65,height*.14);
+     gleam.addColorStop(0,"#fff0");gleam.addColorStop(.47,"#fff5d878");gleam.addColorStop(.56,"#fff8e9a0");gleam.addColorStop(1,"#fff0");
+     mc.fillStyle=gleam;mc.fillText(str,width/2,height/2);
+   }
+ }else{mc.fillStyle=color;mc.fillText(str,width/2,height/2);}
  if(progress<1||exit>0){
    const feather=Math.min(100,width*.25),edge=progress*(width+2*feather)-feather;
    mc.globalCompositeOperation="destination-in";
@@ -48,7 +63,7 @@ function reveal(str,x,y,max,size,font,color,progress,exit=0,metallic=false){
    if(exit>0){const e=exit*(width+2*feather)-feather;const wipe=mc.createLinearGradient(e-feather,0,e+feather,0);wipe.addColorStop(0,"#fff0");wipe.addColorStop(1,"#fff");mc.fillStyle=wipe;mc.fillRect(0,0,width,height);}
    mc.globalCompositeOperation="source-over";
  }
- ctx.save();ctx.globalAlpha=unit(progress*3)*(1-exit*.35);ctx.drawImage(matte,x-width/2,y-height/2,width,height);ctx.restore();
+ ctx.save();ctx.globalAlpha=unit(progress*3)*(1-exit*.35);if(metallic){ctx.translate(x,y);const settle=1-progress;ctx.transform(1-.045*settle,0,.035*settle,1,0,0);ctx.drawImage(matte,-width/2,-height/2,width,height);}else ctx.drawImage(matte,x-width/2,y-height/2,width,height);ctx.restore();
 }
 function draw(){
  const p=slidePose(clock.time,slides.length),s=slides[p.index],palette=palettes[p.index%palettes.length];
@@ -58,14 +73,33 @@ function draw(){
  if(layer==="composite"||layer==="background"){
  const bg=ctx.createLinearGradient(0,0,W,H);bg.addColorStop(0,a);bg.addColorStop(1,b);ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
  const glow=ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,850);glow.addColorStop(0,gold+"18");glow.addColorStop(1,gold+"00");ctx.fillStyle=glow;ctx.fillRect(0,0,W,H);
- // Quiet silk-like diagonal lighting and two fine architectural corner details.
+ // Rich, symmetrical architectural framing: layered elliptical gold ribbons
+ // sit behind the type, with restrained parallax and a traveling specular highlight.
+ const t=clock.time;
+ ctx.save();ctx.translate(W/2,H/2);ctx.rotate(-.21+.015*Math.sin(t*.32));
+ for(let i=0;i<6;i++){
+   const rx=760+i*70,ry=450+i*49;
+   const g=ctx.createLinearGradient(-rx,-ry,rx,ry);
+   g.addColorStop(0,gold+"05");g.addColorStop(.22,gold+"21");g.addColorStop(.40,gold+"04");g.addColorStop(.73,gold+"24");g.addColorStop(1,gold+"05");
+   ctx.strokeStyle=g;ctx.lineWidth=i%3===0?8:1.5;ctx.beginPath();ctx.ellipse(0,0,rx,ry,0,0,Math.PI*2);ctx.stroke();
+   if(i%3===0){ctx.strokeStyle=gold+"28";ctx.lineWidth=1;ctx.beginPath();ctx.ellipse(0,0,rx+6,ry+6,0,0,Math.PI*2);ctx.stroke();}
+ }
+ ctx.restore();
+ // Animated diagonal light across the background, separate from the foreground pass.
  ctx.save();ctx.translate(W/2,H/2);ctx.rotate(-.47);
- const drift=Math.sin(clock.time*.24)*145;
+ const drift=Math.sin(t*.32)*280;
  const silk=ctx.createLinearGradient(-800+drift,0,800+drift,0);
- silk.addColorStop(0,gold+"00");silk.addColorStop(.42,gold+"00");silk.addColorStop(.52,gold+"15");silk.addColorStop(.63,gold+"00");silk.addColorStop(1,gold+"00");
+ silk.addColorStop(0,gold+"00");silk.addColorStop(.42,gold+"00");silk.addColorStop(.52,gold+"1b");silk.addColorStop(.63,gold+"00");silk.addColorStop(1,gold+"00");
  ctx.fillStyle=silk;ctx.fillRect(-1600,-1200,3200,2400);ctx.restore();
- ctx.strokeStyle=gold+"32";ctx.lineWidth=1.5;
- for(const sign of [-1,1]){ctx.save();ctx.translate(W/2+sign*824,H/2+sign*414);ctx.scale(sign,sign);ctx.beginPath();ctx.moveTo(-148,0);ctx.lineTo(0,0);ctx.lineTo(0,-94);ctx.stroke();ctx.restore();}
+ // Draw in a pair of double-line corner ornaments.
+ const f=easeOut((p.local-.05)/1.2)*(1-m.exit);
+ ctx.save();ctx.globalAlpha=.7*f;ctx.strokeStyle=gold;ctx.lineWidth=1.5;
+ for(const sx of [-1,1])for(const sy of [-1,1]){
+   ctx.save();ctx.translate(W/2+sx*824,H/2+sy*414);ctx.scale(sx,sy);
+   ctx.beginPath();ctx.moveTo(-160*f,0);ctx.lineTo(0,0);ctx.lineTo(0,-100*f);ctx.stroke();
+   ctx.beginPath();ctx.moveTo(-110*f,-9);ctx.lineTo(-9,-9);ctx.lineTo(-9,-65*f);ctx.stroke();
+   ctx.rotate(Math.PI/4);ctx.fillStyle=gold;ctx.fillRect(-3,-3,6,6);ctx.restore();
+ }ctx.restore();
 
  }
  if(layer!=="background"){
@@ -75,15 +109,15 @@ function draw(){
  const numberBlock=310,gap=24,divider=2,afterDivider=42,subtitleGap=24;
  const blockHeight=numberBlock+gap+divider+afterDivider+title.height+(subtitle?subtitleGap+subtitle.height:0);
  let y=(H-blockHeight)/2;
- reveal(numberText(s.number),W/2,y+numberBlock/2,1570,350,"400 SIZEpx Georgia, serif","#ebd6a9",m.number,m.exit,true);
+ reveal(numberText(s.number),W/2,y+numberBlock/2,1570,350,"400 SIZEpx Georgia, serif","#ebd6a9",m.number,m.exit,true,p.local);
  y+=numberBlock+gap;
  // Thin centered rule with a diamond at its center; opens smoothly before the text.
  ctx.save();ctx.globalAlpha=m.accent*(1-m.exit);
  const bar=220*m.accent;ctx.fillStyle=gold;ctx.fillRect(W/2-bar/2,y,bar,divider);
  ctx.translate(W/2,y+divider/2);ctx.rotate(Math.PI/4);ctx.fillRect(-4,-4,8,8);ctx.restore();
  y+=divider+afterDivider;
- for(let i=0;i<title.list.length;i++){reveal(title.list[i],W/2,y+title.size*.565,1510,title.size,"500 SIZEpx system-ui",ivory,easeOut((p.local-.68-i*.12)/.82),m.exit);y+=title.size*1.13;}
- if(subtitle){y+=subtitleGap;for(let i=0;i<subtitle.list.length;i++){reveal(subtitle.list[i],W/2,y+subtitle.size*.565,1400,subtitle.size,"400 SIZEpx system-ui","#d9d3c6",easeOut((p.local-.92-i*.1)/.8),m.exit);y+=subtitle.size*1.13;}}
+ for(let i=0;i<title.list.length;i++){reveal(title.list[i],W/2,y+title.size*.565,1510,title.size,"500 SIZEpx system-ui",ivory,easeOut((p.local-.86-i*.12)/.82),m.exit);y+=title.size*1.13;}
+ if(subtitle){y+=subtitleGap;for(let i=0;i<subtitle.list.length;i++){reveal(subtitle.list[i],W/2,y+subtitle.size*.565,1400,subtitle.size,"400 SIZEpx system-ui","#d9d3c6",easeOut((p.local-1.13-i*.1)/.8),m.exit);y+=subtitle.size*1.13;}}
  // No counter or progress bar is burned into the editorial overlay.
 
  }

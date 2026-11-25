@@ -49,7 +49,7 @@ function walnut(){
   }
   ctx.putImageData(im,0,0);const tex=new THREE.CanvasTexture(c);tex.colorSpace=THREE.SRGBColorSpace;tex.anisotropy=renderer.capabilities.getMaxAnisotropy();return tex;
 }
-const wood=walnut(),table=new THREE.Mesh(new THREE.PlaneGeometry(2.2,1.6),new THREE.MeshStandardMaterial({map:wood,roughness:.78}));
+const wood=walnut(),table=new THREE.Mesh(new THREE.PlaneGeometry(2.2,1.6),new THREE.MeshStandardMaterial({map:wood,color:new THREE.Color().setScalar(.82),roughness:.78}));
 table.rotation.x=-Math.PI/2;table.receiveShadow=true;scene.add(table);
 const loader=new THREE.TextureLoader(),cards=[];
 const paper=new THREE.MeshPhysicalMaterial({color:0xf4eee3,roughness:.82,sheen:.08});

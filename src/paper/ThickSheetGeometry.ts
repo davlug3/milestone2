@@ -62,10 +62,10 @@ export class ThickSheetGeometry {
         const u = c / (cols - 1);
         const v = r / (rows - 1);
         uvs[i * 2] = u;
-        uvs[i * 2 + 1] = v;
+        uvs[i * 2 + 1] = 1 - v;
         const bi = this.gridCount + i;
-        uvs[bi * 2] = u;
-        uvs[bi * 2 + 1] = v;
+        uvs[bi * 2] = 1 - u;
+        uvs[bi * 2 + 1] = 1 - v;
       }
     }
     // Edge strip UVs: u around the loop, v 0..1 across thickness.
@@ -118,6 +118,10 @@ export class ThickSheetGeometry {
     geo.setAttribute("position", this.positionAttr);
     geo.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
     geo.setIndex(indices);
+    const faceIndices = (cols - 1) * (rows - 1) * 6;
+    geo.addGroup(0, faceIndices, 0);
+    geo.addGroup(faceIndices, faceIndices, 1);
+    geo.addGroup(faceIndices * 2, indices.length - faceIndices * 2, 2);
     geo.computeVertexNormals();
 
     this.geometry = geo;

@@ -5,7 +5,8 @@ import { createCover } from "../book/cover";
 import { addStudioLighting } from "../rendering/lighting";
 import { PaperSimulation } from "../physics/PaperSimulation";
 import { ThickSheetGeometry } from "../paper/ThickSheetGeometry";
-import { createPaperMaterial } from "../paper/PaperMaterial";
+import { createPagePrints } from "../paper/PagePrints";
+import { createParticle } from "../physics/Particle";
 import { PageTurnController } from "../animation/PageTurnController";
 import { Heightfield } from "../physics/Heightfield";
 import { clamp01 } from "../animation/easing";
@@ -182,6 +183,7 @@ export function startBookDemo(container: HTMLElement): () => void {
 
   // --- Static book parts (closed on the right; gutter at x=0) --------------
   const materials = createBookMaterials();
+  const prints = createPagePrints(materials.paperEdge, renderer.capabilities.getMaxAnisotropy());
 
   const backCover = createCover(BOOK_DIMENSIONS, materials, "back");
   backCover.position.set(W / 2, CT / 2, 0);
@@ -195,30 +197,19 @@ export function startBookDemo(container: HTMLElement): () => void {
   boundBlock.name = "bound-text-block";
   scene.add(boundBlock);
 
-  const staticSheetGeo = (index: number, u: number): THREE.ExtrudeGeometry => {
-    const profile = (x: number) => textPageY(BOOK_DIMENSIONS, index, x, u);
-    const half = TEXT_SHEET_THICKNESS / 2;
-    const segs = 48;
-    const shape = new THREE.Shape();
-    for (let i = 0; i <= segs; i++) {
-      const x = (W * i) / segs;
-      const y = profile(x) - half;
-      if (i === 0) shape.moveTo(x, y);
-      else shape.lineTo(x, y);
+  const staticSheetGeo = (index: number, u: number): THREE.BufferGeometry => {
+    // Same material groups and material-coordinate UVs as the turning shells.
+    const segments = 48;
+    const shell = new ThickSheetGeometry(segments + 1, 2, TEXT_SHEET_THICKNESS);
+    const particles = [];
+    for (let r = 0; r < 2; r++) {
+      for (let c = 0; c <= segments; c++) {
+        const x = W * c / segments;
+        particles.push(createParticle(x, textPageY(BOOK_DIMENSIONS, index, x, u), (r - 0.5) * H));
+      }
     }
-    for (let i = segs; i >= 0; i--) {
-      const x = (W * i) / segs;
-      shape.lineTo(x, profile(x) + half);
-    }
-    shape.closePath();
-    const depth = H;
-    const g = new THREE.ExtrudeGeometry(shape, {
-      depth,
-      bevelEnabled: false,
-      curveSegments: 1,
-    });
-    g.translate(0, 0, -depth / 2);
-    return g;
+    shell.update(particles);
+    return shell.geometry;
   };
   const staticSheets: { mesh: THREE.Mesh; index: number }[] = [];
   for (let i = 0; i < NUM_STATIC; i++) {
@@ -226,7 +217,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     const isBackFlyleaf = sheetIndex === NUM_SHEETS - 1;
     const m = new THREE.Mesh(
       staticSheetGeo(sheetIndex, 0),
-      isBackFlyleaf ? materials.spineCloth : i % 2 === 0 ? materials.paper : materials.paperEdge,
+      prints.sheet(sheetIndex),
     );
     m.name = isBackFlyleaf ? "back-flyleaf" : "static-sheet";
     m.receiveShadow = true;
@@ -408,16 +399,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     controller.apply(sim.particles);
 
     const geo = new ThickSheetGeometry(cols, rows, 0.00025);
-    // Sheet 0 is the front flyleaf and the last sheet is the back flyleaf: the
-    // free halves of the front/back endpapers. They are the same simulated
-    // sheets as any page, just on endpaper stock, so the first and last turns
-    // read as endpapers connecting the case to the block.
-    const isFlyleaf = k === 0;
-    const material = isFlyleaf
-      ? createPaperMaterial({ color: 0xd8ccb4, roughness: 0.95 })
-      : createPaperMaterial();
-    material.side = THREE.DoubleSide;
-    const mesh = new THREE.Mesh(geo.geometry, material);
+    const mesh = new THREE.Mesh(geo.geometry, prints.sheet(k));
     mesh.name =
       k === 0 ? "front-flyleaf" : `turning-page-${k}`;
     mesh.castShadow = true;
@@ -659,6 +641,7 @@ export function startBookDemo(container: HTMLElement): () => void {
       return time;
     },
     duration: TIMELINE.end,
+    photoStatus: prints.status,
     /** WebGL backend actually in use (hardware GPU or software renderer). */
     gpu: () => {
       const gl = renderer.getContext();
@@ -786,6 +769,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     spineCoverGeo.dispose();
     hollowGeo.dispose();
     headbandGeo.dispose();
+    prints.dispose();
     renderer.dispose();
   };
 }

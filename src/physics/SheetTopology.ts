@@ -5,18 +5,14 @@ import {
 } from "./DistanceConstraint";
 
 /**
- * Grid topology + constraint wiring for one rectangular paper sheet.
- *
- * Produces particles in a (cols x rows) grid plus structural (horizontal /
- * vertical neighbor) and shear (cell diagonal) distance constraints. Pure data;
- * no rendering. The rest shape is a flat grid in the XY plane at z=0.
+ * Grid topology + XPBD constraint wiring for one rectangular paper sheet.
+ * Structural links preserve in-plane dimensions, shear links resist racking,
+ * and softer bend links let the sheet curl without behaving like a rigid plate.
  */
 export interface SheetTopology {
   cols: number;
   rows: number;
-  /** Grid width in meters. */
   width: number;
-  /** Grid height in meters. */
   height: number;
   particles: Particle[];
   constraints: DistanceConstraint[];
@@ -27,123 +23,65 @@ export function createSheetTopology(options: {
   rows: number;
   width: number;
   height: number;
-  /** Bending constraint stiffness (0..1). Defaults to a soft 0.35. */
   bendStiffness?: number;
-  /** Add 3- and 4-cell bending links to spread curvature (smoother curl). */
   longRangeBend?: boolean;
-  /** Stiffness for the long-range links. Defaults to half of bendStiffness. */
   longRangeBendStiffness?: number;
-  /**
-   * Explicit spans (in grid cells) for long-range bending links. Overrides the
-   * default `[3, 4]` used by `longRangeBend`. Longer spans resist large-scale
-   * curvature, i.e. they make the sheet stiffer without over-relaxing the
-   * 2-cell constraints.
-   */
   bendSpans?: number[];
-  /**
-   * Orientation of the flat rest sheet:
-   *   'xy' (default): sheet in the XY plane at z=0 (vertical, for drop tests).
-   *   'xz': sheet flat in the XZ plane at y=0 (horizontal, for page turns;
-   *         width along X, height along Z, gravity -Y perpendicular).
-   */
   plane?: "xy" | "xz";
 }): SheetTopology {
   const { cols, rows, width, height } = options;
+  if (cols < 2 || rows < 2) throw new Error("Sheet topology requires at least 2 columns and rows.");
   const plane = options.plane ?? "xy";
   const particles: Particle[] = [];
   const constraints: DistanceConstraint[] = [];
-
   const dx = width / (cols - 1);
   const dy = height / (rows - 1);
-
   const idx = (c: number, r: number): number => r * cols + c;
 
-  // Build particles in the chosen plane, centered at origin.
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      const u = -width / 2 + c * dx; // along width
-      const v = -height / 2 + r * dy; // along height
-      if (plane === "xz") {
-        // Flat on the ground: width->X, height->Z, y=0.
-        particles.push(createParticle(u, 0, v));
-      } else {
-        // Vertical: width->X, height->Y, z=0.
-        particles.push(createParticle(u, v, 0));
-      }
+      const u = -width / 2 + c * dx;
+      const v = -height / 2 + r * dy;
+      particles.push(plane === "xz" ? createParticle(u, 0, v) : createParticle(u, v, 0));
     }
   }
 
-  // Structural constraints: horizontal and vertical neighbors.
+  // In-plane structural constraints.
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      if (c < cols - 1) {
-        constraints.push(
-          createDistanceConstraint(idx(c, r), idx(c + 1, r), dx, 1),
-        );
-      }
-      if (r < rows - 1) {
-        constraints.push(
-          createDistanceConstraint(idx(c, r), idx(c, r + 1), dy, 1),
-        );
-      }
+      if (c < cols - 1) constraints.push(createDistanceConstraint(idx(c, r), idx(c + 1, r), dx, 1));
+      if (r < rows - 1) constraints.push(createDistanceConstraint(idx(c, r), idx(c, r + 1), dy, 1));
     }
   }
 
-  // Shear constraints: both diagonals of each cell.
-  const diag = Math.hypot(dx, dy);
+  // Shear constraints prevent cells from collapsing into parallelograms.
+  const diagonal = Math.hypot(dx, dy);
   for (let r = 0; r < rows - 1; r++) {
     for (let c = 0; c < cols - 1; c++) {
-      constraints.push(
-        createDistanceConstraint(idx(c, r), idx(c + 1, r + 1), diag, 0.7),
-      );
-      constraints.push(
-        createDistanceConstraint(idx(c + 1, r), idx(c, r + 1), diag, 0.7),
-      );
+      constraints.push(createDistanceConstraint(idx(c, r), idx(c + 1, r + 1), diagonal, 0.7));
+      constraints.push(createDistanceConstraint(idx(c + 1, r), idx(c, r + 1), diagonal, 0.7));
     }
   }
 
-  // Bending constraints: two-step neighbors in each direction. These resist
-  // folding by keeping the distance across a 2-cell span near its rest length.
-  // Simple and stable; dihedral bending can be layered on later if needed.
-  const bendX = dx * 2;
-  const bendY = dy * 2;
-  const bendStiffness = options.bendStiffness ?? 0.35; // softer than structural/shear
+  // Two-cell bending links resist sharp creases while remaining compliant.
+  const bend = options.bendStiffness ?? 0.35;
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      if (c < cols - 2) {
-        constraints.push(
-          createDistanceConstraint(idx(c, r), idx(c + 2, r), bendX, bendStiffness),
-        );
-      }
-      if (r < rows - 2) {
-        constraints.push(
-          createDistanceConstraint(idx(c, r), idx(c, r + 2), bendY, bendStiffness),
-        );
-      }
+      if (c < cols - 2) constraints.push(createDistanceConstraint(idx(c, r), idx(c + 2, r), dx * 2, bend));
+      if (r < rows - 2) constraints.push(createDistanceConstraint(idx(c, r), idx(c, r + 2), dy * 2, bend));
     }
   }
 
-  // Long-range bending constraints (3- and 4-cell spans). Two-step bending
-  // alone lets curvature concentrate into a couple of cells (a sharp buckle).
-  // Adding longer-range links resists localized folding and spreads the bend
-  // across many cells, producing a smooth, paper-like curl instead of a crease.
+  // Longer spans distribute curvature and suppress isolated sharp buckles.
   if (options.longRangeBend || options.bendSpans) {
-    const lrStiffness = options.longRangeBendStiffness ?? bendStiffness * 0.5;
+    const stiffness = options.longRangeBendStiffness ?? bend * 0.5;
     const spans = options.bendSpans ?? (options.longRangeBend ? [3, 4] : []);
     for (const span of spans) {
-      if (span <= 2) continue; // 2-cell spans are already the base bend links
+      if (!Number.isInteger(span) || span <= 2) continue;
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
-          if (c < cols - span) {
-            constraints.push(
-              createDistanceConstraint(idx(c, r), idx(c + span, r), dx * span, lrStiffness),
-            );
-          }
-          if (r < rows - span) {
-            constraints.push(
-              createDistanceConstraint(idx(c, r), idx(c, r + span), dy * span, lrStiffness),
-            );
-          }
+          if (c + span < cols) constraints.push(createDistanceConstraint(idx(c, r), idx(c + span, r), dx * span, stiffness));
+          if (r + span < rows) constraints.push(createDistanceConstraint(idx(c, r), idx(c, r + span), dy * span, stiffness));
         }
       }
     }

@@ -81,6 +81,8 @@ export interface PageTurnConfig {
   liftScale?: number;
   /** Per-row phase lead for a 2D (twisted) curl. 0 = cylindrical. */
   lead?: number;
+  /** Early lift bias for one fore-edge corner, expressed as a fraction of the turn. */
+  cornerLead?: number;
   /**
    * Per-row lift variation: >0 makes the head/tail edges curl more than the
    * center (a 2D dome), <0 the reverse. Adds height-direction bending without
@@ -124,6 +126,7 @@ export class PageTurnController {
     const base = clamp01(p);
     const rows = c.rows ?? this.targets.length;
     const lead = c.lead ?? 0;
+    const cornerLead = c.cornerLead ?? 0.07;
     const liftVar = c.liftVar ?? 0;
     const liftScale = c.liftScale ?? 0.6;
 
@@ -150,7 +153,11 @@ export class PageTurnController {
       // Per-row phase offset: head vs tail lead differently, strongest mid-turn.
       const rz = rows > 1 ? i / (rows - 1) : 0.5;
       const env = Math.sin(Math.PI * base); // 0 at both ends
-      const pRow = clamp01(base + lead * (rz - 0.5) * env);
+      // A small, deterministic corner-first peel transitions into the usual
+      // head/tail phase twist. The bias vanishes before the main arch develops.
+      const peelEnvelope = base * (1 - smootherstep(base / 0.24));
+      const cornerPhase = cornerLead * (1 - rz) * peelEnvelope;
+      const pRow = clamp01(base + cornerPhase + lead * (rz - 0.5) * env);
 
       const phi = Math.PI * smootherstep(pRow);
       const cos = Math.cos(phi);

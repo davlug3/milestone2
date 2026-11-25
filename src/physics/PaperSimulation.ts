@@ -2,10 +2,7 @@ import { XPBDSolver } from "./XPBDSolver";
 import { createSheetTopology, type SheetTopology } from "./SheetTopology";
 import type { Particle } from "./Particle";
 
-/**
- * Coordinates one sheet's physics: owns the topology and the solver, and
- * exposes a simple step/reset API. Knows nothing about rendering.
- */
+/** Owns one sheet's topology and deterministic XPBD simulation. */
 export class PaperSimulation {
   public readonly topology: SheetTopology;
   public readonly solver: XPBDSolver;
@@ -23,10 +20,12 @@ export class PaperSimulation {
     groundY?: number | null;
     groundHeight?: ((x: number, z: number) => number) | null;
     longRangeBend?: boolean;
-    /** Explicit long-range bending spans (grid cells). Stiffer for longer. */
     bendSpans?: number[];
-    /** Stiffness of the long-range links (defaults to half of bendStiffness). */
     longRangeStiffness?: number;
+    damping?: number;
+    gravity?: number;
+    groundFriction?: number;
+    groundRestitution?: number;
   }) {
     this.plane = options.plane ?? "xy";
     this.topology = createSheetTopology({
@@ -43,8 +42,12 @@ export class PaperSimulation {
     this.solver = new XPBDSolver({
       dt: options.dt,
       iterations: options.iterations,
+      gravity: options.gravity,
+      damping: options.damping,
       groundY: options.groundY,
       groundHeight: options.groundHeight,
+      groundFriction: options.groundFriction,
+      groundRestitution: options.groundRestitution,
     });
     for (const p of this.topology.particles) this.solver.addParticle(p);
     for (const c of this.topology.constraints) this.solver.addConstraint(c);
@@ -54,29 +57,26 @@ export class PaperSimulation {
     return this.topology.particles;
   }
 
-  /** Pin a particle (invMass = 0) so it stays fixed. */
   pin(index: number): void {
     const p = this.topology.particles[index];
+    if (!p) throw new RangeError(`Particle index ${index} is out of range.`);
     p.invMass = 0;
     p.pinned = true;
+    p.vx = p.vy = p.vz = 0;
   }
 
-  /** Un-pin a particle (restore unit inverse mass). */
   unpin(index: number): void {
     const p = this.topology.particles[index];
+    if (!p) throw new RangeError(`Particle index ${index} is out of range.`);
     p.invMass = 1;
     p.pinned = false;
   }
 
-  /** Advance one fixed step. */
   step(): void {
     this.solver.step();
   }
 
-  /**
-   * Reset the sheet to its original flat rest shape and zero velocity.
-   * Deterministic: returns to the same initial state.
-   */
+  /** Restore the flat rest shape and zero all velocities. */
   reset(): void {
     const { cols, width, height } = this.topology;
     const rows = this.topology.rows;

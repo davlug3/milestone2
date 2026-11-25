@@ -3,9 +3,9 @@ import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.j
 import { createWalnutTextures } from "./surfaceTextures";
 
 /** Compact antique writing table. The physical book still rests at y=0. */
-export function createStudioTable(scene: THREE.Scene) {
-  const textures = createWalnutTextures();
-  const wood = new THREE.MeshPhysicalMaterial({...textures, roughness:0.68, metalness:0, bumpScale:0.00065, clearcoat:0.09, clearcoatRoughness:0.65});
+export function createStudioTable(scene: THREE.Scene,compact=false) {
+  const textures = createWalnutTextures(compact?512:1024);
+  const wood = new THREE.MeshPhysicalMaterial({...textures, roughness:0.78, metalness:0, bumpScale:0.00055, clearcoat:0.13, clearcoatRoughness:0.58});
   const carved = new THREE.MeshPhysicalMaterial({...textures,color:0xb8a18a,roughness:0.65,bumpScale:0.00025,clearcoat:0.09,clearcoatRoughness:0.74});
   const trim = new THREE.MeshStandardMaterial({color:0x392015,roughness:0.6});
   const brass = new THREE.MeshStandardMaterial({color:0x9f8050,metalness:0.88,roughness:0.38});
@@ -69,6 +69,6 @@ export function createStudioTable(scene: THREE.Scene) {
     for(const p of parts)p.geometry.dispose();
     floor.geometry.dispose();
     for(const m of [wood,carved,trim,brass,floorMat])m.dispose();
-    textures.map.dispose();textures.bumpMap.dispose();
+    textures.map.dispose();textures.bumpMap.dispose();textures.roughnessMap.dispose();
   };
 }

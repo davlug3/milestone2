@@ -1,12 +1,14 @@
+import {createMicroSurface} from "./surfaceTextures";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import * as THREE from "three";
 /** Small handmade ceramic vase and asymmetric botanical arrangement. */
 export function createFlowerVase(scene:THREE.Scene){
  const root=new THREE.Group();root.name="ceramic-vase-with-flowers";root.position.set(-.29,0,-.208);scene.add(root);
- const ceramic=new THREE.MeshPhysicalMaterial({color:0xc4b69c,roughness:.72,clearcoat:.08});
+ const petalDetail=createMicroSurface("petal"),leafDetail=createMicroSurface("leaf"),ceramicDetail=createMicroSurface("ceramic");
+ const ceramic=new THREE.MeshPhysicalMaterial({color:0xc4b69c,roughness:.64,clearcoat:.19,clearcoatRoughness:.61,normalMap:ceramicDetail.normalMap,roughnessMap:ceramicDetail.roughnessMap,normalScale:new THREE.Vector2(.36,.36)});
  const inside=new THREE.MeshStandardMaterial({color:0x514a3d,roughness:.9});
  const stem=new THREE.MeshStandardMaterial({color:0x52613a,roughness:.86});
- const leaf=new THREE.MeshStandardMaterial({color:0x647344,roughness:.88,side:THREE.DoubleSide});
+ const leaf=new THREE.MeshPhysicalMaterial({color:0x647344,roughness:.69,normalMap:leafDetail.normalMap,roughnessMap:leafDetail.roughnessMap,normalScale:new THREE.Vector2(.32,.32),clearcoat:.12,clearcoatRoughness:.6,side:THREE.DoubleSide});
  const ivory=new THREE.MeshStandardMaterial({color:0xe3d7bd,roughness:.85,side:THREE.DoubleSide});
  const blush=new THREE.MeshStandardMaterial({color:0xb98378,roughness:.85,side:THREE.DoubleSide});
  const pollen=new THREE.MeshStandardMaterial({color:0xb49a53,roughness:.9});
@@ -23,9 +25,9 @@ export function createFlowerVase(scene:THREE.Scene){
  let seed=72631;
  const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
  const roseColors=[0x762e39,0xa24c51,0xc17e79,0xe1c4ae,0xd4a18e];
- const roseMats=roseColors.map(color=>new THREE.MeshPhysicalMaterial({color,roughness:.78,sheen:.25,sheenColor:new THREE.Color(color),sheenRoughness:.88,side:THREE.DoubleSide}));
+ const roseMats=roseColors.map(color=>new THREE.MeshPhysicalMaterial({color,roughness:.87,normalMap:petalDetail.normalMap,roughnessMap:petalDetail.roughnessMap,normalScale:new THREE.Vector2(.48,.48),sheen:.48,sheenColor:new THREE.Color(color).lerp(new THREE.Color(0xffded0),.20),sheenRoughness:.82,side:THREE.DoubleSide}));
  mats.push(...roseMats);
- const darkLeaf=new THREE.MeshStandardMaterial({color:0x394d30,roughness:.78,side:THREE.DoubleSide});
+ const darkLeaf=new THREE.MeshPhysicalMaterial({color:0x394d30,roughness:.73,normalMap:leafDetail.normalMap,roughnessMap:leafDetail.roughnessMap,normalScale:new THREE.Vector2(.32,.32),clearcoat:.10,clearcoatRoughness:.65,side:THREE.DoubleSide});
  mats.push(darkLeaf);
  // Merge the many static botanical pieces by material to avoid hundreds of draw calls.
  const batches=new Map<THREE.Material,THREE.BufferGeometry[]>();
@@ -126,5 +128,5 @@ export function createFlowerVase(scene:THREE.Scene){
    if(merged)mesh(merged,mat,v(0,0,0));
    list.forEach(g=>g.dispose());
  }
- return ()=>{scene.remove(root);geos.forEach(g=>g.dispose());mats.forEach(m=>m.dispose());};
+ return ()=>{scene.remove(root);geos.forEach(g=>g.dispose());mats.forEach(m=>m.dispose());petalDetail.dispose();leafDetail.dispose();ceramicDetail.dispose();};
 }

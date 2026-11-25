@@ -205,7 +205,7 @@ export function startBookDemo(container: HTMLElement): () => void {
   updateCamera(0);
 
   addStudioLighting(scene);
-  const disposeTable = createStudioTable(scene);
+  const disposeTable = createStudioTable(scene,compact);
   const disposeWall = createStudioWall(scene);
   const disposeProps = createDeskProps(scene);
   const disposeFlowers = createFlowerVase(scene);
@@ -215,7 +215,9 @@ export function startBookDemo(container: HTMLElement): () => void {
   const materials = createBookMaterials();
   const clothTexture = createClothTexture();
   materials.cover.bumpMap = clothTexture;
-  materials.cover.bumpScale = 0.00012;
+  materials.cover.bumpScale = 0.00016;
+  materials.spine.bumpMap=clothTexture;
+  materials.spine.bumpScale=.00012;
   materials.endpaper.bumpMap = clothTexture;
   materials.endpaper.bumpScale = 0.00004;
   loadingStage("Preparing book and paper textures…");

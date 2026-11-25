@@ -1,14 +1,16 @@
+import {createMicroSurface} from "./surfaceTextures";
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 /** Layered static props on the y=0 tabletop, outside the open book and page sweep. */
 export function createDeskProps(scene:THREE.Scene){
  const root=new THREE.Group();root.name="book-set-dressing";scene.add(root);
- const brass=new THREE.MeshStandardMaterial({color:0x92784c,metalness:.82,roughness:.43});
- const black=new THREE.MeshPhysicalMaterial({color:0x242722,roughness:.38,clearcoat:.22});
+ const metalDetail=createMicroSurface("metal");
+ const brass=new THREE.MeshStandardMaterial({color:0xb39761,metalness:.94,roughness:.56,normalMap:metalDetail.normalMap,roughnessMap:metalDetail.roughnessMap,normalScale:new THREE.Vector2(.22,.22)});
+ const black=new THREE.MeshPhysicalMaterial({color:0x242722,roughness:.32,clearcoat:.32,clearcoatRoughness:.35});
  const wood=new THREE.MeshStandardMaterial({color:0x4c3022,roughness:.62});
  const paper=new THREE.MeshStandardMaterial({color:0xd7cbb3,roughness:.86});
  const darkPaper=new THREE.MeshStandardMaterial({color:0xa99b80,roughness:.9});
- const ink=new THREE.MeshPhysicalMaterial({color:0x222827,roughness:.29,clearcoat:.32});
+ const ink=new THREE.MeshPhysicalMaterial({color:0x222827,roughness:.24,clearcoat:.46,clearcoatRoughness:.30});
  const wax=new THREE.MeshStandardMaterial({color:0x71352c,roughness:.67});
  const pencilWood=new THREE.MeshStandardMaterial({color:0x96764d,roughness:.81});
  const graphite=new THREE.MeshStandardMaterial({color:0x30302d,roughness:.62});
@@ -69,5 +71,5 @@ export function createDeskProps(scene:THREE.Scene){
   g.computeVertexNormals();
   const m=part(g,paper,scraps,(i-1)*.052,.004,Math.sin(i*2)*.009);m.rotation.set(-Math.PI/2,0,i*.41-.3);
  }
- return ()=>{scene.remove(root);geometries.forEach(g=>g.dispose());mats.forEach(m=>m.dispose());};
+ return ()=>{scene.remove(root);geometries.forEach(g=>g.dispose());mats.forEach(m=>m.dispose());metalDetail.dispose();};
 }

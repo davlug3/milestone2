@@ -25,7 +25,7 @@ function texture(size:number, sample:(x:number,y:number)=>number[], srgb=false):
   t.generateMipmaps=true;t.anisotropy=8;t.needsUpdate=true;
   return t;
 }
-export function createWalnutTextures(){
+export function createWalnutTextures(size=1024){
   function grain(x:number,y:number){
     const plank=Math.floor(y*3);
     const v=y*3-plank;
@@ -45,8 +45,9 @@ export function createWalnutTextures(){
     return {tone:(0.82+0.18*rings+0.17*(fine-0.5)+0.25*(noise(x*5,y*30)-0.5)+0.15*(hash(plank,4)-0.5))*seam*age*scratch*patina*scuff*(1-.13*knot+.07*knot*knotRing-.09*score-cupRing),bump:0.5+0.18*rings+0.22*(fine-0.5)-.09*score+.035*knot*knotRing};
   }
   return {
-    map:texture(1024,(x,y)=>{const t=grain(x,y).tone;return [105*t,65*t,38*t]},true),
-    bumpMap:texture(1024,(x,y)=>{const v=grain(x,y).bump*255;return [v,v,v]})
+    map:texture(size,(x,y)=>{const t=grain(x,y).tone;return [105*t,65*t,38*t]},true),
+    bumpMap:texture(size,(x,y)=>{const v=grain(x,y).bump*255;return [v,v,v]}),
+    roughnessMap:texture(Math.min(size,512),(x,y)=>{const v=178+38*noise(x*7,y*18)+20*noise(x*28,y*115)-32*noise(x*3+10,y*4);return [v,v,v]})
   };
 }
 export function createClothTexture(){
@@ -55,4 +56,29 @@ export function createClothTexture(){
     const v=128+28*a+28*b+9*(hash(x*256,y*256)-0.5);
     return [v,v,v];
   });
+}
+
+/** Small shared linear-data maps, not custom GLSL, so both renderers use them.
+ * The normal channels use tangent-space slopes encoded around neutral blue.
+ */
+export function createMicroSurface(kind:"petal"|"leaf"|"ceramic"|"metal"|"paint"){
+ const size=128;
+ function height(x:number,y:number){
+   const u=Math.max(0,Math.min(1,x)),v=Math.max(0,Math.min(1,y));
+   const fine=noise(u*64,v*64)-.5;
+   if(kind==="petal")return .0035*Math.sin(u*55+Math.sin(v*8)*.8)*Math.sin(Math.PI*v)+.0014*fine;
+   if(kind==="leaf")return .005*Math.sin(u*45+v*13)*Math.sin(Math.PI*u)+.002*fine;
+   if(kind==="ceramic")return .009*noise(u*9,v*13)+.0015*Math.sin(v*105)+.002*fine;
+   if(kind==="metal")return .0018*noise(u*8,v*75)+.0007*fine;
+   return .004*noise(u*36,v*41)+.0015*fine;
+ }
+ const normalMap=texture(size,(x,y)=>{
+   const d=1/size,dx=(height(x+d,y)-height(x-d,y))/(2*d),dy=(height(x,y+d)-height(x,y-d))/(2*d);
+   const n=Math.hypot(dx,dy,1);return [127.5*(1-dx/n),127.5*(1-dy/n),127.5*(1+1/n)];
+ });
+ const roughnessMap=texture(size,(x,y)=>{
+   const base=kind==="metal"?170:kind==="leaf"?218:235;
+   const v=base+22*noise(x*8,y*11)+12*noise(x*37,y*53);return [v,v,v];
+ });
+ return {normalMap,roughnessMap,dispose(){normalMap.dispose();roughnessMap.dispose();}};
 }

@@ -38,7 +38,7 @@ export class BlenderExport {
       if(!(m instanceof THREE.MeshStandardMaterial))throw Error("Unsupported material "+m.type);
       const id=materials.size;materials.set(m,id);
       const p=m instanceof THREE.MeshPhysicalMaterial?m:null;
-      materialData.push({id,color:m.color.toArray(),roughness:m.roughness,metalness:m.metalness,map:tex(m.map),bump:tex(m.bumpMap),bumpScale:m.bumpScale,coat:p?.clearcoat??0,coatRoughness:p?.clearcoatRoughness??0,sheen:p?.sheen??0,sheenRoughness:p?.sheenRoughness??1,sheenColor:p?.sheenColor.toArray()??[1,1,1]});
+      materialData.push({id,color:m.color.toArray(),roughness:m.roughness,metalness:m.metalness,map:tex(m.map),roughnessMap:tex(m.roughnessMap),normalMap:tex(m.normalMap),normalScale:m.normalScale.toArray(),bump:tex(m.bumpMap),bumpScale:m.bumpScale,coat:p?.clearcoat??0,coatRoughness:p?.clearcoatRoughness??0,sheen:p?.sheen??0,sheenRoughness:p?.sheenRoughness??1,sheenColor:p?.sheenColor.toArray()??[1,1,1]});
       return id;
     };
     const meshes=this.meshes.map((m,id)=>{

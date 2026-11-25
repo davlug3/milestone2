@@ -1,3 +1,4 @@
+import {createMicroSurface} from "./surfaceTextures";
 import * as THREE from "three";
 /** Matte dark-green painted room backdrop with low-contrast deterministic surface texture. */
 export function createStudioWall(scene:THREE.Scene){
@@ -12,11 +13,12 @@ export function createStudioWall(scene:THREE.Scene){
  }
  ctx.putImageData(data,0,0);
  const map=new THREE.CanvasTexture(canvas);map.colorSpace=THREE.SRGBColorSpace;map.wrapS=map.wrapT=THREE.RepeatWrapping;map.repeat.set(3,2);
- const material=new THREE.MeshStandardMaterial({map,roughness:1,metalness:0});
+ const detail=createMicroSurface("paint");
+ const material=new THREE.MeshPhysicalMaterial({map,roughness:1,metalness:0,normalMap:detail.normalMap,normalScale:new THREE.Vector2(.22,.22),roughnessMap:detail.roughnessMap,sheen:.12,sheenRoughness:1,sheenColor:new THREE.Color(0x47614d)});
  const trim=new THREE.MeshStandardMaterial({color:0x29382e,roughness:.85});
  const wall=new THREE.Mesh(new THREE.BoxGeometry(5,3,.08),material);
  wall.name="dark-green-matte-painted-wall";wall.position.set(0,.775,-.82);wall.receiveShadow=true;scene.add(wall);
  const baseboard=new THREE.Mesh(new THREE.BoxGeometry(5,.095,.025),trim);
  baseboard.name="wall-baseboard";baseboard.position.set(0,-.6775,-.768);baseboard.receiveShadow=true;scene.add(baseboard);
- return ()=>{scene.remove(wall,baseboard);wall.geometry.dispose();baseboard.geometry.dispose();material.dispose();trim.dispose();map.dispose();};
+ return ()=>{scene.remove(wall,baseboard);wall.geometry.dispose();baseboard.geometry.dispose();material.dispose();trim.dispose();map.dispose();detail.dispose();};
 }

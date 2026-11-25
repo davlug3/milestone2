@@ -1,3 +1,4 @@
+import {createMicroSurface} from "./surfaceTextures";
 import * as THREE from "three";
 import {mergeGeometries} from "three/addons/utils/BufferGeometryUtils.js";
 
@@ -9,7 +10,8 @@ export function createOrnamentalPlant(scene:THREE.Scene){
  const potMat=new THREE.MeshStandardMaterial({color:0x514337,roughness:.93});
  const soilMat=new THREE.MeshStandardMaterial({color:0x322a20,roughness:1});
  const stemMat=new THREE.MeshStandardMaterial({color:0x625842,roughness:.85});
- const leafMats=[0x304a31,0x3b5838,0x49623c,0x263f2e].map(color=>new THREE.MeshPhysicalMaterial({color,roughness:.57,clearcoat:.08,clearcoatRoughness:.74,side:THREE.DoubleSide}));
+ const leafDetail=createMicroSurface("leaf");
+ const leafMats=[0x304a31,0x3b5838,0x49623c,0x263f2e].map(color=>new THREE.MeshPhysicalMaterial({color,roughness:.64,normalMap:leafDetail.normalMap,roughnessMap:leafDetail.roughnessMap,normalScale:new THREE.Vector2(.35,.35),clearcoat:.16,clearcoatRoughness:.53,side:THREE.DoubleSide}));
  const veinMat=new THREE.MeshStandardMaterial({color:0x6c7950,roughness:.78});
  const mats=[potMat,soilMat,stemMat,...leafMats,veinMat];
  const geos=new Set<THREE.BufferGeometry>();
@@ -61,5 +63,5 @@ export function createOrnamentalPlant(scene:THREE.Scene){
    }
  }
  for(const [m,list] of batches){const merged=mergeGeometries(list,false);if(merged)add(merged,m);list.forEach(g=>g.dispose());}
- return ()=>{scene.remove(root);geos.forEach(g=>g.dispose());mats.forEach(m=>m.dispose());};
+ return ()=>{scene.remove(root);geos.forEach(g=>g.dispose());mats.forEach(m=>m.dispose());leafDetail.dispose();};
 }

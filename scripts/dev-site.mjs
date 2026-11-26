@@ -4,6 +4,7 @@ import {createServer as createViteServer} from "vite";
 import {readFileSync} from "node:fs";
 import {resolve} from "node:path";
 import {spawnSync} from "node:child_process";
+import {statsConfigPlugin} from "./lib/stats-config.mjs";
 import {parseArgs} from "node:util";
 const {values}=parseArgs({options:{host:{type:"string",default:"localhost"},port:{type:"string",default:"5173"}},allowPositionals:false});
 const startPort=Number(values.port);if(!Number.isInteger(startPort)||startPort<1||startPort>65535)throw Error("Invalid port");
@@ -39,7 +40,7 @@ try{
  }
  // Each Vite server starts from the public port and increments past it, so all five are distinct.
  for(const name of names){
-  const vite=await createViteServer({root:name==="book"?root:resolve(root,name),base:"/"+name+"/",plugins:[{name:"local-presentation-navigation",transformIndexHtml(html){return html.replace("</body>",nav+"</body>");}}],server:{host:"127.0.0.1",port,strictPort:false,hmr:{clientPort:port,path:"hmr"},fs:{allow:[root]}},configFile:false,appType:"mpa"});
+  const vite=await createViteServer({root:name==="book"?root:resolve(root,name),base:"/"+name+"/",plugins:[...(name==="stats"?[statsConfigPlugin(resolve(root,"photos.config.jsonc"))]:[]),{name:"local-presentation-navigation",transformIndexHtml(html){return html.replace("</body>",nav+"</body>");}}],server:{host:"127.0.0.1",port,strictPort:false,hmr:{clientPort:port,path:"hmr"},fs:{allow:[root]}},configFile:false,appType:"mpa"});
   await vite.listen();servers.set(name,vite);
  }
  // WebSocket upgrades are forwarded to the scene's own Vite HMR server.

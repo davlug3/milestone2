@@ -4,7 +4,7 @@ import {PlaybackClock,createPlaybackControls} from "../../src/playback/transport
 import {bindPreviewViewport} from "../../src/playback/viewport.ts";
 import {browserQuality,QUALITY_PROFILES,qualityOptions,changeQuality,DEFAULT_OUTPUT} from "../../src/rendering/quality.ts";
 import {SLIDE_SECONDS,statsFrame,validateSlides,numberText,easeOut,unit} from "./model.js";
-import examples from "./data.json";
+import examples from "virtual:milestone-stats";
 const query=new URLSearchParams(location.search),exportMode=query.has("export"),qualityName=browserQuality(query),profile=QUALITY_PROFILES[qualityName];
 const canvas=document.getElementById("scene"),ctx=canvas.getContext("2d"),loading=document.getElementById("loading");
 const layers=["composite","background","foreground","chroma","typography","accent"],validLayer=value=>layers.includes(value)?value:"composite";
@@ -23,9 +23,9 @@ function prepareTabletop(){
 }
 async function selectBackground(value){background=value==="tabletop"?"tabletop":"luxury";if(background==="tabletop"&&!tabletopAPI){try{await prepareTabletop();}catch(e){if(background==="tabletop")throw e;}}}
 
-const W=DEFAULT_OUTPUT.width,H=DEFAULT_OUTPUT.height,storageKey="milestone2.stats.v1";
+const W=DEFAULT_OUTPUT.width,H=DEFAULT_OUTPUT.height;
 let slides=validateSlides(examples);
-if(!exportMode){try{const saved=localStorage.getItem(storageKey);if(saved)slides=validateSlides(JSON.parse(saved));}catch{}}
+
 const clock=new PlaybackClock(slides.length*SLIDE_SECONDS,1);
 const controls=createPlaybackControls({modes:[{value:"composite",label:"Full composite"},{value:"background",label:"Background only"},{value:"foreground",label:"Transparent overlay"},{value:"chroma",label:"Green-screen overlay"},{value:"typography",label:"Typography only"},{value:"accent",label:"Accent only"}],quality:{value:qualityName,options:qualityOptions(),onChange:changeQuality},onToggle:()=>{if(clock.time>=clock.duration)clock.seek(0);clock.setPlaying(!clock.playing);controls.sync(clock);},onRestart:()=>{clock.seek(0);clock.setPlaying(true);draw();},onSeek:t=>{clock.setPlaying(false);clock.seek(t);draw();},onMode:value=>{layer=validLayer(value);const url=new URL(location.href);url.searchParams.set("layer",layer);history.replaceState(null,"",url.href);draw();},hidden:exportMode});
 controls.mode.value=layer;
@@ -153,7 +153,7 @@ const dialog=document.getElementById("editor"),json=document.getElementById("jso
 edit.hidden=exportMode;edit.onclick=()=>{clock.setPlaying(false);controls.sync(clock);json.value=JSON.stringify(slides,null,2);msg.textContent="";dialog.showModal();};
 document.getElementById("cancel").onclick=()=>dialog.close();
 document.getElementById("reset").onclick=()=>{json.value=JSON.stringify(examples,null,2);msg.textContent="";};
-document.getElementById("save").onclick=()=>{try{const next=validateSlides(JSON.parse(json.value));slides=next;try{localStorage.setItem(storageKey,JSON.stringify(slides));}catch{}clock.duration=slides.length*SLIDE_SECONDS;clock.seek(0);dialog.close();draw();}catch(e){msg.textContent=String(e.message||e);}};
+document.getElementById("save").onclick=()=>{try{const next=validateSlides(JSON.parse(json.value));slides=next;clock.duration=slides.length*SLIDE_SECONDS;clock.seek(0);dialog.close();draw();}catch(e){msg.textContent=String(e.message||e);}};
 window.__stats={async setBackground(value){await selectBackground(value);draw();},get backgroundReady(){return background!=="tabletop"||!!tabletopAPI;},get duration(){return clock.duration;},get count(){return slides.length;},setLayer(value){layer=validLayer(value);controls.mode.value=layer;draw();},setData(value){slides=validateSlides(value);clock.duration=slides.length*SLIDE_SECONDS;clock.seek(0);draw();},seek(t){clock.setPlaying(false);clock.seek(t);draw();},capture(t,pass){if(pass!==undefined)this.setLayer(pass);this.seek(t);return canvas.toDataURL("image/png");}};
 const saveFrame=document.getElementById("save-frame");saveFrame.hidden=exportMode;saveFrame.onclick=()=>{clock.setPlaying(false);const oldWidth=canvas.width,oldHeight=canvas.height;canvas.width=W;canvas.height=H;draw();const a=document.createElement("a");a.download="stats-"+layer+"-"+Math.round(clock.time*60)+".png";a.href=canvas.toDataURL("image/png");a.click();canvas.width=oldWidth;canvas.height=oldHeight;draw();};
 const backgroundPicker=document.getElementById("background-picker");backgroundPicker.hidden=exportMode;backgroundPicker.value=background;

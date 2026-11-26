@@ -61,7 +61,9 @@ async function children(id){
 export async function resolveDrivePhotos(entry,isImage){
  // The local sibling folder maps to one explicitly shared Drive root.
  const prefix='../jilp-old-pics';
- const normalized=entry.replaceAll('\\','/');
+ let normalized=entry.replaceAll('\\','/');
+ const raw=normalized.match(/^\.\.\/crawler\/output\/raw\/([a-f0-9]{64}\.jpg)$/);
+ if(raw)normalized=prefix+'/AI-Selected/'+raw[1];
  if(normalized!==prefix&&!normalized.startsWith(prefix+'/'))throw Error('No Drive mapping for photo path: '+entry);
  const root=process.env.GDRIVE_PHOTO_FOLDER_ID;
  if(!root)throw Error('Missing GDRIVE_PHOTO_FOLDER_ID');

@@ -1,6 +1,6 @@
 {
   // Relative to this file. Directories include direct image files, sorted by name.
-  // Empty lists use demo photos. Each scene has its own collection.
+  // Empty lists use real archive photos from the book (or another configured scene). Each scene has its own collection.
   "book": {
     "photos": [
       "../jilp-old-pics/Crowd Shots/496095321_9611072475677336_2196480707607302282_n.jpg",
@@ -29,7 +29,56 @@
       "../jilp-old-pics/Group Photos/555556770_25117972427794671_3355123710474706077_n.jpg"
     ]
   },
-  "slideshow": { "photos": [] },
-  "clothesline": { "photos": [] },
-  "floating": { "photos": [] }
+  "slideshow": { "photos": [
+      "../crawler/output/raw/086f3cd6a9b9b9229550dfa9d4b8bafd89d75c03f20064cbde2f069c76fc17b3.jpg",
+      "../crawler/output/raw/5e872e085ccc0723797935cb57ef3d68b33e8df51d6365c2f2ba382f6686f375.jpg",
+      "../crawler/output/raw/242c0e10eea9e71c4b47f7bd8187b71d0bffb3650659d6249669a9cb64264ac3.jpg",
+      "../crawler/output/raw/6ea6fde293c0fb61d080ff7476eb7fe14272d677fcb094354cf3b78ac83649ca.jpg",
+      "../crawler/output/raw/6271dae5dc207c526fd9819b69bd89a6d44307142826412099274299a2808ad2.jpg",
+      "../crawler/output/raw/6e53be93e92268e64b356fa55f4ff5e1672167a924fd690481ff6315a6bbc756.jpg",
+      "../crawler/output/raw/644bf195150dba75860019e5ff3a11ddb2fb533df038785ed5fb8b448553f9c2.jpg",
+      "../crawler/output/raw/91f45ede19102c627b6c70dddd19cc1e9fcad67637a532b0e00c3278c4599f56.jpg",
+      "../crawler/output/raw/54061bf3d07cc2bfb44a0b8f50db49adc46d48c44d91154c9ee0c5799854ba4e.jpg",
+      "../crawler/output/raw/9a6ae7fe14376270f09d09f1827c6f799dffe4f9f06016f80f6937959dde5c04.jpg",
+      "../crawler/output/raw/a8c16318740d4c76d76618c59f6ecc6edc9d2d64ecd686df20ced43957c03775.jpg",
+      "../crawler/output/raw/29304e1a5973b10adf1ceb33e97c7b9062f47e762520c3463091cccb3070378d.jpg",
+      "../crawler/output/raw/c6b7d2402c1a65bb9552cac789d0be9d8570df569ebb6f2d0d2d7b98171abf6d.jpg",
+      "../crawler/output/raw/d5d7f054ebbfe843ce3cd3e45d1205f0f018ec8c3e2b169378f138fe210a44f3.jpg",
+      "../crawler/output/raw/c425a27de9ad2b98e55e470e238c4f3fd16985745d7c06e631cc43da49adb17b.jpg",
+      "../crawler/output/raw/f14818277ea9b185e11e1d9ffdfc2a5e634cdd52c67ef37293021a3e4c07accc.jpg",
+      "../crawler/output/raw/ae9b1f9ff6d25b7f24dbac335ac8cd6725c3fc040c8053ed954b2fa707b8808f.jpg",
+      "../crawler/output/raw/b111d41e5458ec641ffc8854b3aeca91fdee5edd17a35dc0d287708059407a2f.jpg",
+      "../crawler/output/raw/13c2f661dd4de01f4ab65d1bea9bf12aafc50c911c3c4649d4347a2cb955c75d.jpg"
+    ] },
+  "clothesline": { "photos": [
+      "../crawler/output/raw/3245dd092cf003d9ce4f61c693af6aca4269d91eea3d04be0e59dae5aa68d8c4.jpg",
+      "../crawler/output/raw/3a4f29301320226be04559a7854f0b11d343b9e32b75c309892dba92400c42c8.jpg",
+      "../crawler/output/raw/3e0eea18913c876429395bf4a6f341fb742ecd4a935556de0d27231340378756.jpg",
+      "../crawler/output/raw/a17e5c6a535eb48e2f2d79b66b1216d8cd6cbdb0965a1e19ce8977895af0cd91.jpg",
+      "../crawler/output/raw/a7d3beb1870420f6971cbb17f81b63e976a14d072f030c4627df0ab38b75828b.jpg",
+      "../crawler/output/raw/90f4c0eaa3dc8f97d0d79244287b3f75b6644380d2871bbafc0d70c340b3aa3e.jpg",
+      "../crawler/output/raw/57733f6eed509f3b2dcce48f0c1332ffbdde238b8f6cc07616d4e9059f4c7b55.jpg",
+      "../crawler/output/raw/d1482ea1ed699d50e590c9f45cf6ac029834dc9a0c6733926a0ca7f356a76a46.jpg",
+      "../crawler/output/raw/f7c80c96e58d1ca7d8f0d9f14f3846adc51c28c9bdb8b00383fbd4b77fcbb99d.jpg",
+      "../crawler/output/raw/82860cddabb5d637b6346247c02a861189fd2e0fe28fda3ea3778b9342266921.jpg",
+      "../crawler/output/raw/86003cea7efd357fae7b09c354b5bfe0b2efc5f673b5c3bc4261eb7ff3dd147c.jpg",
+      "../crawler/output/raw/e9bd09a089c3ecca9e74a91726e969a750f0efdcf3bb8b6c7dba72bf9ecfaac7.jpg",
+      "../crawler/output/raw/b93ef9b83103a5973b708c40904e1e621460152c1bdd7e12149542ef65eea101.jpg",
+      "../crawler/output/raw/7d70d2d9b83af8e582ceea094acb0bdc66ae5fc5c5e586c6bcb6f0f0eeb5b6ac.jpg",
+      "../crawler/output/raw/96f0468b59bbddcdb5854cd40115fddb8a02775571552fd70ba5d7ce2df5695f.jpg",
+      "../crawler/output/raw/2a9b9089293564f2f04b645fb0502f6c66f6187b8212bbe4d883193c716fe02e.jpg"
+    ] },
+  "floating": { "photos": [] },
+  "stats": {
+    "slides": [
+      {
+        "title": "Life groups",
+        "number": 233
+      },
+      {
+        "title": "Worship service attendees",
+        "number": 500
+      }
+    ]
+  }
 }

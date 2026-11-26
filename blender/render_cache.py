@@ -14,7 +14,7 @@ def args():
     p.add_argument("--noise",type=float,default=.01)
     p.add_argument("--bounces",type=int,default=8)
     p.add_argument("--passes",choices=["all","beauty"],default="all")
-    p.add_argument("--format",choices=["PNG","EXR"],default="PNG")
+    p.add_argument("--format",choices=["PNG","EXR"],default="EXR")
     p.add_argument("--device",choices=["OPTIX","CUDA","CPU"],default="OPTIX")
     return p.parse_args(sys.argv[sys.argv.index("--")+1:])
 

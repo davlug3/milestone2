@@ -50,14 +50,18 @@ def configure(a):
     scene.cycles.denoiser="OPTIX" if a.device=="OPTIX" else "OPENIMAGEDENOISE"
     scene.render.use_persistent_data=True
     scene.render.resolution_x=a.width;scene.render.resolution_y=a.height;scene.render.resolution_percentage=100
-    scene.render.image_settings.file_format="OPEN_EXR_MULTILAYER" if a.format=="EXR" else "PNG"
+    # Blender 5.x filters the file-format enum by media_type.
+    image_settings=scene.render.image_settings
+    if hasattr(image_settings,"media_type"):
+        image_settings.media_type="MULTI_LAYER_IMAGE" if a.format=="EXR" else "IMAGE"
+    image_settings.file_format="OPEN_EXR_MULTILAYER" if a.format=="EXR" else "PNG"
     if a.format=="EXR":
         scene.render.image_settings.color_depth="16"
         scene.render.image_settings.exr_codec="ZIP"
         layer=scene.view_layers[0]
         for key in ["z","normal","diffuse_color","diffuse_direct","diffuse_indirect","glossy_color","glossy_direct","glossy_indirect","emit","object_index"]:
             setattr(layer,"use_pass_"+key,True)
-    scene.render.image_settings.color_mode="RGB"
+    if a.format=="PNG":scene.render.image_settings.color_mode="RGB"
     scene.view_settings.view_transform="AgX"
     scene.view_settings.exposure=-.36
     scene.world=bpy.data.worlds.new("Low-key studio")

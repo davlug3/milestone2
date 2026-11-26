@@ -9,13 +9,13 @@ import {createServer} from "node:http";
 import {extname,sep} from "node:path";
 import { isWSL } from "./lib/windows-browser.mjs";
 const {values:o}=parseArgs({options:{
-  scene:{type:"string",default:"book"},style:{type:"string",default:"luxury"},format:{type:"string",default:"PNG"},"no-build":{type:"boolean",default:false},width:{type:"string",default:"1920"},height:{type:"string",default:"1080"},fps:{type:"string",default:"60"},
+  scene:{type:"string",default:"book"},style:{type:"string",default:"luxury"},format:{type:"string",default:"PNG"},"no-build":{type:"boolean",default:false},"reuse-cache":{type:"boolean",default:false},width:{type:"string",default:"1920"},height:{type:"string",default:"1080"},fps:{type:"string",default:"60"},
   samples:{type:"string",default:"96"},bounces:{type:"string",default:"8"},noise:{type:"string",default:"0.02"},
   device:{type:"string",default:"OPTIX"},start:{type:"string",default:"0"},duration:{type:"string"},
   output:{type:"string",default:"renders/blender-final.mp4"},cache:{type:"string"},
   "export-only":{type:"boolean",default:false},"frames-only":{type:"boolean",default:false},help:{type:"boolean",default:false}
 }});
-if(o.help){console.log("npm run render:blender -- [--scene book|slideshow|clothesline|floating --style luxury|classic --format PNG|EXR --no-build --width 1920 --height 1080 --fps 60 --samples 96 --noise 0.02 --bounces 8 --device OPTIX|CUDA|CPU --start seconds --duration seconds --output renders/blender-final.mp4 --cache folder --export-only --frames-only]");process.exit(0);}
+if(o.help){console.log("npm run render:blender -- [--scene book|slideshow|clothesline|floating --style luxury|classic --format PNG|EXR --no-build --reuse-cache --width 1920 --height 1080 --fps 60 --samples 96 --noise 0.02 --bounces 8 --device OPTIX|CUDA|CPU --start seconds --duration seconds --output renders/blender-final.mp4 --cache folder --export-only --frames-only]");process.exit(0);}
 const num=(k)=>{const v=Number(o[k]);if(!Number.isInteger(v)||v<=0)throw Error("Invalid "+k);return v;};
 const apis={book:"__demo",slideshow:"__slideshow",clothesline:"__clothesline",floating:"__floating"},api=apis[o.scene];if(!api||!["luxury","classic"].includes(o.style)||!["PNG","EXR"].includes(o.format))throw Error("Invalid scene/style/format");if(o.format==="EXR"&&!o["frames-only"]&&!o["export-only"])throw Error("EXR requires --frames-only");
 const width=num("width"),height=num("height"),fps=num("fps"),samples=num("samples"),bounces=num("bounces"),noise=Number(o.noise),start=Number(o.start),duration=o.duration===undefined?null:Number(o.duration);
@@ -34,18 +34,23 @@ const ffmpeg=process.env.FFMPEG_PATH??["ffmpeg","ffmpeg.exe","/mnt/c/msys64/ming
 if(!o["export-only"]&&!o["frames-only"]&&!ffmpeg)throw Error("FFmpeg not found");
 const nativePath=(bin,p)=>isWSL()&&bin.toLowerCase().endsWith(".exe")?execFileSync("wslpath",["-w",p],{encoding:"utf8"}).trim():p;
 function save(path,data){writeFileSync(path+".tmp",gzipSync(JSON.stringify(data)));renameSync(path+".tmp",path);}
-if(!o["no-build"])run(process.execPath,["scripts/build-site.mjs"]);
+if(!o["no-build"]&&!o["reuse-cache"])run(process.execPath,["scripts/build-site.mjs"]);
 const root=resolve("site-dist");
 function hashDir(dir,h){for(const item of readdirSync(dir,{withFileTypes:true}).sort((a,b)=>a.name.localeCompare(b.name))){const p=join(dir,item.name);h.update(item.name);if(item.isDirectory())hashDir(p,h);else h.update(readFileSync(p));}return h;}
-const buildHash=hashDir(root,createHash("sha256")).digest("hex");
+const buildHash=o["reuse-cache"]?null:hashDir(root,createHash("sha256")).digest("hex");
 const settings={scene:o.scene,style:o.style,width,height,fps,start,duration,buildHash};
 mkdirSync(cache,{recursive:true});
 const manifest=join(cache,"manifest.json");
 if(existsSync(manifest)){
   const old=JSON.parse(readFileSync(manifest,"utf8"));
-  if(JSON.stringify(old.settings)!==JSON.stringify(settings))throw Error("Cache settings changed; choose another --cache");
+  const differences=Object.keys(settings).filter(k=>old.settings?.[k]!==settings[k]&&!(k==="buildHash"&&o["reuse-cache"]));
+  if(differences.length)throw Error("Cache settings changed: "+differences.map(k=>k+" (cached "+JSON.stringify(old.settings?.[k])+", requested "+JSON.stringify(settings[k])+")").join(", ")+"; choose another --cache");
+  if(!Number.isInteger(old.count)||old.count<1||old.fps!==fps||!existsSync(join(cache,"scene.json.gz")))throw Error("Invalid geometry cache manifest or missing scene");
+  for(let i=0;i<old.count;i++)if(!existsSync(join(cache,"frame-"+String(i).padStart(6,"0")+".json.gz")))throw Error("Incomplete geometry cache at frame "+i);
+  if(o["reuse-cache"]){settings.buildHash=old.settings.buildHash;console.warn("[export] Explicit cache reuse: using saved geometry, not current source assets");}
   console.log("[export] Reusing completed geometry cache");
 }else{
+  if(o["reuse-cache"])throw Error("--reuse-cache requires an existing completed cache: "+cache);
   let server,browser;
   try{
     const types={".html":"text/html",".js":"text/javascript",".css":"text/css",".json":"application/json",".jpg":"image/jpeg",".jpeg":"image/jpeg",".png":"image/png",".webp":"image/webp",".svg":"image/svg+xml",".avif":"image/avif"};

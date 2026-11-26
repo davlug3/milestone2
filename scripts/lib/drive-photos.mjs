@@ -71,7 +71,7 @@ export async function resolveDrivePhotos(entry,isImage){
  for(const name of parts){
   if(item.mimeType!==FOLDER)throw Error('Not a Drive directory: '+name);
   const matches=(await children(item.id)).filter(f=>f.name===name);
-  if(matches.length!==1)throw Error('Missing or ambiguous Drive path: '+entry);
+  if(matches.length!==1)throw Error('Drive path resolution failed at '+name+' (matches='+matches.length+', visible children='+(await children(item.id)).length+'): '+entry);
   item=matches[0];
  }
  const files=item.mimeType===FOLDER?(await children(item.id)).sort((a,b)=>a.name.localeCompare(b.name,'en',{numeric:true})||a.id.localeCompare(b.id)):[item];

@@ -1,3 +1,4 @@
+import {browserAssets as assets} from "../../src/rendering/sceneAssets.ts";
 import {createSceneRenderer} from "../../src/rendering/sceneRenderer.ts";
 import {geometrySession} from "../../src/rendering/geometrySession.ts";
 import {BlenderExport} from "../../src/rendering/blenderExport.ts";
@@ -32,7 +33,7 @@ async function boot(){
  if(composer){composer.addPass(new RenderPass(scene,camera));composer.addPass(bokehPass);if(luxury)composer.addPass(new UnrealBloomPass(new THREE.Vector2(1,1),.18,.45,.85));composer.addPass(new OutputPass());}
  let previewDofError="";
  const env=new GradientEquirectTexture(128);env.topColor.set(0xd0c1a7);env.bottomColor.set(0x363e32);env.update();scene.environment=env;scene.environmentIntensity=.36;
- const response=await fetch("../slideshow/slides.json",{signal:AbortSignal.timeout(20000)});if(!response.ok)throw Error("Photo manifest unavailable");const manifest=await response.json();if(!manifest.photos.length)throw Error("No photos");
+ const manifest=await assets.json("../slideshow/slides.json");if(!manifest.photos.length)throw Error("No photos");
  const count=manifest.photos.length,span=Math.max(1.5,(count-1)*SPACING+.9),duration=Math.max(8,count*3.2),clock=new PlaybackClock(duration,1);
  const labelsKey="milestone2.clothesline.labels.v1";
  const cleanLabels=value=>{if(!Array.isArray(value)||value.some(v=>typeof v!=="string"||v.length>100))throw Error("Use a JSON array of caption strings (maximum 100 characters each).");return Array.from({length:count},(_,i)=>(value[i]||"").trim());};
@@ -64,14 +65,14 @@ async function boot(){
  const r=random(51);for(let i=0;i<Math.ceil(span*8);i++){const x=(r()-.5)*(span+2),y=.15+r()*.67,z=-.88+r()*.12;const leaf=mesh(new THREE.SphereGeometry(.065+r()*.065,8,6),leafMat,x,y,z);leaf.scale.set(.55,1,.15);leaf.rotation.z=(r()-.5)*2.7;leaf.rotation.y=(r()-.5)*2;}
  const key=new PhysicalSpotLight(luxury?LUXURY.key:0xffe0b6,luxury?16:14,12,Math.PI/3,.85,2);key.position.set(-1.7,3.2,2.4);key.target.position.set(0,1.4,0);key.radius=.65;key.castShadow=true;key.shadow.mapSize.set(profile.dpr===1?1024:2048,profile.dpr===1?1024:2048);key.shadow.camera.near=.2;key.shadow.camera.far=12;key.shadow.normalBias=.0005;scene.add(key,key.target);
  const fill=new THREE.DirectionalLight(luxury?LUXURY.fill:0xc1d5e8,luxury?.70:.95);fill.position.set(2,2,1);scene.add(fill);const rim=new THREE.DirectionalLight(luxury?LUXURY.rim:0xffd4a0,luxury?1.7:1.5);rim.position.set(-1,2,-.7);scene.add(rim);scene.add(new THREE.HemisphereLight(0xf7e8cc,0x59634c,.45));
- const loader=new THREE.TextureLoader(),cards=[],photoMaterials=[],originalPrints=[];
+ const cards=[],photoMaterials=[],originalPrints=[];
  function makeGeometry(s,back=false){const n=s.cols*s.rows,uv=new Float32Array(n*2),indices=[];for(let j=0;j<s.rows;j++)for(let i=0;i<s.cols;i++){const k=j*s.cols+i;uv[k*2]=back?1-i/(s.cols-1):i/(s.cols-1);uv[k*2+1]=1-j/(s.rows-1);if(i+1<s.cols&&j+1<s.rows){const a=k,b=k+1,d=k+s.cols,e=d+1;if(back)indices.push(a,b,d,b,e,d);else indices.push(a,d,b,b,d,e);}}const g=new THREE.BufferGeometry();g.setAttribute("position",new THREE.BufferAttribute(new Float32Array(n*3),3).setUsage(THREE.DynamicDrawUsage));g.setAttribute("uv",new THREE.BufferAttribute(uv,2));g.setIndex(indices);return g;}
  function makeEdge(s){const boundary=[];for(let i=0;i<s.cols-1;i++)boundary.push(i);for(let j=0;j<s.rows-1;j++)boundary.push(j*s.cols+s.cols-1);for(let i=s.cols-1;i>0;i--)boundary.push((s.rows-1)*s.cols+i);for(let j=s.rows-1;j>0;j--)boundary.push(j*s.cols);const indices=[];for(let i=0;i<boundary.length;i++){const a=i*2,b=((i+1)%boundary.length)*2;indices.push(a,b,a+1,b,b+1,a+1);}const g=new THREE.BufferGeometry();g.setAttribute("position",new THREE.BufferAttribute(new Float32Array(boundary.length*6),3).setUsage(THREE.DynamicDrawUsage));g.setIndex(indices);return {g,boundary};}
  function syncCard(card){const {s,front,back,edge,boundary}=card,a=front.attributes.position,b=back.attributes.position,e=edge.attributes.position;for(let i=0;i<s.inverse.length;i++){const k=i*3;a.setXYZ(i,s.p[k],s.p[k+1],s.p[k+2]+THICKNESS/2);b.setXYZ(i,s.p[k],s.p[k+1],s.p[k+2]-THICKNESS/2);}for(let i=0;i<boundary.length;i++){const k=boundary[i];e.setXYZ(i*2,a.getX(k),a.getY(k),a.getZ(k));e.setXYZ(i*2+1,b.getX(k),b.getY(k),b.getZ(k));}for(const g of [front,back,edge]){g.attributes.position.needsUpdate=true;g.computeVertexNormals();g.computeBoundingSphere();}}
  for(let i=0;i<count;i++){
   loadingStage("Preparing suspended photographs…",i,count);
-  const source=await loader.loadAsync(new URL(manifest.photos[i],new URL("../slideshow/",location.href)).href);
-  const tex=printTexture(source.image,{width:PHOTO_W,depth:PHOTO_H},renderer.capabilities.getMaxAnisotropy(),profile.photoWidth);source.dispose();
+  const source=await assets.image(assets.resolve(manifest.photos[i],assets.resolve("../slideshow/")));
+  const tex=printTexture(source,{width:PHOTO_W,depth:PHOTO_H},renderer.capabilities.getMaxAnisotropy(),profile.photoWidth,assets);
   const material=new THREE.MeshPhysicalMaterial({map:tex,roughness:luxury?.43:.57,clearcoat:luxury?.24:.15,clearcoatRoughness:luxury?.38:.48});
   photoMaterials.push(material);originalPrints.push(tex);
   const s=makeSheet(i,25,19),x=(i-(count-1)/2)*SPACING,group=new THREE.Group();group.position.set(x,lineY(x,span)-.012,.012);scene.add(group);
@@ -149,7 +150,7 @@ async function boot(){
    const m=captionMaterials[i],source=originalPrints[i];
    if(m.map&&m.map!==source)m.map.dispose();
    if(!labelsEnabled||!labels[i]){m.map=source;m.needsUpdate=true;continue;}
-   const canvas=document.createElement("canvas");canvas.width=source.image.width;canvas.height=source.image.height;
+   const canvas=assets.canvas();canvas.width=source.image.width;canvas.height=source.image.height;
    const ctx=canvas.getContext("2d"),w=canvas.width,h=canvas.height,border=h*.14;
    ctx.fillStyle="#f5f0e6";ctx.fillRect(0,0,w,h);
    ctx.drawImage(source.image,0,0,w,h-border+h*.035);

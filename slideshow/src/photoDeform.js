@@ -1,3 +1,4 @@
+import {browserAssets} from "../../src/rendering/sceneAssets.ts";
 import * as THREE from "three";
 import {random} from "./pose.js";
 
@@ -63,8 +64,8 @@ function edgeGeometry(){
 }
 // Bake the white border into the photo texture so image and paper share one
 // continuous curved surface. No floating image plane or multi-material groups.
-export function printTexture(image,c,anisotropy,width=1600){
-  const canvas=document.createElement("canvas");canvas.width=width;canvas.height=Math.round(width*c.depth/c.width);
+export function printTexture(image,c,anisotropy,width=1600,assets=browserAssets){
+  const canvas=assets.canvas(width,Math.round(width*c.depth/c.width));
   const ctx=canvas.getContext("2d"),w=canvas.width,h=canvas.height;
   ctx.fillStyle="#f5f0e6";ctx.fillRect(0,0,w,h);
   const bx=w*.027,by=h*.037,dw=w-2*bx,dh=h-2*by;

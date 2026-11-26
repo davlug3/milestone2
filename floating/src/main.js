@@ -1,3 +1,4 @@
+import {browserAssets as assets} from "../../src/rendering/sceneAssets.ts";
 import {createSceneRenderer} from "../../src/rendering/sceneRenderer.ts";
 import {geometrySession} from "../../src/rendering/geometrySession.ts";
 import {BlenderExport} from "../../src/rendering/blenderExport.ts";
@@ -27,13 +28,13 @@ async function boot(){
  const camera=new PhysicalCamera(39.6,16/9,.035,150);camera.filmGauge=36;camera.setFocalLength(50);camera.fStop=luxury?1.8:2.8;camera.focusDistance=1.1;
  const env=new GradientEquirectTexture(128);env.topColor.set(0xb4c2d2);env.bottomColor.set(0x33241b);env.update();scene.environment=env;scene.environmentIntensity=.31;
  const composer=query.has("geometry-export")?null:new EffectComposer(renderer),bokeh=composer?new BokehPass(scene,camera,{focus:1.1,aperture:luxury?.026:.018,maxblur:luxury?.019:.014}):null;if(composer){composer.addPass(new RenderPass(scene,camera));composer.addPass(bokeh);if(luxury)composer.addPass(new UnrealBloomPass(new THREE.Vector2(1,1),.18,.45,.85));composer.addPass(new OutputPass());}let dofError="";
- const manifestResponse=await fetch("../slideshow/slides.json",{signal:AbortSignal.timeout(20000)});if(!manifestResponse.ok)throw Error("Photo manifest unavailable");const manifest=await manifestResponse.json();if(!manifest.photos.length)throw Error("No photos");
+ const manifest=await assets.json("../slideshow/slides.json");if(!manifest.photos.length)throw Error("No photos");
  const count=manifest.photos.length,duration=count*SECONDS,clock=new PlaybackClock(duration,1),layout=makeLayout(count),cards=[],photoMeshes=new Set();
- const config={width:.46,depth:.322,thickness:.00065,flight:1.25,settle:.85},loader=new THREE.TextureLoader(),materials=[];
+ const config={width:.46,depth:.322,thickness:.00065,flight:1.25,settle:.85},materials=[];
  const back=new THREE.MeshStandardMaterial({color:0xe9dfce,roughness:.92}),edge=new THREE.MeshStandardMaterial({color:0xdacdb8,roughness:.86});
  for(let i=0;i<count;i++){
-  loadingStage("Loading memories…",i,count);let timer;const source=await Promise.race([loader.loadAsync(new URL(manifest.photos[i],new URL("../slideshow/",location.href)).href),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error("Photo "+(i+1)+" timed out")),20000);})]).finally(()=>clearTimeout(timer));
-  const tex=printTexture(source.image,config,renderer.capabilities.getMaxAnisotropy(),profile.photoWidth);source.dispose();
+  loadingStage("Loading memories…",i,count);const source=await assets.image(assets.resolve(manifest.photos[i],assets.resolve("../slideshow/")));
+  const tex=printTexture(source,config,renderer.capabilities.getMaxAnisotropy(),profile.photoWidth,assets);
   materials.push(new THREE.MeshPhysicalMaterial({map:tex,roughness:luxury?.39:.55,clearcoat:luxury?.30:.15,clearcoatRoughness:luxury?.32:.44}));
  }
  // True front/back/edge paper surfaces. The rest shape comes from the shared tabletop print geometry.

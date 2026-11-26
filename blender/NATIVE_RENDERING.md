@@ -25,3 +25,6 @@ New exports default to a gzip-compressed binary container: 8-byte M2CACHE2 magic
 
 ## Phase 4a: geometry-only bootstrap
 All four 3D scenes now use a shared geometry-session contract and bypass WebGL context initialization in geometry-export mode. Book also skips PMREM environment baking; floating and clothesline skip postprocessing composers. Browser DOM and Canvas texture/image loading remain necessary, so Chromium is still used. Browser preview and raster/path-trace exports retain their full renderer. Statistics uses a dedicated 2D canvas and model, not the Cycles pipeline. Full Node-only execution requires extracting asset loading and scene construction from UI bootstrap and a compatible Canvas implementation. No remote GPU runs are required for this refactor.
+
+## Phase 4B: asset boundary
+SceneAssets defines canvas/image/JSON/path/PNG operations. BrowserAssets remains the default. Book page prints, shared photo textures and Blender texture export accept injected assets; slideshow, clothesline, floating and Stats use the shared browser adapter. Stats exposes renderer-independent statsFrame state. This is a foundation for native Canvas integration, not a complete Node scene runtime. Scene bootstraps still depend on browser UI and DOM; the CLI continues to use Chromium. 

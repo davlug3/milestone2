@@ -1,3 +1,4 @@
+import {browserAssets,type SceneAssets} from "../rendering/sceneAssets";
 import {createPaperGrain,paintPaperWear} from "./paperWear";
 import * as THREE from "three";
 
@@ -6,7 +7,7 @@ const WIDTH = 512;
 const HEIGHT = 660;
 
 /** Shared image cache and a unique, UV-stable printed layout for every face. */
-export function createPagePrints(edge: THREE.Material, anisotropy: number, scale=1, printedSheets=Infinity) {
+export function createPagePrints(edge: THREE.Material, anisotropy: number, scale=1, printedSheets=Infinity, assets:SceneAssets=browserAssets, photoBase=import.meta.env.BASE_URL+"page-photos/") {
   const grain=createPaperGrain();
   const blank=new THREE.MeshPhysicalMaterial({color:0xf4efe4,roughness:.82,bumpMap:grain.bump,bumpScale:.000035});
   const images = new Map<number, Promise<HTMLImageElement | null>>();
@@ -18,14 +19,7 @@ export function createPagePrints(edge: THREE.Material, anisotropy: number, scale
   const load = (id: number) => {
     let pending = images.get(id);
     if (!pending) {
-      pending = new Promise(resolve => {
-        const image = new Image();
-        const finish=(value:HTMLImageElement|null)=>{clearTimeout(timer);image.onload=null;image.onerror=null;resolve(value);};
-        const timer=setTimeout(()=>finish(null),20000);
-        image.onload = () => finish(image);
-        image.onerror = () => finish(null);
-        image.src = import.meta.env.BASE_URL + "page-photos/" + id + ".jpg";
-      });
+      pending=assets.image(assets.resolve(id+".jpg",assets.resolve(photoBase))).catch(()=>null);
       images.set(id, pending);
     }
     return pending;
@@ -41,7 +35,7 @@ export function createPagePrints(edge: THREE.Material, anisotropy: number, scale
     ctx.drawImage(image, (image.naturalWidth-sw)/2, (image.naturalHeight-sh)/2, sw, sh, x,y,w,h);
   }
   function face(page: number) {
-    const canvas = document.createElement("canvas");
+    const canvas = assets.canvas();
     canvas.width = Math.round(WIDTH*scale);
     canvas.height = Math.round(HEIGHT*scale);
     const ctx = canvas.getContext("2d")!;

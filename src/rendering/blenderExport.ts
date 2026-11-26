@@ -1,3 +1,4 @@
+import {browserAssets,type SceneAssets} from "./sceneAssets";
 import * as THREE from "three";
 function b64(a: ArrayBufferView): string {
   const bytes=new Uint8Array(a.buffer,a.byteOffset,a.byteLength);
@@ -14,7 +15,7 @@ export class BlenderExport {
   private meshes: THREE.Mesh[]=[];
   private lights: Array<THREE.DirectionalLight|THREE.SpotLight|THREE.PointLight>=[];
   private previous=new Map<number,string>();
-  constructor(private scene:THREE.Scene,private camera:THREE.PerspectiveCamera){}
+  constructor(private scene:THREE.Scene,private camera:THREE.PerspectiveCamera,private assets:SceneAssets=browserAssets){}
   setup(){
     this.meshes=[];this.previous.clear();
     this.lights=[];
@@ -26,13 +27,13 @@ export class BlenderExport {
       if(textures.has(t))return textures.get(t)!;
       const id=textures.size;textures.set(t,id);
       let canvas:HTMLCanvasElement;
-      if(t.image instanceof HTMLCanvasElement)canvas=t.image;
+      if(this.assets.isCanvas(t.image))canvas=t.image;
       else if(t instanceof THREE.DataTexture){
-        const {width,height,data}=t.image;canvas=document.createElement("canvas");canvas.width=width;canvas.height=height;
+        const {width,height,data}=t.image;canvas=this.assets.canvas(width,height);
         if(!(data instanceof Uint8Array)||data.length!==width*height*4)throw Error("Unsupported texture "+t.uuid);
-        canvas.getContext("2d")!.putImageData(new ImageData(new Uint8ClampedArray(data),width,height),0,0);
+        canvas.getContext("2d")!.putImageData(this.assets.imageData(new Uint8ClampedArray(data),width,height),0,0);
       }else throw Error("Unsupported texture source "+t.uuid);
-      textureData.push({id,png:canvas.toDataURL("image/png").split(",")[1],srgb:t.colorSpace===THREE.SRGBColorSpace,flipY:t.flipY,repeat:t.repeat.toArray(),offset:t.offset.toArray()});
+      textureData.push({id,png:this.assets.png(canvas),srgb:t.colorSpace===THREE.SRGBColorSpace,flipY:t.flipY,repeat:t.repeat.toArray(),offset:t.offset.toArray()});
       return id;
     };
     const mat=(m:THREE.Material)=>{

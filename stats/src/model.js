@@ -23,3 +23,6 @@ export const easeOut=x=>{const t=unit(x);return t*t*t*(t*(t*6-15)+10);};
 export function motionPose(local,index,count){
  return {number:easeOut((local-.18)/1.25),title:easeOut((local-.86)/.83),subtitle:easeOut((local-1.13)/.8),accent:easeOut(local/.9),exit:index<count-1?easeOut((local-4.28)/.72):0,shine:unit((local-1.15)/1.6),count:1};
 }
+
+/** Renderer-independent editorial state for a frame. */
+export function statsFrame(time,slides){const pose=slidePose(time,slides.length);return {pose,slide:slides[pose.index],motion:motionPose(pose.local,pose.index,slides.length)};}

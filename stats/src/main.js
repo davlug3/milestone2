@@ -1,8 +1,9 @@
+import {browserAssets as assets} from "../../src/rendering/sceneAssets.ts";
 import {visualStyle,addStyleControl,LUXURY} from "../../src/rendering/visualStyle.ts";
 import {PlaybackClock,createPlaybackControls} from "../../src/playback/transport.ts";
 import {bindPreviewViewport} from "../../src/playback/viewport.ts";
 import {browserQuality,QUALITY_PROFILES,qualityOptions,changeQuality,DEFAULT_OUTPUT} from "../../src/rendering/quality.ts";
-import {SLIDE_SECONDS,slidePose,validateSlides,numberText,motionPose,easeOut,unit} from "./model.js";
+import {SLIDE_SECONDS,statsFrame,validateSlides,numberText,easeOut,unit} from "./model.js";
 import examples from "./data.json";
 const query=new URLSearchParams(location.search),exportMode=query.has("export"),qualityName=browserQuality(query),profile=QUALITY_PROFILES[qualityName];
 const canvas=document.getElementById("scene"),ctx=canvas.getContext("2d"),loading=document.getElementById("loading");
@@ -45,7 +46,7 @@ function layoutLines(str,max,size,font,limit){
 }
 // A feathered traveling matte reveals intact typography, not animated digit slots.
 // The offscreen canvas is composited over either the background or transparency.
-const matte=document.createElement("canvas"),mc=matte.getContext("2d");
+const matte=assets.canvas(),mc=matte.getContext("2d");
 function reveal(str,x,y,max,size,font,color,progress,exit=0,metallic=false,local=0){
  if(progress<=0||exit>=1)return;
  ctx.font=font.replace("SIZE",String(size));
@@ -82,8 +83,8 @@ function reveal(str,x,y,max,size,font,color,progress,exit=0,metallic=false,local
  ctx.save();ctx.globalAlpha=unit(progress*3)*(1-exit*.35);if(metallic){ctx.translate(x,y);const settle=1-progress;ctx.transform(1-.045*settle,0,.035*settle,1,0,0);ctx.drawImage(matte,-width/2,-height/2,width,height);}else ctx.drawImage(matte,x-width/2,y-height/2,width,height);ctx.restore();
 }
 function draw(){
- const p=slidePose(clock.time,slides.length),s=slides[p.index],palette=luxury?[LUXURY.emerald,"#071310",LUXURY.gold,LUXURY.ivory]:palettes[p.index%palettes.length];
- const [a,b,gold,ivory]=palette,m=motionPose(p.local,p.index,slides.length);
+ const {pose:p,slide:s,motion:m}=statsFrame(clock.time,slides),palette=luxury?[LUXURY.emerald,"#071310",LUXURY.gold,LUXURY.ivory]:palettes[p.index%palettes.length];
+ const [a,b,gold,ivory]=palette;
  ctx.setTransform(canvas.width/W,0,0,canvas.height/H,0,0);ctx.clearRect(0,0,W,H);
  if(layer==="chroma"){ctx.fillStyle="#00ff00";ctx.fillRect(0,0,W,H);}
  if((layer==="composite"||layer==="background")&&background==="tabletop"&&tabletopAPI){

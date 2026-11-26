@@ -1,3 +1,4 @@
+import {browserAssets as assets} from "../../src/rendering/sceneAssets.ts";
 import {createSceneRenderer} from "../../src/rendering/sceneRenderer.ts";
 import {geometrySession} from "../../src/rendering/geometrySession.ts";
 import {BlenderExport} from "../../src/rendering/blenderExport.ts";
@@ -56,7 +57,7 @@ function beautyDraw(){
 
 function draw(){if(new URLSearchParams(location.search).has("geometry-export"))return;if(passes.pass==="beauty")beautyDraw();else{passes.render();controls.setFrameProgress({phase:"Render pass · "+passes.pass,ready:true});}}
 function walnut(){
-  const n=profile.woodSize,c=document.createElement("canvas");c.width=c.height=n;const ctx=c.getContext("2d"),im=ctx.createImageData(n,n),r=random(91);
+  const n=profile.woodSize,c=assets.canvas();c.width=c.height=n;const ctx=c.getContext("2d"),im=ctx.createImageData(n,n),r=random(91);
   for(let y=0;y<n;y++)for(let x=0;x<n;x++){
     const plank=Math.floor(y/(n/5)),v=y/(n/5)-plank;
     const warp=4*Math.sin(x*.008+plank*2)+2*Math.sin(x*.021+y*.014);
@@ -69,7 +70,7 @@ function walnut(){
 }
 const wood=walnut(),table=new THREE.Mesh(new THREE.PlaneGeometry(2.2,1.6),new THREE.MeshStandardMaterial({map:wood,color:new THREE.Color().setScalar(luxury?.66:.82),roughness:luxury?.68:.78}));
 table.rotation.x=-Math.PI/2;table.receiveShadow=true;scene.add(table);
-const loader=new THREE.TextureLoader(),cards=[];
+const cards=[];
 const paper=new THREE.MeshPhysicalMaterial({color:0xf4eee3,roughness:.82,sheen:.08});
 const edge=new THREE.MeshStandardMaterial({color:0xe1d8c9,roughness:.9});
 let shots=[],total=0,clock=0;
@@ -93,14 +94,13 @@ bindPreviewViewport(renderer.domElement,controls.ui,resizeScene,exportMode);
 if(exportMode)addEventListener("resize",()=>resizeScene(innerWidth,innerHeight));
 async function init(){
   loadingStage("Downloading photo manifest…");
-  const response=await fetch("./slides.json",{signal:AbortSignal.timeout(20000)});if(!response.ok)throw Error("Missing slides.json; run npm run build or npm run dev");
-  const manifest=await response.json();if(!manifest.photos.length)throw Error("No photos found");
+  const manifest=await assets.json("./slides.json");if(!manifest.photos.length)throw Error("No photos found");
   shots=makeShots(manifest.photos.length,manifest.config);frameLaunches(shots,camera);total=duration(shots);playback.duration=total;controls.sync(playback);
   loadingStage("Loading photo prints…",0,manifest.photos.length);
   for(let i=0;i<manifest.photos.length;i++){
     const c=shots[i].config;
-    let timer;const source=await Promise.race([loader.loadAsync(manifest.photos[i]),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error("Photo "+(i+1)+" failed to load in time")),20000);})]).finally(()=>clearTimeout(timer));
-    const tex=printTexture(source.image,c,renderer.capabilities.getMaxAnisotropy(),profile.photoWidth);source.dispose();
+    const source=await assets.image(manifest.photos[i]);
+    const tex=printTexture(source,c,renderer.capabilities.getMaxAnisotropy(),profile.photoWidth,assets);
     const front=new THREE.MeshPhysicalMaterial({map:tex,roughness:luxury?.36:.43,clearcoat:luxury?.31:.22,clearcoatRoughness:luxury?.35:.46});
     const card=createPhoto(c,shapeFor(c.seed,i),{front,back:paper,edge});
     scene.add(card);cards.push(card);loadingStage("Loading photo prints…",i+1,manifest.photos.length);

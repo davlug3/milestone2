@@ -710,10 +710,10 @@ export function startBookDemo(container: HTMLElement): () => void {
       if(!geometryOnly)throw Error("Geometry export mode required");
       setPlaying(false);seek(0);return blenderExport.setup();
     },
-    blenderFrame: (t:number) => {
+    blenderFrame:(t:number,checkpoint=false)=> {
       if(!geometryOnly)throw Error("Geometry export mode required");
       if(t<time)seek(t);else{time=playback.seek(t);stepPagesTo(time);updateCover(time);updateCamera(time);}
-      return blenderExport.frame();
+      return blenderExport.frame(checkpoint);
     },
     exportFrame: (t: number, samples: number, bounces: number) => {
       if (!new URLSearchParams(location.search).has('export')) throw Error('Export mode required');

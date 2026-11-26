@@ -7,6 +7,8 @@ import { createHash } from "node:crypto";
 import { chromium } from "playwright";
 import {createServer} from "node:http";
 import {extname,sep} from "node:path";
+import {tmpdir} from "node:os";
+import {acquireRenderLock} from "./lib/render-lock.mjs";
 import {resolveCyclesPreset} from "./lib/cycles-presets.mjs";
 import { isWSL } from "./lib/windows-browser.mjs";
 const {values:o}=parseArgs({options:{
@@ -24,7 +26,7 @@ if(!["ZIP","PIZ"].includes(o["exr-codec"]))throw Error("Choose lossless ZIP or P
 const benchmark=o["benchmark-frames"]?.split(",").map(Number);if(benchmark&&(!o["reuse-cache"]||!o["frames-only"]||o["export-only"]||benchmark.some(i=>!Number.isInteger(i)||i<0)||!benchmark.length))throw Error("Benchmark requires --reuse-cache, frame output and valid zero-based frame indices");
 const width=num("width"),height=num("height"),fps=num("fps"),start=Number(o.start),duration=o.duration===undefined?null:Number(o.duration);
 if(width%2||height%2||!(noise>0&&noise<=1)||!Number.isFinite(start)||start<0||duration!==null&&!(duration>0)||!["OPTIX","CUDA","CPU"].includes(o.device))throw Error("Invalid render settings");
-const output=resolve(o.output),cache=resolve(o.cache??output.replace(/\.mp4$/i,"")+".cache"),frames=output.replace(/\.mp4$/i,"")+(o.format==="PNG"&&o.passes==="all"?".png-passes":o.format==="PNG"?".png-frames":".frames");
+const output=resolve(o.output),cache=resolve(o.cache??output.replace(/\.mp4$/i,"")+".cache"),frames=output.replace(/\.mp4$/i,"")+(o.format==="PNG"&&o.passes==="all"?".png-passes":o.format==="PNG"?".png-frames":o.passes==="beauty"?".exr-beauty":".frames");
 function run(bin,args){const r=spawnSync(bin,args,{stdio:"inherit"});if(r.error)throw r.error;if(r.status!==0)throw Error(bin+" failed: "+r.status);}
 const available=bin=>spawnSync(bin,["--version"],{stdio:"ignore"}).status===0;
 let blender=process.env.BLENDER_PATH;
@@ -71,16 +73,23 @@ if(existsSync(manifest)){
     if(count<=0)throw Error("Start beyond timeline");
     console.log("[export] Exporting static mesh topology, materials and textures");
     save(join(cache,"scene.json.gz"),await page.evaluate(api=>window[api].blenderSetup(),api));
+    const checkpointInterval=120;
+    let checkpointValid=true;
     for(let i=0;i<count;i++){
       const t=Math.min(info.duration,(start+i/fps)*info.rate);
-      save(join(cache,"frame-"+String(i).padStart(6,"0")+".json.gz"),await page.evaluate(({api,t})=>window[api].blenderFrame(t),{api,t}));
+      const checkpoint=i%checkpointInterval===0;
+      const frame=await page.evaluate(({api,t,checkpoint})=>window[api].blenderFrame(t,checkpoint),{api,t,checkpoint});
+      if(checkpoint&&!frame.meshes.every(m=>m.positions!==undefined))checkpointValid=false;
+      save(join(cache,"frame-"+String(i).padStart(6,"0")+".json.gz"),frame);
       if(i%30===0||i===count-1)console.log("[export]",i+1,"/",count,"frames");
     }
-    writeFileSync(manifest,JSON.stringify({settings,count,fps},null,2));
+    writeFileSync(manifest,JSON.stringify({settings,count,fps,...(checkpointValid?{checkpointInterval}: {})},null,2));
   }finally{await browser?.close();server?.close();}
 }
 if(!o["export-only"]){
-  const legacy={settings,samples,bounces,noise,format:o.format,...(o.format==="PNG"?{passes:o.passes}:{}),device:o.device};
+  const release=acquireRenderLock(join(tmpdir(),"milestone2-native-render.lock"));
+  try{
+  const legacy={settings,samples,bounces,noise,format:o.format,...(o.format==="PNG"||o.passes==="beauty"?{passes:o.passes}:{}),device:o.device};
   const compatible=minSamples===Math.min(16,samples)&&diffuse===Math.min(4,bounces)&&glossy===Math.min(4,bounces)&&o["exr-codec"]==="ZIP"&&!benchmark;
   const config=JSON.stringify(compatible?legacy:{...legacy,minSamples,diffuse,glossy,codec:o["exr-codec"],benchmark:benchmark??null});
   if(benchmark&&benchmark.some(i=>i>=JSON.parse(readFileSync(manifest)).count))throw Error("Benchmark frame exceeds cache length");
@@ -94,4 +103,5 @@ if(!o["export-only"]){
     run(ffmpeg,["-y","-framerate",String(fps),"-start_number","0","-i",nativePath(ffmpeg,join(frames,"frame-%06d.png")),"-frames:v",String(JSON.parse(readFileSync(manifest)).count),"-c:v","libx264","-preset","slow","-crf","15","-pix_fmt","yuv420p","-movflags","+faststart",nativePath(ffmpeg,temp)]);
     renameSync(temp,output);console.log("[render] Video:",output);
   }
+  }finally{release();}
 }

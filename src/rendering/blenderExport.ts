@@ -53,11 +53,11 @@ export class BlenderExport {
     });
     return {meshes,materials:materialData,textures:textureData,background:this.scene.background instanceof THREE.Color?this.scene.background.toArray():[.025,.025,.025],environmentIntensity:this.scene.environmentIntensity};
   }
-  frame(){
+  frame(checkpoint=false){
     this.scene.updateMatrixWorld(true);this.camera.updateMatrixWorld(true);
     const meshes=this.meshes.map((m,id)=>{
       const p=attr(m.geometry.getAttribute("position"));
-      const changed=this.previous.get(id)!==p;this.previous.set(id,p);
+      const changed=checkpoint||this.previous.get(id)!==p;this.previous.set(id,p);
       let visible=true;for(let o:THREE.Object3D|null=m;o;o=o.parent)visible=visible&&o.visible;
       return {id,visible,matrix:m.matrixWorld.toArray(),...(changed?{positions:p}: {})};
     });

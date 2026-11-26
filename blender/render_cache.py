@@ -1,5 +1,7 @@
 """Import the exact Three.js mesh cache and render with Cycles."""
 import bpy, sys, os, json, gzip, base64, time, argparse
+sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
+from cache_utils import mesh_key, resume_start, complete_checkpoint
 import numpy as np
 from mathutils import Matrix, Vector
 from pathlib import Path
@@ -66,7 +68,7 @@ def configure(a):
         scene.render.image_settings.exr_codec=a.exr_codec
     else:
         scene.render.image_settings.color_depth="16"
-    if a.format=="EXR" or a.passes=="all":
+    if a.passes=="all":
         layer=scene.view_layers[0]
         for key in ["z","normal","position","uv","diffuse_color","diffuse_direct","diffuse_indirect","glossy_color","glossy_direct","glossy_indirect","transmission_color","transmission_direct","transmission_indirect","volume_direct","volume_indirect","emit","environment","ambient_occlusion","object_index","material_index","mist"]:
             if hasattr(layer,"use_pass_"+key):setattr(layer,"use_pass_"+key,True)
@@ -132,8 +134,13 @@ def build(data,folder):
             links.new(node.outputs["Color"],bump.inputs["Height"]);links.new(bump.outputs["Normal"],bs.inputs["Normal"])
         mat.pass_index=min(m["id"]+1,32767)
         mats[m["id"]]=mat
-    objs={}
+    objs={};shared={}
     for m in data["meshes"]:
+        key=mesh_key(m)
+        if key in shared:
+            mesh=shared[key]
+            obj=bpy.data.objects.new(m["name"],mesh);bpy.context.scene.collection.objects.link(obj);objs[m["id"]]=obj;obj.pass_index=min(m["id"]+1,32767)
+            continue
         pos=arr(m["positions"],"<f4").reshape(-1,3);faces=arr(m["indices"],"<u4").reshape(-1,3)
         mesh=bpy.data.meshes.new(m["name"]);mesh.from_pydata(pos.tolist(),[],faces.tolist());mesh.update()
         for slot in m["slots"]:mesh.materials.append(mats[slot])
@@ -145,7 +152,9 @@ def build(data,folder):
             layer.data.foreach_set("uv",uv[faces.ravel()].ravel())
         if m["normals"]:
             mesh.normals_split_custom_set_from_vertices(arr(m["normals"],"<f4").reshape(-1,3).tolist())
+        shared[key]=mesh
         obj=bpy.data.objects.new(m["name"],mesh);bpy.context.scene.collection.objects.link(obj);objs[m["id"]]=obj;obj.pass_index=min(m["id"]+1,32767)
+    log("Mesh datablocks:",len(shared),"for",len(objs),"objects")
     return objs
 
 def sync_lights(scene, specs, objects, previous):
@@ -254,9 +263,19 @@ def main():
     wanted=set(map(int,a.benchmark_frames.split(","))) if a.benchmark_frames else None
     previous={};previous_lights={};cleared_normals=set();timings=[]
     limit=max(wanted)+1 if wanted else meta["count"]
-    for i in range(limit):
+    ext="exr" if a.format=="EXR" else "png"
+    def done(i):
+        path=out/("frame-%06d.%s"%(i,ext))
+        return path.exists() and path.stat().st_size>100 and all((out/name/path.name).exists() and (out/name/path.name).stat().st_size>100 for name in outputs)
+    needed=[i for i in range(limit) if (wanted is None or i in wanted) and not done(i)]
+    if not needed:log("All requested frames complete");return
+    first=resume_start(min(needed),meta.get("checkpointInterval"),meta["count"])
+    if first and not complete_checkpoint(read(folder/("frame-%06d.json.gz"%first)),objs.keys()):first=0
+    log("Replay starting at frame",first)
+    for i in range(first,limit):
         frame_start=time.monotonic()
         frame=read(folder/("frame-%06d.json.gz"%i))
+        read_seconds=time.monotonic()-frame_start
         for m in frame["meshes"]:
             idx=m["id"];obj=objs[idx];old=previous.get(idx)
             state=(m["matrix"],m.get("visible",True))
@@ -264,9 +283,16 @@ def main():
             if old is None or old[1]!=state[1]:obj.hide_render=not state[1]
             previous[idx]=state
             if "positions" in m:
-                obj.data.vertices.foreach_set("co",arr(m["positions"],"<f4"));obj.data.update()
+                positions=arr(m["positions"],"<f4")
+                current=np.empty(len(positions),dtype=np.float32);obj.data.vertices.foreach_get("co",current)
+                changed=not np.array_equal(current,positions)
+                if changed:
+                    if obj.data.users>1:obj.data=obj.data.copy()
+                    obj.data.vertices.foreach_set("co",positions);obj.data.update()
+                # The initial frame and checkpoints include unchanged positions too.
+                # Preserve shared static data; clear custom normals only for private deforming data.
                 # Normals recompute for deforming geometry (static custom normals retained).
-                if idx not in cleared_normals and obj.data.has_custom_normals:
+                if changed and idx not in cleared_normals and obj.data.has_custom_normals:
                     obj.data.normals_split_custom_set([(0,0,0)]*len(obj.data.loops));cleared_normals.add(idx)
         sync_lights(scene,frame.get("lights",[]),lights,previous_lights)
         camera=frame["camera"];cam.matrix_world=C@mat4(camera["matrix"])
@@ -281,11 +307,14 @@ def main():
             for stale in (out/name).glob("pass-*.png"):stale.unlink()
         start=time.monotonic();log("Rendering",i+1,"/",meta["count"])
         tmp=out/("frame-%06d.partial.%s"%(i,ext));scene.render.filepath=str(tmp)
+        # EXR/PNG write_still includes native encoding and disk I/O; measure that combined
+        # stage honestly, plus independent cache-read, scene-update and finalization times.
         bpy.ops.render.render(write_still=True)
+        native_seconds=time.monotonic()-start
         if outputs:finish_png_passes(out,outputs,i)
         os.replace(tmp,path)
         elapsed=time.monotonic()-start
-        timings.append({"frame":i,"updateSeconds":update_seconds,"renderAndWriteSeconds":elapsed,"bytes":path.stat().st_size})
+        timings.append({"frame":i,"cacheReadSeconds":read_seconds,"updateSeconds":max(0,update_seconds-read_seconds),"nativeRenderAndWriteSeconds":native_seconds,"finalizeSeconds":max(0,elapsed-native_seconds),"renderAndWriteSeconds":elapsed,"bytes":path.stat().st_size})
         log("Finished",i+1,"seconds",round(elapsed,2))
         if wanted is not None:(out/"benchmark.json").write_text(json.dumps({"samples":a.samples,"bounces":a.bounces,"noise":a.noise,"codec":a.exr_codec,"frames":timings},indent=2))
 if __name__=="__main__":main()

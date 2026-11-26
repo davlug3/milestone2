@@ -14,6 +14,6 @@ for(const preset of o.presets.split(",")){
  const result=spawnSync(process.execPath,args,{stdio:"inherit",env:process.env});if(result.status!==0)throw Error("Benchmark failed: "+preset);
  const report=JSON.parse(readFileSync(output.replace(/\.mp4$/,"")+".frames/benchmark.json","utf8"));
  const steady=report.frames.slice(1);const measured=steady.length?steady:report.frames;
- results.push({preset,meanSeconds:measured.reduce((n,f)=>n+f.renderAndWriteSeconds,0)/measured.length,meanBytes:measured.reduce((n,f)=>n+f.bytes,0)/measured.length,frames:report.frames.length});
+ results.push({preset,meanSeconds:measured.reduce((n,f)=>n+f.renderAndWriteSeconds,0)/measured.length,meanUpdateSeconds:measured.reduce((n,f)=>n+f.updateSeconds,0)/measured.length,meanCacheReadSeconds:measured.reduce((n,f)=>n+(f.cacheReadSeconds??0),0)/measured.length,meanBytes:measured.reduce((n,f)=>n+f.bytes,0)/measured.length,frames:report.frames.length});
 }
 console.table(results);console.log("Inspect corresponding EXR frames for visual quality:",root);

@@ -1,0 +1,2 @@
+import test from "node:test";import assert from "node:assert/strict";import {mkdtempSync,rmSync,existsSync} from "node:fs";import {tmpdir} from "node:os";import {join} from "node:path";import {acquireRenderLock} from "./lib/render-lock.mjs";
+test("lock prevents concurrent acquisition and releases",()=>{const d=mkdtempSync(join(tmpdir(),"lock-test-"));const p=join(d,"render.lock");try{const release=acquireRenderLock(p);assert.throws(()=>acquireRenderLock(p));release();assert.equal(existsSync(p),false);acquireRenderLock(p)();}finally{rmSync(d,{recursive:true,force:true});}});

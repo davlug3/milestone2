@@ -1,3 +1,5 @@
+import {createSceneRenderer} from "../../src/rendering/sceneRenderer.ts";
+import {geometrySession} from "../../src/rendering/geometrySession.ts";
 import {BlenderExport} from "../../src/rendering/blenderExport.ts";
 import {UnrealBloomPass} from "three/addons/postprocessing/UnrealBloomPass.js";
 import {visualStyle,addStyleControl,LUXURY} from "../../src/rendering/visualStyle.ts";
@@ -20,14 +22,14 @@ const query=new URLSearchParams(location.search),exportMode=query.has("export"),
 const style=visualStyle(query),luxury=style==="luxury";
 async function boot(){
  await new Promise(r=>requestAnimationFrame(r));loadingStage("Preparing hanging gallery…");
- const renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:exportMode,powerPreference:"high-performance"});
+ const renderer=createSceneRenderer(new URLSearchParams(location.search).has("geometry-export"),{antialias:true,preserveDrawingBuffer:exportMode,powerPreference:"high-performance"});
  renderer.setPixelRatio(exportMode?1:Math.min(devicePixelRatio||1,profile.dpr));renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=luxury?.93:.95;renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;document.body.prepend(renderer.domElement);
  const scene=new THREE.Scene();scene.background=new THREE.Color(luxury?0x10271f:0x343d32);
  const camera=new PhysicalCamera(39.6,16/9,.03,35);camera.filmGauge=36;camera.fStop=2.0;camera.focusDistance=1.05;camera.setFocalLength(50);
  // Raster bokeh is a depth-buffer approximation; the path tracer uses the physical aperture.
- const composer=new EffectComposer(renderer);
- const bokehPass=new BokehPass(scene,camera,{focus:camera.focusDistance,aperture:.025,maxblur:.018});
- composer.addPass(new RenderPass(scene,camera));composer.addPass(bokehPass);if(luxury)composer.addPass(new UnrealBloomPass(new THREE.Vector2(1,1),.18,.45,.85));composer.addPass(new OutputPass());
+ const composer=query.has("geometry-export")?null:new EffectComposer(renderer);
+ const bokehPass=composer?new BokehPass(scene,camera,{focus:camera.focusDistance,aperture:.025,maxblur:.018}):null;
+ if(composer){composer.addPass(new RenderPass(scene,camera));composer.addPass(bokehPass);if(luxury)composer.addPass(new UnrealBloomPass(new THREE.Vector2(1,1),.18,.45,.85));composer.addPass(new OutputPass());}
  let previewDofError="";
  const env=new GradientEquirectTexture(128);env.topColor.set(0xd0c1a7);env.bottomColor.set(0x363e32);env.update();scene.environment=env;scene.environmentIntensity=.36;
  const response=await fetch("../slideshow/slides.json",{signal:AbortSignal.timeout(20000)});if(!response.ok)throw Error("Photo manifest unavailable");const manifest=await response.json();if(!manifest.photos.length)throw Error("No photos");
@@ -171,7 +173,7 @@ async function boot(){
  const passes=createRenderPasses(renderer,scene,camera,mesh=>cards.some(card=>mesh.geometry===card.front||mesh.geometry===card.back||mesh.geometry===card.edge),beautyDraw);addStyleControl(controls.ui,style);passes.addUI(controls.ui,()=>{clock.setPlaying(false);dirty=true;draw();});
  function draw(){if(query.has("geometry-export"))return;if(passes.pass==="beauty")beautyDraw();else{passes.render();controls.setFrameProgress({phase:"Render pass · "+passes.pass,ready:true});}}
  function seek(t,fromTick=false){if(!fromTick)clock.seek(t);const step=Math.floor(clock.time/DT+1e-8);if(step<simStep)reset();while(simStep<step){simStep++;for(const card of cards)stepSheet(card.s,simStep*DT);}for(const card of cards)syncCard(card);const p=galleryCamera(clock.time,count,duration);camera.position.set(p.x,p.y,p.z);camera.lookAt(p.targetX,p.targetY,p.targetZ);camera.rotateZ(p.roll);camera.focusDistance=camera.position.distanceTo(new THREE.Vector3(p.targetX,p.targetY,p.targetZ));dirty=true;draw();controls.sync(clock);}
- function resize(w,h){renderer.setSize(w,h,false);composer.setSize(w,h);camera.aspect=w/h;camera.setFocalLength(50);camera.updateProjectionMatrix();seek(clock.time);}
+ function resize(w,h){renderer.setSize(w,h,false);composer?.setSize(w,h);camera.aspect=w/h;camera.setFocalLength(50);camera.updateProjectionMatrix();seek(clock.time);}
  if(exportMode){resize(innerWidth,innerHeight);addEventListener("resize",()=>resize(innerWidth,innerHeight));}else bindPreviewViewport(renderer.domElement,controls.ui,resize,false,DEFAULT_OUTPUT.aspect);
  const labelPanel=document.getElementById("label-panel"),labelToggle=document.getElementById("label-toggle"),labelEdit=document.getElementById("label-edit"),labelDialog=document.getElementById("label-dialog"),labelInput=document.getElementById("label-input"),labelError=document.getElementById("label-error");
  labelPanel.hidden=exportMode;labelToggle.checked=labelsEnabled;
@@ -183,7 +185,7 @@ async function boot(){
  document.getElementById("label-apply").onclick=()=>{try{setLabels(JSON.parse(labelInput.value),true);saveLabels();labelDialog.close();}catch(e){labelError.textContent=String(e.message||e);}};
  seek(0);loadingReady();
  const blenderExport=new BlenderExport(scene,camera);
- window.__clothesline={blenderSetup:()=>{clock.setPlaying(false);seek(0);return blenderExport.setup();},blenderFrame:(t,checkpoint=false)=>{clock.setPlaying(false);seek(t);return blenderExport.frame(checkpoint);},capturePass:(t,pass)=>{clock.setPlaying(false);const old=passes.pass;passes.setPass(pass);seek(t);const png=renderer.domElement.toDataURL("image/png");passes.setPass(old);return png;},passIds:()=>passes.idMap(),setPass:value=>{passes.setPass(value);draw();},duration,count,setLabels,backgroundCount:beforeSideRows-count,sidePrintCount,totalPrints:cards.length,seek:t=>{clock.setPlaying(false);seek(t);},capture:t=>{clock.setPlaying(false);setMode("raster");seek(t);return renderer.domElement.toDataURL("image/png");},beginTrace:(t,samples)=>{clock.setPlaying(false);setMode("raytrace");target=samples;seek(t);},traceStep:()=>{if(mode!=="raytrace")throw Error(traceError||"Ray tracer unavailable");traceDraw();return {samples:tracer.samples,target};},traceCapture:()=>{if(!tracer||dirty||tracer.samples<target)throw Error("Frame not ready");return renderer.domElement.toDataURL("image/png");},cameraStatus:()=>({focalLength:camera.getFocalLength(),fStop:camera.fStop,focusDistance:camera.focusDistance,previewDof:!previewDofError}),gpu:()=>{const gl=renderer.getContext(),ext=gl.getExtension("WEBGL_debug_renderer_info");return ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER);}};
+ window.__clothesline={...geometrySession(t=>{clock.setPlaying(false);seek(t);},blenderExport),capturePass:(t,pass)=>{clock.setPlaying(false);const old=passes.pass;passes.setPass(pass);seek(t);const png=renderer.domElement.toDataURL("image/png");passes.setPass(old);return png;},passIds:()=>passes.idMap(),setPass:value=>{passes.setPass(value);draw();},duration,count,setLabels,backgroundCount:beforeSideRows-count,sidePrintCount,totalPrints:cards.length,seek:t=>{clock.setPlaying(false);seek(t);},capture:t=>{clock.setPlaying(false);setMode("raster");seek(t);return renderer.domElement.toDataURL("image/png");},beginTrace:(t,samples)=>{clock.setPlaying(false);setMode("raytrace");target=samples;seek(t);},traceStep:()=>{if(mode!=="raytrace")throw Error(traceError||"Ray tracer unavailable");traceDraw();return {samples:tracer.samples,target};},traceCapture:()=>{if(!tracer||dirty||tracer.samples<target)throw Error("Frame not ready");return renderer.domElement.toDataURL("image/png");},cameraStatus:()=>({focalLength:camera.getFocalLength(),fStop:camera.fStop,focusDistance:camera.focusDistance,previewDof:!previewDofError}),gpu:()=>{const gl=renderer.getContext(),ext=gl.getExtension("WEBGL_debug_renderer_info");return ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER);}};
  if(!exportMode){function tick(now){if(clock.tick(now,passes.pass!=="beauty"||mode!=="cinematic"||(!dirty&&tracer&&tracer.samples>=target),mode==="cinematic"?1/60:undefined))seek(clock.time,true);else if(mode==="cinematic"||mode==="raytrace"&&!clock.playing)draw();controls.sync(clock);requestAnimationFrame(tick);}requestAnimationFrame(tick);}
 }
 boot().catch(e=>{loadingFailed(e);window.__clotheslineError=String(e);document.getElementById("error").textContent=String(e);console.error(e);});

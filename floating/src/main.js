@@ -1,3 +1,5 @@
+import {createSceneRenderer} from "../../src/rendering/sceneRenderer.ts";
+import {geometrySession} from "../../src/rendering/geometrySession.ts";
 import {BlenderExport} from "../../src/rendering/blenderExport.ts";
 import {UnrealBloomPass} from "three/addons/postprocessing/UnrealBloomPass.js";
 import {visualStyle,addStyleControl,LUXURY} from "../../src/rendering/visualStyle.ts";
@@ -19,12 +21,12 @@ const query=new URLSearchParams(location.search),exportMode=query.has("export"),
 const style=visualStyle(query),luxury=style==="luxury";
 async function boot(){
  await new Promise(r=>requestAnimationFrame(r));loadingStage("Building floating memories…");
- const renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:exportMode,powerPreference:"high-performance"});
+ const renderer=createSceneRenderer(new URLSearchParams(location.search).has("geometry-export"),{antialias:true,preserveDrawingBuffer:exportMode,powerPreference:"high-performance"});
  renderer.setPixelRatio(exportMode?1:Math.min(devicePixelRatio||1,profile.dpr));renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=luxury?.99:.94;document.body.prepend(renderer.domElement);
  const scene=new THREE.Scene();scene.background=new THREE.Color(luxury?0x0c1c17:0x0e171a);scene.fog=new THREE.FogExp2(luxury?0x0c1c17:0x0e171a,luxury?.095:.065);
  const camera=new PhysicalCamera(39.6,16/9,.035,150);camera.filmGauge=36;camera.setFocalLength(50);camera.fStop=luxury?1.8:2.8;camera.focusDistance=1.1;
  const env=new GradientEquirectTexture(128);env.topColor.set(0xb4c2d2);env.bottomColor.set(0x33241b);env.update();scene.environment=env;scene.environmentIntensity=.31;
- const composer=new EffectComposer(renderer),bokeh=new BokehPass(scene,camera,{focus:1.1,aperture:luxury?.026:.018,maxblur:luxury?.019:.014});composer.addPass(new RenderPass(scene,camera));composer.addPass(bokeh);if(luxury)composer.addPass(new UnrealBloomPass(new THREE.Vector2(1,1),.18,.45,.85));composer.addPass(new OutputPass());let dofError="";
+ const composer=query.has("geometry-export")?null:new EffectComposer(renderer),bokeh=composer?new BokehPass(scene,camera,{focus:1.1,aperture:luxury?.026:.018,maxblur:luxury?.019:.014}):null;if(composer){composer.addPass(new RenderPass(scene,camera));composer.addPass(bokeh);if(luxury)composer.addPass(new UnrealBloomPass(new THREE.Vector2(1,1),.18,.45,.85));composer.addPass(new OutputPass());}let dofError="";
  const manifestResponse=await fetch("../slideshow/slides.json",{signal:AbortSignal.timeout(20000)});if(!manifestResponse.ok)throw Error("Photo manifest unavailable");const manifest=await manifestResponse.json();if(!manifest.photos.length)throw Error("No photos");
  const count=manifest.photos.length,duration=count*SECONDS,clock=new PlaybackClock(duration,1),layout=makeLayout(count),cards=[],photoMeshes=new Set();
  const config={width:.46,depth:.322,thickness:.00065,flight:1.25,settle:.85},loader=new THREE.TextureLoader(),materials=[];
@@ -67,11 +69,11 @@ async function boot(){
   key.position.set(p.targetX-.9,p.targetY+1.2,p.targetZ+1.25);key.target.position.set(p.targetX,p.targetY,p.targetZ);rim.position.set(p.targetX+.8,p.targetY+.75,p.targetZ-.75);rim.target.position.copy(key.target.position);
   dirty=true;draw();controls.sync(clock);
  }
- function resize(w,h){renderer.setSize(w,h,false);composer.setSize(w,h);camera.aspect=w/h;camera.setFocalLength(50);camera.updateProjectionMatrix();seek(clock.time);}
+ function resize(w,h){renderer.setSize(w,h,false);composer?.setSize(w,h);camera.aspect=w/h;camera.setFocalLength(50);camera.updateProjectionMatrix();seek(clock.time);}
  if(exportMode){resize(innerWidth,innerHeight);addEventListener("resize",()=>resize(innerWidth,innerHeight));}else bindPreviewViewport(renderer.domElement,controls.ui,resize,false,DEFAULT_OUTPUT.aspect);
  seek(0);loadingReady();
  const blenderExport=new BlenderExport(scene,camera);
- window.__floating={blenderSetup:()=>{clock.setPlaying(false);seek(0);return blenderExport.setup();},blenderFrame:(t,checkpoint=false)=>{clock.setPlaying(false);seek(t);return blenderExport.frame(checkpoint);},duration,count,totalPrints:cards.length,seek:t=>{clock.setPlaying(false);seek(t);},capture:t=>{clock.setPlaying(false);passes.setPass("beauty");setMode("raster");seek(t);return renderer.domElement.toDataURL("image/png");},beginTrace:(t,samples)=>{clock.setPlaying(false);passes.setPass("beauty");setMode("raytrace");target=samples;seek(t);},traceStep:()=>{if(mode!=="raytrace")throw Error(traceError||"Ray tracing unavailable");traceDraw();return {samples:tracer.samples,target};},traceCapture:()=>{if(!tracer||dirty||tracer.samples<target)throw Error("Frame not ready");return renderer.domElement.toDataURL("image/png");},capturePass:(t,pass)=>{clock.setPlaying(false);const old=passes.pass;passes.setPass(pass);seek(t);const png=renderer.domElement.toDataURL("image/png");passes.setPass(old);return png;},passIds:()=>passes.idMap(),setPass:value=>{passes.setPass(value);draw();},cameraStatus:()=>({focalLength:camera.getFocalLength(),fStop:camera.fStop,focusDistance:camera.focusDistance})};
+ window.__floating={...geometrySession(t=>{clock.setPlaying(false);seek(t);},blenderExport),duration,count,totalPrints:cards.length,seek:t=>{clock.setPlaying(false);seek(t);},capture:t=>{clock.setPlaying(false);passes.setPass("beauty");setMode("raster");seek(t);return renderer.domElement.toDataURL("image/png");},beginTrace:(t,samples)=>{clock.setPlaying(false);passes.setPass("beauty");setMode("raytrace");target=samples;seek(t);},traceStep:()=>{if(mode!=="raytrace")throw Error(traceError||"Ray tracing unavailable");traceDraw();return {samples:tracer.samples,target};},traceCapture:()=>{if(!tracer||dirty||tracer.samples<target)throw Error("Frame not ready");return renderer.domElement.toDataURL("image/png");},capturePass:(t,pass)=>{clock.setPlaying(false);const old=passes.pass;passes.setPass(pass);seek(t);const png=renderer.domElement.toDataURL("image/png");passes.setPass(old);return png;},passIds:()=>passes.idMap(),setPass:value=>{passes.setPass(value);draw();},cameraStatus:()=>({focalLength:camera.getFocalLength(),fStop:camera.fStop,focusDistance:camera.focusDistance})};
  if(!exportMode){function tick(now){if(clock.tick(now,passes.pass!=="beauty"||mode!=="cinematic"||(!dirty&&tracer&&tracer.samples>=target),mode==="cinematic"&&passes.pass==="beauty"?1/60:undefined))seek(clock.time,true);else if(passes.pass==="beauty"&&(mode==="cinematic"||mode==="raytrace"&&!clock.playing))draw();controls.sync(clock);requestAnimationFrame(tick);}requestAnimationFrame(tick);}
 }
 boot().catch(e=>{loadingFailed(e);window.__floatingError=String(e);document.getElementById("error").textContent=String(e);console.error(e);});

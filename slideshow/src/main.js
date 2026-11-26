@@ -1,3 +1,5 @@
+import {createSceneRenderer} from "../../src/rendering/sceneRenderer.ts";
+import {geometrySession} from "../../src/rendering/geometrySession.ts";
 import {BlenderExport} from "../../src/rendering/blenderExport.ts";
 import {visualStyle,addStyleControl,LUXURY} from "../../src/rendering/visualStyle.ts";
 import {createRenderPasses} from "../../src/rendering/renderPasses.ts";
@@ -17,7 +19,7 @@ loadingStage("Initializing WebGL renderer…");
 // Paint the HTML loading screen before building procedural textures.
 async function boot(){
 await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
-const renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:exportMode,powerPreference:"high-performance"});
+const renderer=createSceneRenderer(new URLSearchParams(location.search).has("geometry-export"),{antialias:true,preserveDrawingBuffer:exportMode,powerPreference:"high-performance"});
 renderer.setPixelRatio(exportMode?1:Math.min(devicePixelRatio||1,profile.dpr));
 renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;
 const style=visualStyle(),luxury=style==="luxury";
@@ -108,7 +110,7 @@ async function init(){
   update(0);
   loadingReady();
   const blenderExport=new BlenderExport(scene,camera);
- window.__slideshow={blenderSetup:()=>{play(false);update(0);return blenderExport.setup();},blenderFrame:(t,checkpoint=false)=>{play(false);update(t);return blenderExport.frame(checkpoint);},capturePass:(t,pass)=>{play(false);const old=passes.pass;passes.setPass(pass);update(t);const png=renderer.domElement.toDataURL("image/png");passes.setPass(old);return png;},passIds:()=>passes.idMap(),setPass:value=>{passes.setPass(value);draw();},duration:total,count:cards.length,canvas:renderer.domElement,seek:t=>{play(false);update(t);},capture:t=>{play(false);setMode("raster");update(t);return renderer.domElement.toDataURL("image/png");},beginTrace:(t,samples)=>{play(false);setMode("raytrace");target=samples;update(t);},traceStep:()=>{if(mode!=="raytrace")throw Error(traceError||"Ray tracer unavailable");traceDraw();return {samples:traceDirty?0:tracer.samples,target};},traceCapture:()=>{if(mode!=="raytrace"||traceDirty||tracer.samples<target)throw Error("Frame not ready");return renderer.domElement.toDataURL("image/png");},gpu:()=>{const gl=renderer.getContext(),ext=gl.getExtension("WEBGL_debug_renderer_info");return ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER);}};
+ window.__slideshow={...geometrySession(t=>{play(false);update(t);},blenderExport),capturePass:(t,pass)=>{play(false);const old=passes.pass;passes.setPass(pass);update(t);const png=renderer.domElement.toDataURL("image/png");passes.setPass(old);return png;},passIds:()=>passes.idMap(),setPass:value=>{passes.setPass(value);draw();},duration:total,count:cards.length,canvas:renderer.domElement,seek:t=>{play(false);update(t);},capture:t=>{play(false);setMode("raster");update(t);return renderer.domElement.toDataURL("image/png");},beginTrace:(t,samples)=>{play(false);setMode("raytrace");target=samples;update(t);},traceStep:()=>{if(mode!=="raytrace")throw Error(traceError||"Ray tracer unavailable");traceDraw();return {samples:traceDirty?0:tracer.samples,target};},traceCapture:()=>{if(mode!=="raytrace"||traceDirty||tracer.samples<target)throw Error("Frame not ready");return renderer.domElement.toDataURL("image/png");},gpu:()=>{const gl=renderer.getContext(),ext=gl.getExtension("WEBGL_debug_renderer_info");return ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER);}};
   if(!exportMode){function tick(now){if(playback.tick(now,passes.pass!=="beauty"||mode!=="cinematic"||(!traceDirty&&tracer&&tracer.samples>=target),mode==="cinematic"?1/60:undefined))update(playback.time,true);else if(mode==="cinematic"||(!playback.playing&&mode==="raytrace"))draw();controls.sync(playback);requestAnimationFrame(tick);}requestAnimationFrame(tick);}
 }
 await init();

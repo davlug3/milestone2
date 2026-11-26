@@ -1,3 +1,5 @@
+import {createSceneRenderer} from "../rendering/sceneRenderer";
+import {geometrySession} from "../rendering/geometrySession";
 import {visualStyle,addStyleControl} from "../rendering/visualStyle";
 import {createRenderPasses,type PassName} from "../rendering/renderPasses";
 import {browserQuality,QUALITY_PROFILES,qualityOptions,changeQuality} from "../rendering/quality";
@@ -160,7 +162,8 @@ export function startBookDemo(container: HTMLElement): () => void {
   // --- Renderer / scene / camera ------------------------------------------
   const query=new URLSearchParams(location.search),style=visualStyle(query),luxury=style==="luxury";
   const qualityName=browserQuality(query),quality=QUALITY_PROFILES[qualityName];
-  const renderer = new THREE.WebGLRenderer({
+  const geometryOnly=query.has("geometry-export");
+  const renderer = createSceneRenderer(geometryOnly,{
     antialias: true,
     preserveDrawingBuffer: new URLSearchParams(location.search).has('export'),
     // Prefer the discrete/high-performance GPU when the client has one. This
@@ -179,12 +182,8 @@ export function startBookDemo(container: HTMLElement): () => void {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(luxury?0x0c1713:0x0c0d10);
   scene.fog = new THREE.Fog(luxury?0x0c1713:0x0c0d10, 4.0, 9.0);
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  const room = new RoomEnvironment();
-  const environment = pmrem.fromScene(room, 0.04);
-  room.dispose();
-  pmrem.dispose();
-  scene.environment = environment.texture;
+  let environment:THREE.WebGLRenderTarget|null=null;
+  if(!geometryOnly){const pmrem=new THREE.PMREMGenerator(renderer);const room=new RoomEnvironment();environment=pmrem.fromScene(room,0.04);room.dispose();pmrem.dispose();scene.environment=environment.texture;}
   scene.environmentIntensity = luxury?.10:.085;
 
   // Full-frame 85mm prime; fit the full sensor gate to the viewport.
@@ -196,7 +195,6 @@ export function startBookDemo(container: HTMLElement): () => void {
   camera.apertureRotation = 0.15;
   const trace = new StudioTracer(renderer, scene, camera,quality);
   const blenderExport = new BlenderExport(scene,camera);
-  const geometryOnly = new URLSearchParams(location.search).has("geometry-export");
   let manualCamera = false;
   function updateCamera(t: number): void {
     if (manualCamera) return;
@@ -706,15 +704,10 @@ export function startBookDemo(container: HTMLElement): () => void {
     passIds:()=>passes.idMap(),
     setPass:(value:string)=>{passes.setPass(value);trace.invalidate();},
     setRenderMode,
-    blenderSetup: () => {
+    ...geometrySession((t:number)=>{
       if(!geometryOnly)throw Error("Geometry export mode required");
-      setPlaying(false);seek(0);return blenderExport.setup();
-    },
-    blenderFrame:(t:number,checkpoint=false)=> {
-      if(!geometryOnly)throw Error("Geometry export mode required");
-      if(t<time)seek(t);else{time=playback.seek(t);stepPagesTo(time);updateCover(time);updateCamera(time);}
-      return blenderExport.frame(checkpoint);
-    },
+      setPlaying(false);if(t<time||t===0)seek(t);else{time=playback.seek(t);stepPagesTo(time);updateCover(time);updateCamera(time);}
+    },blenderExport),
     exportFrame: (t: number, samples: number, bounces: number) => {
       if (!new URLSearchParams(location.search).has('export')) throw Error('Export mode required');
       setPlaying(false);
@@ -877,7 +870,7 @@ export function startBookDemo(container: HTMLElement): () => void {
     clothTexture.dispose();
     scene.environment = null;
     trace.dispose();
-    environment.dispose();
+    environment?.dispose();
     renderer.domElement.removeEventListener("webglcontextlost",onContextLost);
     renderer.domElement.removeEventListener("webglcontextrestored",onContextRestored);
     renderer.dispose();

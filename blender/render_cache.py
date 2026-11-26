@@ -13,6 +13,7 @@ def args():
     p.add_argument("--samples",type=int,default=128)
     p.add_argument("--noise",type=float,default=.01)
     p.add_argument("--bounces",type=int,default=8)
+    p.add_argument("--passes",choices=["all","beauty"],default="all")
     p.add_argument("--format",choices=["PNG","EXR"],default="PNG")
     p.add_argument("--device",choices=["OPTIX","CUDA","CPU"],default="OPTIX")
     return p.parse_args(sys.argv[sys.argv.index("--")+1:])
@@ -58,9 +59,13 @@ def configure(a):
     if a.format=="EXR":
         scene.render.image_settings.color_depth="16"
         scene.render.image_settings.exr_codec="ZIP"
+    else:
+        scene.render.image_settings.color_depth="16"
+    if a.format=="EXR" or a.passes=="all":
         layer=scene.view_layers[0]
-        for key in ["z","normal","diffuse_color","diffuse_direct","diffuse_indirect","glossy_color","glossy_direct","glossy_indirect","emit","object_index"]:
-            setattr(layer,"use_pass_"+key,True)
+        for key in ["z","normal","position","uv","diffuse_color","diffuse_direct","diffuse_indirect","glossy_color","glossy_direct","glossy_indirect","transmission_color","transmission_direct","transmission_indirect","volume_direct","volume_indirect","emit","environment","ambient_occlusion","object_index","material_index","mist"]:
+            if hasattr(layer,"use_pass_"+key):setattr(layer,"use_pass_"+key,True)
+            elif hasattr(layer.cycles,"use_pass_"+key):setattr(layer.cycles,"use_pass_"+key,True)
     if a.format=="PNG":scene.render.image_settings.color_mode="RGB"
     scene.view_settings.view_transform="AgX"
     scene.view_settings.exposure=-.36
@@ -120,6 +125,7 @@ def build(data,folder):
         if m["bump"] is not None:
             node=texture(m["bump"]);bump=nodes.new("ShaderNodeBump");bump.inputs["Distance"].default_value=abs(m["bumpScale"])
             links.new(node.outputs["Color"],bump.inputs["Height"]);links.new(bump.outputs["Normal"],bs.inputs["Normal"])
+        mat.pass_index=min(m["id"]+1,32767)
         mats[m["id"]]=mat
     objs={}
     for m in data["meshes"]:
@@ -155,6 +161,73 @@ def sync_lights(scene, specs, objects):
             direction=C@Vector(s["target"])-obj.location
             if direction.length>1e-8:obj.rotation_euler=direction.to_track_quat("-Z","Y").to_euler()
 
+# One Cycles evaluation, multiple compositor PNG outputs. Technical buffers are
+# encoded to bounded ranges; PNG is not a lossless replacement for float EXR.
+PASS_SPECS={
+ "albedo":("DiffCol",None),"diffuse-direct":("DiffDir",None),"diffuse-indirect":("DiffInd",None),
+ "glossy-color":("GlossCol",None),"glossy-direct":("GlossDir",None),"glossy-indirect":("GlossInd",None),
+ "transmission-color":("TransCol",None),"transmission-direct":("TransDir",None),"transmission-indirect":("TransInd",None),
+ "volume-direct":("VolumeDir",None),"volume-indirect":("VolumeInd",None),"emission":("Emit",None),
+ "environment":("Env",None),"ambient-occlusion":("AO",None),"depth":("Depth","depth"),
+ "normal":("Normal","normal"),"position":("Position","position"),"uv":("UV",None),
+ "object-id":("IndexOB","index"),"material-id":("IndexMA","index"),"mist":("Mist",None),"alpha":("Alpha",None)
+}
+def png_pass_outputs(scene,out):
+    if bpy.app.version>=(5,0,0):
+        tree=bpy.data.node_groups.new("PNG render passes","CompositorNodeTree")
+        scene.compositing_node_group=tree
+        tree.interface.new_socket(name="Image",in_out="OUTPUT",socket_type="NodeSocketColor")
+        composite=tree.nodes.new("NodeGroupOutput")
+    else:
+        scene.use_nodes=True;tree=scene.node_tree;tree.nodes.clear()
+        composite=tree.nodes.new("CompositorNodeComposite")
+    layers=tree.nodes.new("CompositorNodeRLayers")
+    layers.layer=scene.view_layers[0].name
+    tree.links.new(layers.outputs["Image"],composite.inputs["Image"])
+    outputs={}
+    missing=[]
+    for name,(socket,encoding) in PASS_SPECS.items():
+        source=layers.outputs.get(socket)
+        if source is None or not source.enabled:
+            missing.append(name);continue
+        if encoding in ("depth","index"):
+            node=tree.nodes.new("ShaderNodeMath" if bpy.app.version>=(5,0,0) else "CompositorNodeMath")
+            node.operation="MULTIPLY";node.inputs[1].default_value=.1 if encoding=="depth" else 1/65535
+            node.use_clamp=True;tree.links.new(source,node.inputs[0]);source=node.outputs[0]
+        elif encoding in ("normal","position"):
+            node=tree.nodes.new("ShaderNodeVectorMath")
+            node.operation="SCALE";node.inputs["Scale"].default_value=.5 if encoding=="normal" else .025
+            tree.links.new(source,node.inputs[0])
+            offset=tree.nodes.new("ShaderNodeVectorMath");offset.operation="ADD";offset.inputs[1].default_value=(.5,.5,.5)
+            tree.links.new(node.outputs[0],offset.inputs[0]);source=offset.outputs[0]
+        node=tree.nodes.new("CompositorNodeOutputFile")
+        node.format.file_format="PNG";node.format.color_depth="16";node.format.color_mode="RGB";node.format.compression=15
+        if hasattr(node,"save_as_render"):node.save_as_render=False
+        if hasattr(node.format,"color_management"):
+            node.format.color_management="OVERRIDE"
+            node.format.view_settings.view_transform="Raw"
+            node.format.view_settings.exposure=0
+        folder=out/name;folder.mkdir(parents=True,exist_ok=True)
+        if hasattr(node,"file_output_items"):
+            node.directory=str(folder)
+            node.file_name="pass-"
+            node.file_output_items.clear()
+            node.file_output_items.new("RGBA","image")
+            target=node.inputs[0]
+        else:
+            node.base_path=str(folder);node.file_slots[0].path="pass-";target=node.inputs[0]
+        tree.links.new(source,target);outputs[name]=node
+    if missing:log("Unavailable native passes:",", ".join(missing))
+    (out/"passes.json").write_text(json.dumps({"beauty":"frame-%06d.png","passes":list(outputs),"unavailable":missing,"encoding":{"depth":"distance / 10 meters, clamped","normal":"normal * 0.5 + 0.5","position":"world position / 40 + 0.5, clamped","object-id":"index / 65535","material-id":"index / 65535","lighting":"linear RGB clamped to PNG range"}},indent=2))
+    return outputs
+
+def finish_png_passes(out,outputs,i):
+    for name in outputs:
+        folder=out/name
+        generated=list(folder.glob("pass-*.png"))
+        if len(generated)!=1:raise RuntimeError("Expected one compositor PNG for "+name+", found "+str(generated))
+        os.replace(generated[0],folder/("frame-%06d.png"%i))
+
 def main():
     a=args();folder=Path(a.cache);out=Path(a.output);out.mkdir(parents=True,exist_ok=True)
     bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -164,6 +237,9 @@ def main():
         bg=scene.world.node_tree.nodes.get("Background");bg.inputs["Color"].default_value=(*data["background"],1);bg.inputs["Strength"].default_value=max(.1,data.get("environmentIntensity",.2))
     meta=json.loads((folder/"manifest.json").read_text())
     scene.render.fps=meta["fps"]
+    outputs=png_pass_outputs(scene,out) if a.format=="PNG" and a.passes=="all" else {}
+    (out/"object-ids.json").write_text(json.dumps({str(obj.pass_index):obj.name for obj in objs.values()},indent=2))
+    (out/"material-ids.json").write_text(json.dumps({str(m.pass_index):m.name for m in bpy.data.materials if m.pass_index},indent=2))
     log(len(objs),"meshes;",len(data["materials"]),"materials;",meta["count"],"frames")
     for i in range(meta["count"]):
         frame=read(folder/("frame-%06d.json.gz"%i))
@@ -179,9 +255,13 @@ def main():
         cam.data.dof.focus_distance=camera["focus"];cam.data.dof.aperture_fstop=camera["fstop"]
         ext="exr" if a.format=="EXR" else "png"
         path=out/("frame-%06d.%s"%(i,ext))
-        if path.exists() and path.stat().st_size>100:log("Resume",i+1);continue
+        if path.exists() and path.stat().st_size>100 and all((out/name/path.name).exists() and (out/name/path.name).stat().st_size>100 for name in outputs):log("Resume",i+1);continue
+        for name in outputs:
+            for stale in (out/name).glob("pass-*.png"):stale.unlink()
         start=time.monotonic();log("Rendering",i+1,"/",meta["count"])
         tmp=out/("frame-%06d.partial.%s"%(i,ext));scene.render.filepath=str(tmp)
-        bpy.ops.render.render(write_still=True);os.replace(tmp,path)
+        bpy.ops.render.render(write_still=True)
+        if outputs:finish_png_passes(out,outputs,i)
+        os.replace(tmp,path)
         log("Finished",i+1,"seconds",round(time.monotonic()-start,2))
 if __name__=="__main__":main()

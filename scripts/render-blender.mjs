@@ -9,18 +9,18 @@ import {createServer} from "node:http";
 import {extname,sep} from "node:path";
 import { isWSL } from "./lib/windows-browser.mjs";
 const {values:o}=parseArgs({options:{
-  scene:{type:"string",default:"book"},style:{type:"string",default:"luxury"},format:{type:"string",default:"PNG"},"no-build":{type:"boolean",default:false},"reuse-cache":{type:"boolean",default:false},width:{type:"string",default:"1920"},height:{type:"string",default:"1080"},fps:{type:"string",default:"60"},
+  scene:{type:"string",default:"book"},style:{type:"string",default:"luxury"},format:{type:"string",default:"PNG"},passes:{type:"string",default:"all"},"no-build":{type:"boolean",default:false},"reuse-cache":{type:"boolean",default:false},width:{type:"string",default:"1920"},height:{type:"string",default:"1080"},fps:{type:"string",default:"60"},
   samples:{type:"string",default:"96"},bounces:{type:"string",default:"8"},noise:{type:"string",default:"0.02"},
   device:{type:"string",default:"OPTIX"},start:{type:"string",default:"0"},duration:{type:"string"},
   output:{type:"string",default:"renders/blender-final.mp4"},cache:{type:"string"},
   "export-only":{type:"boolean",default:false},"frames-only":{type:"boolean",default:false},help:{type:"boolean",default:false}
 }});
-if(o.help){console.log("npm run render:blender -- [--scene book|slideshow|clothesline|floating --style luxury|classic --format PNG|EXR --no-build --reuse-cache --width 1920 --height 1080 --fps 60 --samples 96 --noise 0.02 --bounces 8 --device OPTIX|CUDA|CPU --start seconds --duration seconds --output renders/blender-final.mp4 --cache folder --export-only --frames-only]");process.exit(0);}
+if(o.help){console.log("npm run render:blender -- [--scene book|slideshow|clothesline|floating --style luxury|classic --format PNG|EXR --passes all|beauty --no-build --reuse-cache --width 1920 --height 1080 --fps 60 --samples 96 --noise 0.02 --bounces 8 --device OPTIX|CUDA|CPU --start seconds --duration seconds --output renders/blender-final.mp4 --cache folder --export-only --frames-only]");process.exit(0);}
 const num=(k)=>{const v=Number(o[k]);if(!Number.isInteger(v)||v<=0)throw Error("Invalid "+k);return v;};
-const apis={book:"__demo",slideshow:"__slideshow",clothesline:"__clothesline",floating:"__floating"},api=apis[o.scene];if(!api||!["luxury","classic"].includes(o.style)||!["PNG","EXR"].includes(o.format))throw Error("Invalid scene/style/format");if(o.format==="EXR"&&!o["frames-only"]&&!o["export-only"])throw Error("EXR requires --frames-only");
+const apis={book:"__demo",slideshow:"__slideshow",clothesline:"__clothesline",floating:"__floating"},api=apis[o.scene];if(!api||!["luxury","classic"].includes(o.style)||!["PNG","EXR"].includes(o.format))throw Error("Invalid scene/style/format");if(!["all","beauty"].includes(o.passes))throw Error("Invalid passes: use all or beauty");if(o.format==="EXR"&&!o["frames-only"]&&!o["export-only"])throw Error("EXR requires --frames-only");
 const width=num("width"),height=num("height"),fps=num("fps"),samples=num("samples"),bounces=num("bounces"),noise=Number(o.noise),start=Number(o.start),duration=o.duration===undefined?null:Number(o.duration);
 if(width%2||height%2||!(noise>0&&noise<=1)||!Number.isFinite(start)||start<0||duration!==null&&!(duration>0)||!["OPTIX","CUDA","CPU"].includes(o.device))throw Error("Invalid render settings");
-const output=resolve(o.output),cache=resolve(o.cache??output.replace(/\.mp4$/i,"")+".cache"),frames=output.replace(/\.mp4$/i,"")+".frames";
+const output=resolve(o.output),cache=resolve(o.cache??output.replace(/\.mp4$/i,"")+".cache"),frames=output.replace(/\.mp4$/i,"")+(o.format==="PNG"&&o.passes==="all"?".png-passes":o.format==="PNG"?".png-frames":".frames");
 function run(bin,args){const r=spawnSync(bin,args,{stdio:"inherit"});if(r.error)throw r.error;if(r.status!==0)throw Error(bin+" failed: "+r.status);}
 const available=bin=>spawnSync(bin,["--version"],{stdio:"ignore"}).status===0;
 let blender=process.env.BLENDER_PATH;
@@ -76,12 +76,12 @@ if(existsSync(manifest)){
   }finally{await browser?.close();server?.close();}
 }
 if(!o["export-only"]){
-  const config=JSON.stringify({settings,samples,bounces,noise,format:o.format,device:o.device});
+  const config=JSON.stringify({settings,samples,bounces,noise,format:o.format,...(o.format==="PNG"?{passes:o.passes}:{}),device:o.device});
   mkdirSync(frames,{recursive:true});const marker=join(frames,"settings.json");
   if(existsSync(marker)&&readFileSync(marker,"utf8")!==config)throw Error("Render settings changed; choose another output");
   writeFileSync(marker,config);
   console.log("[render] Blender:",blender,"device:",o.device);
-  run(blender,["-b","--factory-startup","--python-exit-code","1","-P",nativePath(blender,resolve("blender/render_cache.py")),"--","--cache",nativePath(blender,cache),"--output",nativePath(blender,frames),"--width",String(width),"--height",String(height),"--samples",String(samples),"--noise",String(noise),"--bounces",String(bounces),"--device",o.device,"--format",o.format]);
+  run(blender,["-b","--factory-startup","--python-exit-code","1","-P",nativePath(blender,resolve("blender/render_cache.py")),"--","--cache",nativePath(blender,cache),"--output",nativePath(blender,frames),"--width",String(width),"--height",String(height),"--samples",String(samples),"--noise",String(noise),"--bounces",String(bounces),"--device",o.device,"--format",o.format,"--passes",o.passes]);
   if(!o["frames-only"]){
     const temp=output.replace(/\.mp4$/i,"")+".partial.mp4";
     run(ffmpeg,["-y","-framerate",String(fps),"-start_number","0","-i",nativePath(ffmpeg,join(frames,"frame-%06d.png")),"-frames:v",String(JSON.parse(readFileSync(manifest)).count),"-c:v","libx264","-preset","slow","-crf","15","-pix_fmt","yuv420p","-movflags","+faststart",nativePath(ffmpeg,temp)]);

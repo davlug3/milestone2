@@ -187,7 +187,8 @@ def png_pass_outputs(scene,out):
     outputs={}
     missing=[]
     for name,(socket,encoding) in PASS_SPECS.items():
-        source=layers.outputs.get(socket)
+        modern={"DiffCol":"Diffuse Color","DiffDir":"Diffuse Direct","DiffInd":"Diffuse Indirect","GlossCol":"Glossy Color","GlossDir":"Glossy Direct","GlossInd":"Glossy Indirect","TransCol":"Transmission Color","TransDir":"Transmission Direct","TransInd":"Transmission Indirect","VolumeDir":"Volume Direct","VolumeInd":"Volume Indirect","Emit":"Emission","Env":"Environment","AO":"Ambient Occlusion","IndexOB":"Object Index","IndexMA":"Material Index"}
+        source=layers.outputs.get(modern.get(socket,socket)) or layers.outputs.get(socket)
         if source is None or not source.enabled:
             missing.append(name);continue
         if encoding in ("depth","index"):

@@ -13,6 +13,11 @@ def args():
     p.add_argument("--samples",type=int,default=128)
     p.add_argument("--noise",type=float,default=.01)
     p.add_argument("--bounces",type=int,default=8)
+    p.add_argument("--min-samples",type=int,default=16)
+    p.add_argument("--diffuse",type=int,default=4)
+    p.add_argument("--glossy",type=int,default=4)
+    p.add_argument("--exr-codec",choices=["ZIP","PIZ"],default="ZIP")
+    p.add_argument("--benchmark-frames")
     p.add_argument("--passes",choices=["all","beauty"],default="all")
     p.add_argument("--format",choices=["PNG","EXR"],default="EXR")
     p.add_argument("--device",choices=["OPTIX","CUDA","CPU"],default="OPTIX")
@@ -44,9 +49,9 @@ def configure(a):
     scene.cycles.adaptive_threshold=a.noise
     scene.cycles.max_bounces=a.bounces
     scene.cycles.use_denoising=True
-    scene.cycles.adaptive_min_samples=16
-    scene.cycles.diffuse_bounces=min(a.bounces,4)
-    scene.cycles.glossy_bounces=min(a.bounces,4)
+    scene.cycles.adaptive_min_samples=min(a.samples,a.min_samples)
+    scene.cycles.diffuse_bounces=min(a.bounces,a.diffuse)
+    scene.cycles.glossy_bounces=min(a.bounces,a.glossy)
     scene.cycles.transmission_bounces=min(a.bounces,6)
     scene.cycles.denoiser="OPTIX" if a.device=="OPTIX" else "OPENIMAGEDENOISE"
     scene.render.use_persistent_data=True
@@ -58,7 +63,7 @@ def configure(a):
     image_settings.file_format="OPEN_EXR_MULTILAYER" if a.format=="EXR" else "PNG"
     if a.format=="EXR":
         scene.render.image_settings.color_depth="16"
-        scene.render.image_settings.exr_codec="ZIP"
+        scene.render.image_settings.exr_codec=a.exr_codec
     else:
         scene.render.image_settings.color_depth="16"
     if a.format=="EXR" or a.passes=="all":
@@ -143,13 +148,16 @@ def build(data,folder):
         obj=bpy.data.objects.new(m["name"],mesh);bpy.context.scene.collection.objects.link(obj);objs[m["id"]]=obj;obj.pass_index=min(m["id"]+1,32767)
     return objs
 
-def sync_lights(scene, specs, objects):
+def sync_lights(scene, specs, objects, previous):
     if not specs:return
     if not objects:
         for obj in list(scene.objects):
             if obj.type=="LIGHT":bpy.data.objects.remove(obj,do_unlink=True)
     for s in specs:
-        i=s["id"];kind="SUN" if "Directional" in s["type"] else "POINT" if "Point" in s["type"] else "SPOT"
+        i=s["id"]
+        if previous.get(i)==s:continue
+        previous[i]=s
+        kind="SUN" if "Directional" in s["type"] else "POINT" if "Point" in s["type"] else "SPOT"
         if i not in objects:
             light=bpy.data.lights.new(s["name"],kind);obj=bpy.data.objects.new(s["name"],light);scene.collection.objects.link(obj);objects[i]=obj
         obj=objects[i];light=obj.data;light.color=s["color"];obj.location=C@Vector(s["position"])
@@ -243,18 +251,29 @@ def main():
     (out/"object-ids.json").write_text(json.dumps({str(obj.pass_index):obj.name for obj in objs.values()},indent=2))
     (out/"material-ids.json").write_text(json.dumps({str(m.pass_index):m.name for m in bpy.data.materials if m.pass_index},indent=2))
     log(len(objs),"meshes;",len(data["materials"]),"materials;",meta["count"],"frames")
-    for i in range(meta["count"]):
+    wanted=set(map(int,a.benchmark_frames.split(","))) if a.benchmark_frames else None
+    previous={};previous_lights={};cleared_normals=set();timings=[]
+    limit=max(wanted)+1 if wanted else meta["count"]
+    for i in range(limit):
+        frame_start=time.monotonic()
         frame=read(folder/("frame-%06d.json.gz"%i))
         for m in frame["meshes"]:
-            obj=objs[m["id"]];obj.matrix_world=C@mat4(m["matrix"]);obj.hide_render=not m.get("visible",True)
+            idx=m["id"];obj=objs[idx];old=previous.get(idx)
+            state=(m["matrix"],m.get("visible",True))
+            if old is None or old[0]!=state[0]:obj.matrix_world=C@mat4(state[0])
+            if old is None or old[1]!=state[1]:obj.hide_render=not state[1]
+            previous[idx]=state
             if "positions" in m:
                 obj.data.vertices.foreach_set("co",arr(m["positions"],"<f4"));obj.data.update()
                 # Normals recompute for deforming geometry (static custom normals retained).
-                if obj.data.has_custom_normals:obj.data.normals_split_custom_set([(0,0,0)]*len(obj.data.loops))
-        sync_lights(scene,frame.get("lights",[]),lights)
+                if idx not in cleared_normals and obj.data.has_custom_normals:
+                    obj.data.normals_split_custom_set([(0,0,0)]*len(obj.data.loops));cleared_normals.add(idx)
+        sync_lights(scene,frame.get("lights",[]),lights,previous_lights)
         camera=frame["camera"];cam.matrix_world=C@mat4(camera["matrix"])
         cam.data.angle_y=camera["fov"]*np.pi/180
         cam.data.dof.focus_distance=camera["focus"];cam.data.dof.aperture_fstop=camera["fstop"]
+        if wanted is not None and i not in wanted:continue
+        update_seconds=time.monotonic()-frame_start
         ext="exr" if a.format=="EXR" else "png"
         path=out/("frame-%06d.%s"%(i,ext))
         if path.exists() and path.stat().st_size>100 and all((out/name/path.name).exists() and (out/name/path.name).stat().st_size>100 for name in outputs):log("Resume",i+1);continue
@@ -265,5 +284,8 @@ def main():
         bpy.ops.render.render(write_still=True)
         if outputs:finish_png_passes(out,outputs,i)
         os.replace(tmp,path)
-        log("Finished",i+1,"seconds",round(time.monotonic()-start,2))
+        elapsed=time.monotonic()-start
+        timings.append({"frame":i,"updateSeconds":update_seconds,"renderAndWriteSeconds":elapsed,"bytes":path.stat().st_size})
+        log("Finished",i+1,"seconds",round(elapsed,2))
+        if wanted is not None:(out/"benchmark.json").write_text(json.dumps({"samples":a.samples,"bounces":a.bounces,"noise":a.noise,"codec":a.exr_codec,"frames":timings},indent=2))
 if __name__=="__main__":main()

@@ -36,7 +36,9 @@
     "render:floating": "node scripts/render-floating.mjs",
     "test:floating": "node --test scripts/floating.test.mjs",
     "dev:book": "vite",
-    "render": "node scripts/render-scene.mjs"
+    "render": "node scripts/render-scene.mjs",
+    "benchmark:cycles": "node scripts/benchmark-cycles.mjs",
+    "test:cycles": "node --test scripts/cycles-presets.test.mjs"
   },
   "dependencies": {
     "three": "^0.180.0",

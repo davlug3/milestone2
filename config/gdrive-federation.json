@@ -1,0 +1,9 @@
+{
+  "universe_domain": "googleapis.com",
+  "type": "external_account",
+  "audience": "//iam.googleapis.com/projects/84898377840/locations/global/workloadIdentityPools/jilp-milestones-vercel-connector/providers/vercel",
+  "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+  "token_url": "https://sts.googleapis.com/v1/token",
+  "credential_source": {"file":"/tmp/vercel-oidc-token","format":{"type":"text"}},
+  "service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/jilp-milestone-vercel-connecto@local-commander-515907.iam.gserviceaccount.com:generateAccessToken"
+}

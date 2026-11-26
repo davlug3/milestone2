@@ -26,3 +26,15 @@ renders/
 
 site-dist/
 slideshow/public/shared-photos/
+
+# Local personal photos and generated photo rig assets
+/photos/
+/public/page-photos/configured/
+/public/page-photos/manifest.json
+/slideshow/public/configured-photos/
+
+/slideshow/public/clothesline-photos.json
+/slideshow/public/floating-photos.json
+
+/.photo-drive-cache/
+/.env*

@@ -33,7 +33,7 @@ async function boot(){
  if(composer){composer.addPass(new RenderPass(scene,camera));composer.addPass(bokehPass);if(luxury)composer.addPass(new UnrealBloomPass(new THREE.Vector2(1,1),.18,.45,.85));composer.addPass(new OutputPass());}
  let previewDofError="";
  const env=new GradientEquirectTexture(128);env.topColor.set(0xd0c1a7);env.bottomColor.set(0x363e32);env.update();scene.environment=env;scene.environmentIntensity=.36;
- const manifest=await assets.json("../slideshow/slides.json");if(!manifest.photos.length)throw Error("No photos");
+ const manifest=await assets.json("../slideshow/clothesline-photos.json");if(!manifest.photos.length)throw Error("No photos");
  const count=manifest.photos.length,span=Math.max(1.5,(count-1)*SPACING+.9),duration=Math.max(8,count*3.2),clock=new PlaybackClock(duration,1);
  const labelsKey="milestone2.clothesline.labels.v1";
  const cleanLabels=value=>{if(!Array.isArray(value)||value.some(v=>typeof v!=="string"||v.length>100))throw Error("Use a JSON array of caption strings (maximum 100 characters each).");return Array.from({length:count},(_,i)=>(value[i]||"").trim());};

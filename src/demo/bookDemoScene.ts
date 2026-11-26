@@ -1,3 +1,5 @@
+import { planPhotoPages, bookSheetCount } from "../paper/bookPhotoLayout";
+import { browserAssets } from "../rendering/sceneAssets";
 import {createSceneRenderer} from "../rendering/sceneRenderer";
 import {geometrySession} from "../rendering/geometrySession";
 import {visualStyle,addStyleControl} from "../rendering/visualStyle";
@@ -16,7 +18,7 @@ import { BlenderExport } from "../rendering/blenderExport";
 import { StudioTracer, PhysicalCamera, type RenderMode } from "../rendering/studioTracer";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { cameraVerticalFov, cinematicCameraPose, CAMERA_SENSOR_W_MM, CAMERA_FOCAL_MM, BOOK_ASPECT } from "../rendering/cinematicCamera";
-import { BOOK_DIMENSIONS } from "../config/bookConfig";
+import { BOOK_DIMENSIONS as BASE_BOOK_DIMENSIONS } from "../config/bookConfig";
 import { createBookMaterials } from "../book/materials";
 import { createCover } from "../book/cover";
 import { addStudioLighting } from "../rendering/lighting";
@@ -27,7 +29,7 @@ import { TurnHandoff } from "../physics/TurnHandoff";
 import { RenderPose, PLAYBACK_RATE } from "../physics/RenderPose";
 import { bindingLoad, bindingLift } from "../book/bindingFlex";
 import { ThickSheetGeometry } from "../paper/ThickSheetGeometry";
-import { createPagePrints } from "../paper/PagePrints";
+import { createPagePrints, IDS } from "../paper/PagePrints";
 import { createParticle } from "../physics/Particle";
 import { PageTurnController } from "../animation/PageTurnController";
 import { Heightfield } from "../physics/Heightfield";
@@ -45,7 +47,6 @@ import {
 } from "../book/spineBinding";
 import {
   TEXT_BLOCK_THICKNESS,
-  TEXT_BLOCK_TURNS,
   TEXT_SHEET_THICKNESS,
   textRoot,
   textStackY,
@@ -69,6 +70,35 @@ import {
  * Playback is deterministic in an absolute timeline `time` (seconds).
  */
 
+interface TurnWindow {
+  start: number;
+  dur: number;
+  settle: number;
+}
+
+interface PageInstance {
+  sim: PaperSimulation;
+  geo: ThickSheetGeometry;
+  mesh: THREE.Mesh;
+  controller: PageTurnController;
+  handoff: TurnHandoff;
+  renderPose: RenderPose;
+  window: TurnWindow;
+  stepped: number;
+  maxSteps: number;
+  restY: number;
+  index: number;
+  landY: number;
+  baked: boolean;
+  /** Last `stepped` value at which the GPU geometry was refreshed. */
+  geoStep: number;
+}
+
+export async function startBookDemo(container: HTMLElement): Promise<() => void> {
+  const manifest=await browserAssets.json<{photos:string[]}>(import.meta.env.BASE_URL+"page-photos/manifest.json").catch(()=>({photos:IDS.map(id=>id+".jpg")}));
+  if(!Array.isArray(manifest.photos)||!manifest.photos.length)throw Error("No book photos available");
+  const photoPages=planPhotoPages(manifest.photos);
+  const BOOK_DIMENSIONS={...BASE_BOOK_DIMENSIONS,sheetCount:bookSheetCount(photoPages.length)};
 const W = BOOK_DIMENSIONS.width;
 const H = BOOK_DIMENSIONS.height;
 const CT = BOOK_DIMENSIONS.coverThickness;
@@ -80,7 +110,7 @@ const SPINE_PANEL_W = 2 * CT + PBT;
 // board bevel at the hinge, so the case reads as one continuous surface).
 const SPINE_TURN_IN = 0.003;
 const NUM_SHEETS = BOOK_DIMENSIONS.sheetCount;
-const NUM_TURNS = Math.min(TEXT_BLOCK_TURNS, NUM_SHEETS - 1);
+const NUM_TURNS = Math.max(0,Math.ceil((photoPages.length-1)/2));
 const NUM_STATIC = NUM_SHEETS - NUM_TURNS;
 
 const FIXED_DT = 1 / 120;
@@ -117,11 +147,7 @@ const TURN_DUR = 2.5;
 const SETTLE_DUR = 0.5;
 
 // --- Timeline --------------------------------------------------------------
-interface TurnWindow {
-  start: number;
-  dur: number;
-  settle: number;
-}
+
 
 const COVER_START = 0.6;
 const COVER_END = 2.8; // 2.2 s hinge swing
@@ -140,25 +166,7 @@ const TIMELINE = {
   end: FIRST_TURN + NUM_TURNS * TURN_GAP + 0.5,
 };
 
-interface PageInstance {
-  sim: PaperSimulation;
-  geo: ThickSheetGeometry;
-  mesh: THREE.Mesh;
-  controller: PageTurnController;
-  handoff: TurnHandoff;
-  renderPose: RenderPose;
-  window: TurnWindow;
-  stepped: number;
-  maxSteps: number;
-  restY: number;
-  index: number;
-  landY: number;
-  baked: boolean;
-  /** Last `stepped` value at which the GPU geometry was refreshed. */
-  geoStep: number;
-}
 
-export function startBookDemo(container: HTMLElement): () => void {
   loadingStage("Initializing WebGL renderer…");
   // --- Renderer / scene / camera ------------------------------------------
   const query=new URLSearchParams(location.search),style=visualStyle(query),luxury=style==="luxury";
@@ -223,7 +231,7 @@ export function startBookDemo(container: HTMLElement): () => void {
   materials.endpaper.bumpMap = clothTexture;
   materials.endpaper.bumpScale = 0.00004;
   loadingStage("Preparing book and paper textures…");
-  const prints = createPagePrints(materials.paperEdge, renderer.capabilities.getMaxAnisotropy(),quality.pageScale,quality.allPrints?Infinity:NUM_TURNS+1);
+  const prints = createPagePrints(materials.paperEdge, renderer.capabilities.getMaxAnisotropy(),photoPages,quality.pageScale);
 
   const backCover = createCover(BOOK_DIMENSIONS, materials, "back");
   backCover.position.set(W / 2, CT / 2, 0);

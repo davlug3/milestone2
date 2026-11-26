@@ -1,25 +1,27 @@
 import {browserAssets,type SceneAssets} from "../rendering/sceneAssets";
 import {createPaperGrain,paintPaperWear} from "./paperWear";
 import * as THREE from "three";
+import {type PhotoPage} from "./bookPhotoLayout";
 
-const IDS = [10,11,15,16,17,18,19,20,28,29,31,33,37,43,49,57,61,65,73,77,83,84,88,94];
+export const IDS = [10,11,15,16,17,18,19,20,28,29,31,33,37,43,49,57,61,65,73,77,83,84,88,94];
 const WIDTH = 512;
 const HEIGHT = 660;
 
 /** Shared image cache and a unique, UV-stable printed layout for every face. */
-export function createPagePrints(edge: THREE.Material, anisotropy: number, scale=1, printedSheets=Infinity, assets:SceneAssets=browserAssets, photoBase=import.meta.env.BASE_URL+"page-photos/") {
+export function createPagePrints(edge: THREE.Material, anisotropy: number, pages: readonly PhotoPage[], scale=1, assets:SceneAssets=browserAssets, photoBase=import.meta.env.BASE_URL+"page-photos/") {
   const grain=createPaperGrain();
   const blank=new THREE.MeshPhysicalMaterial({color:0xf4efe4,roughness:.82,bumpMap:grain.bump,bumpScale:.000035});
-  const images = new Map<number, Promise<HTMLImageElement | null>>();
+  const images = new Map<string, Promise<HTMLImageElement | null>>();
   const textures: THREE.CanvasTexture[] = [];
   const materials: THREE.MeshStandardMaterial[] = [];
   let disposed = false;
   let loadedFaces = 0;
   let failedFaces = 0;
-  const load = (id: number) => {
+  const photoRoot=assets.resolve(photoBase);
+  const load = (id: string) => {
     let pending = images.get(id);
     if (!pending) {
-      pending=assets.image(assets.resolve(id+".jpg",assets.resolve(photoBase))).catch(()=>null);
+      pending=assets.image(assets.resolve(id,photoRoot)).catch(()=>null);
       images.set(id, pending);
     }
     return pending;
@@ -30,9 +32,9 @@ export function createPagePrints(edge: THREE.Material, anisotropy: number, scale
       ctx.fillRect(x,y,w,h);
       return;
     }
-    const scale = Math.max(w / image.naturalWidth, h / image.naturalHeight);
-    const sw = w / scale, sh = h / scale;
-    ctx.drawImage(image, (image.naturalWidth-sw)/2, (image.naturalHeight-sh)/2, sw, sh, x,y,w,h);
+    const scale = Math.min(w / image.naturalWidth, h / image.naturalHeight);
+    const dw=image.naturalWidth*scale, dh=image.naturalHeight*scale;
+    ctx.drawImage(image,x+(w-dw)/2,y+(h-dh)/2,dw,dh);
   }
   function face(page: number) {
     const canvas = assets.canvas();
@@ -46,13 +48,7 @@ export function createPagePrints(edge: THREE.Material, anisotropy: number, scale
     textures.push(texture);
     const material = new THREE.MeshPhysicalMaterial({ map: texture, color: 0xffffff, roughness: 0.79 + .035*Math.sin(page*2.399), roughnessMap:grain.roughness, bumpMap:grain.bump,bumpScale:.000035, metalness: 0, clearcoat: 0.12, clearcoatRoughness: 0.78, sheen: 0.12, sheenRoughness: 1, sheenColor: new THREE.Color(0xf4efe4) });
     materials.push(material);
-    const layouts = [
-      [[35,35,442,590]],
-      [[35,35,442,288],[35,337,442,288]],
-      [[35,35,442,338],[35,387,214,238],[263,387,214,238]],
-      [[35,35,214,270],[263,35,214,270],[35,319,442,306]]
-    ];
-    const boxes = layouts[(page-1) % layouts.length];
+    const {boxes,photos: names}=pages[page-1];
     function paint(photos: (HTMLImageElement|null)[]) {
       ctx.fillStyle = "#f4efe4";
       ctx.fillRect(0,0,WIDTH,HEIGHT);
@@ -61,7 +57,7 @@ export function createPagePrints(edge: THREE.Material, anisotropy: number, scale
       texture.needsUpdate = true;
     }
     paint([]);
-    void Promise.all(boxes.map((_, i) => load(IDS[((page-1)*5 + i*7) % IDS.length]))).then(photos => {
+    void Promise.all(names.map(load)).then(photos => {
       if (disposed) return;
       paint(photos);
       if (photos.every(Boolean)) loadedFaces++;
@@ -70,7 +66,7 @@ export function createPagePrints(edge: THREE.Material, anisotropy: number, scale
     return material;
   }
   return {
-    sheet(index: number): THREE.Material[] { return index<printedSheets?[face(index*2+1),face(index*2+2),edge]:[blank,blank,edge]; },
+    sheet(index: number): THREE.Material[] { return [index*2<pages.length?face(index*2+1):blank,index*2+1<pages.length?face(index*2+2):blank,edge]; },
     status: () => ({ totalFaces: textures.length, loadedFaces, failedFaces }),
     dispose() {
       disposed = true;

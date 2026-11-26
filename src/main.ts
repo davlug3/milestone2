@@ -24,7 +24,7 @@ const freezeTime =
 
 loadingStage("Initializing graphics…");
 // Give the browser a paint before expensive synchronous WebGL setup.
-requestAnimationFrame(()=>requestAnimationFrame(()=>{try {
+requestAnimationFrame(()=>requestAnimationFrame(async()=>{try {
 if (testName === "paper-drop") {
   startPaperDropTest(container);
 } else if (testName === "paper-edge") {
@@ -35,7 +35,7 @@ if (testName === "paper-drop") {
   startBookScene(container);
 } else {
   // Default: animated book demo with a play button.
-  startBookDemo(container);
+  await startBookDemo(container);
 }
 if(testName)loadingReady();
 } catch(error){loadingFailed(error);throw error;}}));

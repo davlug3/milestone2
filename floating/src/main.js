@@ -28,7 +28,7 @@ async function boot(){
  const camera=new PhysicalCamera(39.6,16/9,.035,150);camera.filmGauge=36;camera.setFocalLength(50);camera.fStop=luxury?1.8:2.8;camera.focusDistance=1.1;
  const env=new GradientEquirectTexture(128);env.topColor.set(0xb4c2d2);env.bottomColor.set(0x33241b);env.update();scene.environment=env;scene.environmentIntensity=.31;
  const composer=query.has("geometry-export")?null:new EffectComposer(renderer),bokeh=composer?new BokehPass(scene,camera,{focus:1.1,aperture:luxury?.026:.018,maxblur:luxury?.019:.014}):null;if(composer){composer.addPass(new RenderPass(scene,camera));composer.addPass(bokeh);if(luxury)composer.addPass(new UnrealBloomPass(new THREE.Vector2(1,1),.18,.45,.85));composer.addPass(new OutputPass());}let dofError="";
- const manifest=await assets.json("../slideshow/slides.json");if(!manifest.photos.length)throw Error("No photos");
+ const manifest=await assets.json("../slideshow/floating-photos.json");if(!manifest.photos.length)throw Error("No photos");
  const count=manifest.photos.length,duration=count*SECONDS,clock=new PlaybackClock(duration,1),layout=makeLayout(count),cards=[],photoMeshes=new Set();
  const config={width:.46,depth:.322,thickness:.00065,flight:1.25,settle:.85},materials=[];
  const back=new THREE.MeshStandardMaterial({color:0xe9dfce,roughness:.92}),edge=new THREE.MeshStandardMaterial({color:0xdacdb8,roughness:.86});

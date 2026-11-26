@@ -1,0 +1,35 @@
+{
+  // Relative to this file. Directories include direct image files, sorted by name.
+  // Empty lists use demo photos. Each scene has its own collection.
+  "book": {
+    "photos": [
+      "../jilp-old-pics/Crowd Shots/496095321_9611072475677336_2196480707607302282_n.jpg",
+      "../jilp-old-pics/Group Photos/4.png",
+      "../jilp-old-pics/Crowd Shots/CamScanner 11-14-2023 19.50.jpg",
+      "../jilp-old-pics/Crowd Shots/9.png",
+      "../jilp-old-pics/Crowd Shots/CamScanner 11-14-2023 19.52_8.jpg",
+      "../jilp-old-pics/Group Photos/CamScanner 11-14-2023 19.33 (1)_5.jpg",
+      "../jilp-old-pics/Crowd Shots/CamScanner 11-14-2023 19.33 (1)_6.jpg",
+      "../jilp-old-pics/Crowd Shots/CamScanner 11-14-2023 20.12_4.jpg",
+      "../jilp-old-pics/Crowd Shots/CamScanner 11-14-2023 19.52_1.jpg",
+      "../jilp-old-pics/Group Photos/IMG_20261124_110655_591.jpg",
+      "../jilp-old-pics/Individuals/CamScanner 11-14-2023 19.52_16.jpg",
+      "../jilp-old-pics/Crowd Shots/CamScanner 11-14-2023 19.33 (1)_18.jpg",
+      "../jilp-old-pics/Group Photos/CamScanner 11-14-2023 15.51.jpg",
+      "../jilp-old-pics/Group Photos/Copy of 584904170_1287366069825720_9107981367279042035_n.jpg",
+      "../jilp-old-pics/Group Photos/CamScanner 11-14-2023 20.12_8.jpg",
+      "../jilp-old-pics/Individuals/CamScanner 11-14-2023 19.33 (1)_10.jpg",
+      "../jilp-old-pics/Crowd Shots/CamScanner 11-14-2023 19.33 (1)_9.jpg",
+      "../jilp-old-pics/Crowd Shots/CamScanner 11-14-2023 20.47_3.jpg",
+      "../jilp-old-pics/Crowd Shots/15.png",
+      "../jilp-old-pics/Group Photos/CamScanner 11-14-2023 15.53.jpg",
+      "../jilp-old-pics/Group Photos/CamScanner 11-14-2023 19.33 (1)_16.jpg",
+      "../jilp-old-pics/Crowd Shots/CamScanner 11-14-2023 21.00_1.jpg",
+      "../jilp-old-pics/Group Photos/CamScanner 11-14-2023 19.52_6.jpg",
+      "../jilp-old-pics/Group Photos/555556770_25117972427794671_3355123710474706077_n.jpg"
+    ]
+  },
+  "slideshow": { "photos": [] },
+  "clothesline": { "photos": [] },
+  "floating": { "photos": [] }
+}

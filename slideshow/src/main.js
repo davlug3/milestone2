@@ -1,3 +1,4 @@
+import {BlenderExport} from "../../src/rendering/blenderExport.ts";
 import {visualStyle,addStyleControl,LUXURY} from "../../src/rendering/visualStyle.ts";
 import {createRenderPasses} from "../../src/rendering/renderPasses.ts";
 import { frameLaunches } from "./frameLaunches.js";
@@ -51,7 +52,7 @@ function beautyDraw(){
   controls.setFrameProgress({phase:mode==="raytrace"?"Real-time playback · pause to trace":"Frame render · Real-time",ready:true});
 }
 
-function draw(){if(passes.pass==="beauty")beautyDraw();else{passes.render();controls.setFrameProgress({phase:"Render pass · "+passes.pass,ready:true});}}
+function draw(){if(new URLSearchParams(location.search).has("geometry-export"))return;if(passes.pass==="beauty")beautyDraw();else{passes.render();controls.setFrameProgress({phase:"Render pass · "+passes.pass,ready:true});}}
 function walnut(){
   const n=profile.woodSize,c=document.createElement("canvas");c.width=c.height=n;const ctx=c.getContext("2d"),im=ctx.createImageData(n,n),r=random(91);
   for(let y=0;y<n;y++)for(let x=0;x<n;x++){
@@ -106,7 +107,8 @@ async function init(){
   await new Promise(resolve=>requestAnimationFrame(resolve));
   update(0);
   loadingReady();
-  window.__slideshow={capturePass:(t,pass)=>{play(false);const old=passes.pass;passes.setPass(pass);update(t);const png=renderer.domElement.toDataURL("image/png");passes.setPass(old);return png;},passIds:()=>passes.idMap(),setPass:value=>{passes.setPass(value);draw();},duration:total,count:cards.length,canvas:renderer.domElement,seek:t=>{play(false);update(t);},capture:t=>{play(false);setMode("raster");update(t);return renderer.domElement.toDataURL("image/png");},beginTrace:(t,samples)=>{play(false);setMode("raytrace");target=samples;update(t);},traceStep:()=>{if(mode!=="raytrace")throw Error(traceError||"Ray tracer unavailable");traceDraw();return {samples:traceDirty?0:tracer.samples,target};},traceCapture:()=>{if(mode!=="raytrace"||traceDirty||tracer.samples<target)throw Error("Frame not ready");return renderer.domElement.toDataURL("image/png");},gpu:()=>{const gl=renderer.getContext(),ext=gl.getExtension("WEBGL_debug_renderer_info");return ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER);}};
+  const blenderExport=new BlenderExport(scene,camera);
+ window.__slideshow={blenderSetup:()=>{play(false);update(0);return blenderExport.setup();},blenderFrame:t=>{play(false);update(t);return blenderExport.frame();},capturePass:(t,pass)=>{play(false);const old=passes.pass;passes.setPass(pass);update(t);const png=renderer.domElement.toDataURL("image/png");passes.setPass(old);return png;},passIds:()=>passes.idMap(),setPass:value=>{passes.setPass(value);draw();},duration:total,count:cards.length,canvas:renderer.domElement,seek:t=>{play(false);update(t);},capture:t=>{play(false);setMode("raster");update(t);return renderer.domElement.toDataURL("image/png");},beginTrace:(t,samples)=>{play(false);setMode("raytrace");target=samples;update(t);},traceStep:()=>{if(mode!=="raytrace")throw Error(traceError||"Ray tracer unavailable");traceDraw();return {samples:traceDirty?0:tracer.samples,target};},traceCapture:()=>{if(mode!=="raytrace"||traceDirty||tracer.samples<target)throw Error("Frame not ready");return renderer.domElement.toDataURL("image/png");},gpu:()=>{const gl=renderer.getContext(),ext=gl.getExtension("WEBGL_debug_renderer_info");return ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER);}};
   if(!exportMode){function tick(now){if(playback.tick(now,passes.pass!=="beauty"||mode!=="cinematic"||(!traceDirty&&tracer&&tracer.samples>=target),mode==="cinematic"?1/60:undefined))update(playback.time,true);else if(mode==="cinematic"||(!playback.playing&&mode==="raytrace"))draw();controls.sync(playback);requestAnimationFrame(tick);}requestAnimationFrame(tick);}
 }
 await init();

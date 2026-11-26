@@ -12,11 +12,13 @@ function attr(a: THREE.BufferAttribute | THREE.InterleavedBufferAttribute): stri
 }
 export class BlenderExport {
   private meshes: THREE.Mesh[]=[];
+  private lights: Array<THREE.DirectionalLight|THREE.SpotLight|THREE.PointLight>=[];
   private previous=new Map<number,string>();
   constructor(private scene:THREE.Scene,private camera:THREE.PerspectiveCamera){}
   setup(){
     this.meshes=[];this.previous.clear();
-    this.scene.traverseVisible(o=>{if(o instanceof THREE.Mesh)this.meshes.push(o);});
+    this.lights=[];
+    this.scene.traverse(o=>{if(o instanceof THREE.Mesh)this.meshes.push(o);if(o instanceof THREE.DirectionalLight||o instanceof THREE.SpotLight||o instanceof THREE.PointLight)this.lights.push(o);});
     const textures=new Map<THREE.Texture,number>(), textureData:unknown[]=[];
     const materials=new Map<THREE.Material,number>(), materialData:unknown[]=[];
     const tex=(t:THREE.Texture|null)=>{
@@ -38,7 +40,7 @@ export class BlenderExport {
       if(!(m instanceof THREE.MeshStandardMaterial))throw Error("Unsupported material "+m.type);
       const id=materials.size;materials.set(m,id);
       const p=m instanceof THREE.MeshPhysicalMaterial?m:null;
-      materialData.push({id,color:m.color.toArray(),roughness:m.roughness,metalness:m.metalness,map:tex(m.map),roughnessMap:tex(m.roughnessMap),normalMap:tex(m.normalMap),normalScale:m.normalScale.toArray(),bump:tex(m.bumpMap),bumpScale:m.bumpScale,coat:p?.clearcoat??0,coatRoughness:p?.clearcoatRoughness??0,sheen:p?.sheen??0,sheenRoughness:p?.sheenRoughness??1,sheenColor:p?.sheenColor.toArray()??[1,1,1]});
+      materialData.push({id,emissive:m.emissive.toArray(),emissiveIntensity:m.emissiveIntensity,emissiveMap:tex(m.emissiveMap),color:m.color.toArray(),roughness:m.roughness,metalness:m.metalness,map:tex(m.map),roughnessMap:tex(m.roughnessMap),normalMap:tex(m.normalMap),normalScale:m.normalScale.toArray(),bump:tex(m.bumpMap),bumpScale:m.bumpScale,coat:p?.clearcoat??0,coatRoughness:p?.clearcoatRoughness??0,sheen:p?.sheen??0,sheenRoughness:p?.sheenRoughness??1,sheenColor:p?.sheenColor.toArray()??[1,1,1]});
       return id;
     };
     const meshes=this.meshes.map((m,id)=>{
@@ -49,16 +51,18 @@ export class BlenderExport {
       if(Array.isArray(m.material))for(const group of g.groups)faceMaterials.fill(group.materialIndex??0,group.start/3,(group.start+group.count)/3);
       return {id,name:m.name||"mesh-"+id,positions:attr(p),normals:n?attr(n):null,uv:uv?attr(uv):null,indices:b64(indices),faceMaterials:b64(faceMaterials),slots};
     });
-    return {meshes,materials:materialData,textures:textureData};
+    return {meshes,materials:materialData,textures:textureData,background:this.scene.background instanceof THREE.Color?this.scene.background.toArray():[.025,.025,.025],environmentIntensity:this.scene.environmentIntensity};
   }
   frame(){
     this.scene.updateMatrixWorld(true);this.camera.updateMatrixWorld(true);
     const meshes=this.meshes.map((m,id)=>{
       const p=attr(m.geometry.getAttribute("position"));
       const changed=this.previous.get(id)!==p;this.previous.set(id,p);
-      return {id,matrix:m.matrixWorld.toArray(),...(changed?{positions:p}: {})};
+      let visible=true;for(let o:THREE.Object3D|null=m;o;o=o.parent)visible=visible&&o.visible;
+      return {id,visible,matrix:m.matrixWorld.toArray(),...(changed?{positions:p}: {})};
     });
     const camera=this.camera as THREE.PerspectiveCamera & {focusDistance:number;fStop:number};
-    return {meshes,camera:{matrix:camera.matrixWorld.toArray(),fov:camera.fov,focus:camera.focusDistance,fstop:camera.fStop}};
+    const lights=this.lights.map((l,id)=>({id,name:l.name||l.type,type:l.type,position:l.getWorldPosition(new THREE.Vector3()).toArray(),target:l instanceof THREE.PointLight?[0,0,0]:l.target.getWorldPosition(new THREE.Vector3()).toArray(),color:l.color.toArray(),intensity:l.intensity,radius:(l as THREE.SpotLight & {radius?:number}).radius??.1,angle:l instanceof THREE.SpotLight?l.angle:0,penumbra:l instanceof THREE.SpotLight?l.penumbra:0}));
+    return {meshes,lights,camera:{matrix:camera.matrixWorld.toArray(),fov:camera.fov,focus:camera.focusDistance??camera.position.length(),fstop:camera.fStop??4}};
   }
 }

@@ -16,6 +16,7 @@
     "test:clearance": "esbuild scripts/clearance-check.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/clearance-check.mjs && node node_modules/.cache/clearance-check.mjs",
     "test:binding": "esbuild scripts/binding-check.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/binding-check.mjs && node node_modules/.cache/binding-check.mjs",
     "photos:download": "node scripts/download-page-images.mjs",
+    "photos:download:jilp": "node scripts/download-jilp-photos.mjs",
     "test:camera": "esbuild scripts/camera-check.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/camera-check.mjs && node node_modules/.cache/camera-check.mjs",
     "test:handoff": "esbuild scripts/handoff-check.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/handoff-check.mjs && node node_modules/.cache/handoff-check.mjs",
     "test:flex": "esbuild scripts/flex-check.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/flex-check.mjs && node node_modules/.cache/flex-check.mjs",

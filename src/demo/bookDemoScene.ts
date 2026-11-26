@@ -126,7 +126,8 @@ interface TurnWindow {
 const COVER_START = 0.6;
 const COVER_END = 2.8; // 2.2 s hinge swing
 const FIRST_TURN = 3.7;
-const TURN_GAP = TURN_DUR + SETTLE_DUR + 0.3;
+// Keep the full settling window before starting the next sheet.
+const TURN_GAP = TURN_DUR + SETTLE_DUR + 0.05;
 
 const TIMELINE = {
   coverStart: COVER_START,

@@ -201,6 +201,7 @@ def png_pass_outputs(scene,out):
             offset=tree.nodes.new("ShaderNodeVectorMath");offset.operation="ADD";offset.inputs[1].default_value=(.5,.5,.5)
             tree.links.new(node.outputs[0],offset.inputs[0]);source=offset.outputs[0]
         node=tree.nodes.new("CompositorNodeOutputFile")
+        if hasattr(node.format,"media_type"):node.format.media_type="IMAGE"
         node.format.file_format="PNG";node.format.color_depth="16";node.format.color_mode="RGB";node.format.compression=15
         if hasattr(node,"save_as_render"):node.save_as_render=False
         if hasattr(node.format,"color_management"):

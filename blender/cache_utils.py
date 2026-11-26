@@ -1,9 +1,15 @@
 """Cache helpers independent of Blender, for fast unit testing."""
-import hashlib, json
+import hashlib, json, base64, struct
 
 def mesh_key(mesh):
-    fields=[mesh.get(k) for k in ("positions","indices","normals","uv","faceMaterials","slots")]
-    return hashlib.sha256(json.dumps(fields,separators=(",",":")).encode()).digest()
+    digest=hashlib.sha256()
+    for k in ("positions","indices","normals","uv","faceMaterials"):
+        value=mesh.get(k)
+        if value is None:digest.update(b"\\x00");continue
+        raw=base64.b64decode(value) if isinstance(value,str) else value
+        digest.update(b"\\x01");digest.update(struct.pack("<Q",len(raw)));digest.update(raw)
+    digest.update(json.dumps(mesh.get("slots"),separators=(",",":")).encode())
+    return digest.digest()
 
 def resume_start(first_needed,checkpoint_interval,count):
     if not isinstance(checkpoint_interval,int) or checkpoint_interval<=0:return 0

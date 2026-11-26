@@ -2,7 +2,7 @@ import unittest
 from cache_utils import mesh_key,resume_start,complete_checkpoint
 class CacheTests(unittest.TestCase):
     def test_key(self):
-        a={"id":1,"positions":"A","slots":[0]};b={**a,"id":2}
+        a={"id":1,"positions":"AAAA","slots":[0]};b={**a,"id":2}
         self.assertEqual(mesh_key(a),mesh_key(b))
         self.assertNotEqual(mesh_key(a),mesh_key({**a,"slots":[1]}))
     def test_resume(self):

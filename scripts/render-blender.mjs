@@ -2,6 +2,7 @@ import { spawnSync, execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync, existsSync, readFileSync, renameSync, readdirSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { gzipSync } from "node:zlib";
+import {encodeCache} from "./lib/binary-cache.mjs";
 import { parseArgs } from "node:util";
 import { createHash } from "node:crypto";
 import { chromium } from "playwright";
@@ -13,17 +14,18 @@ import {resolveCyclesPreset} from "./lib/cycles-presets.mjs";
 import { isWSL } from "./lib/windows-browser.mjs";
 const {values:o}=parseArgs({options:{
   scene:{type:"string",default:"book"},style:{type:"string",default:"luxury"},format:{type:"string",default:"EXR"},passes:{type:"string",default:"all"},"no-build":{type:"boolean",default:false},"reuse-cache":{type:"boolean",default:false},width:{type:"string",default:"1920"},height:{type:"string",default:"1080"},fps:{type:"string",default:"60"},
-  preset:{type:"string",default:"cinema"},samples:{type:"string"},bounces:{type:"string"},noise:{type:"string"},"min-samples":{type:"string"},"exr-codec":{type:"string",default:"ZIP"},"benchmark-frames":{type:"string"},
+  "cache-format":{type:"string",default:"binary"},preset:{type:"string",default:"cinema"},samples:{type:"string"},bounces:{type:"string"},noise:{type:"string"},"min-samples":{type:"string"},"exr-codec":{type:"string",default:"ZIP"},"benchmark-frames":{type:"string"},
   device:{type:"string",default:"OPTIX"},start:{type:"string",default:"0"},duration:{type:"string"},
   output:{type:"string",default:"renders/blender-final.mp4"},cache:{type:"string"},
   "export-only":{type:"boolean",default:false},"frames-only":{type:"boolean",default:false},help:{type:"boolean",default:false}
 }});
-if(o.help){console.log("npm run render:blender -- [--scene book|slideshow|clothesline|floating --style luxury|classic --format PNG|EXR --passes all|beauty --no-build --reuse-cache --width 1920 --height 1080 --fps 60 --preset draft|fast-production|cinema|master --samples 96 --noise 0.02 --min-samples 16 --exr-codec ZIP|PIZ --benchmark-frames 0,60,120 --bounces 8 --device OPTIX|CUDA|CPU --start seconds --duration seconds --output renders/blender-final.mp4 --cache folder --export-only --frames-only]");process.exit(0);}
+if(o.help){console.log("npm run render:blender -- [--scene book|slideshow|clothesline|floating --style luxury|classic --format PNG|EXR --passes all|beauty --no-build --reuse-cache --cache-format binary|json --width 1920 --height 1080 --fps 60 --preset draft|fast-production|cinema|master --samples 96 --noise 0.02 --min-samples 16 --exr-codec ZIP|PIZ --benchmark-frames 0,60,120 --bounces 8 --device OPTIX|CUDA|CPU --start seconds --duration seconds --output renders/blender-final.mp4 --cache folder --export-only --frames-only]");process.exit(0);}
 const num=(k)=>{const v=Number(o[k]);if(!Number.isInteger(v)||v<=0)throw Error("Invalid "+k);return v;};
 const apis={book:"__demo",slideshow:"__slideshow",clothesline:"__clothesline",floating:"__floating"},api=apis[o.scene];if(!api||!["luxury","classic"].includes(o.style)||!["PNG","EXR"].includes(o.format))throw Error("Invalid scene/style/format");if(!["all","beauty"].includes(o.passes))throw Error("Invalid passes: use all or beauty");if(o.format==="EXR")o["frames-only"]=true;
 const {samples,bounces,noise,minSamples,diffuse,glossy}=resolveCyclesPreset(o.preset,{samples:o.samples,bounces:o.bounces,noise:o.noise,minSamples:o["min-samples"]});
 if(!["ZIP","PIZ"].includes(o["exr-codec"]))throw Error("Choose lossless ZIP or PIZ");
 const benchmark=o["benchmark-frames"]?.split(",").map(Number);if(benchmark&&(!o["reuse-cache"]||!o["frames-only"]||o["export-only"]||benchmark.some(i=>!Number.isInteger(i)||i<0)||!benchmark.length))throw Error("Benchmark requires --reuse-cache, frame output and valid zero-based frame indices");
+if(!["binary","json"].includes(o["cache-format"]))throw Error("Invalid cache format");
 const width=num("width"),height=num("height"),fps=num("fps"),start=Number(o.start),duration=o.duration===undefined?null:Number(o.duration);
 if(width%2||height%2||!(noise>0&&noise<=1)||!Number.isFinite(start)||start<0||duration!==null&&!(duration>0)||!["OPTIX","CUDA","CPU"].includes(o.device))throw Error("Invalid render settings");
 const output=resolve(o.output),cache=resolve(o.cache??output.replace(/\.mp4$/i,"")+".cache"),frames=output.replace(/\.mp4$/i,"")+(o.format==="PNG"&&o.passes==="all"?".png-passes":o.format==="PNG"?".png-frames":o.passes==="beauty"?".exr-beauty":".frames");
@@ -39,7 +41,7 @@ if(!o["export-only"]&&!available(blender))throw Error("Blender not found. Set BL
 const ffmpeg=process.env.FFMPEG_PATH??["ffmpeg","ffmpeg.exe","/mnt/c/msys64/mingw64/bin/ffmpeg.exe"].find(x=>spawnSync(x,["-version"],{stdio:"ignore"}).status===0);
 if(!o["export-only"]&&!o["frames-only"]&&!ffmpeg)throw Error("FFmpeg not found");
 const nativePath=(bin,p)=>isWSL()&&bin.toLowerCase().endsWith(".exe")?execFileSync("wslpath",["-w",p],{encoding:"utf8"}).trim():p;
-function save(path,data){writeFileSync(path+".tmp",gzipSync(JSON.stringify(data)));renameSync(path+".tmp",path);}
+function save(path,data){writeFileSync(path+".tmp",o["cache-format"]==="binary"?encodeCache(data):gzipSync(JSON.stringify(data)));renameSync(path+".tmp",path);}
 if(!o["no-build"]&&!o["reuse-cache"])run(process.execPath,["scripts/build-site.mjs"]);
 const root=resolve("site-dist");
 function hashDir(dir,h){for(const item of readdirSync(dir,{withFileTypes:true}).sort((a,b)=>a.name.localeCompare(b.name))){const p=join(dir,item.name);h.update(item.name);if(item.isDirectory())hashDir(p,h);else h.update(readFileSync(p));}return h;}
@@ -83,7 +85,7 @@ if(existsSync(manifest)){
       save(join(cache,"frame-"+String(i).padStart(6,"0")+".json.gz"),frame);
       if(i%30===0||i===count-1)console.log("[export]",i+1,"/",count,"frames");
     }
-    writeFileSync(manifest,JSON.stringify({settings,count,fps,...(checkpointValid?{checkpointInterval}: {})},null,2));
+    writeFileSync(manifest,JSON.stringify({settings,count,fps,cacheVersion:o["cache-format"]==="binary"?2:1,...(checkpointValid?{checkpointInterval}: {})},null,2));
   }finally{await browser?.close();server?.close();}
 }
 if(!o["export-only"]){

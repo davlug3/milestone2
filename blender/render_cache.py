@@ -2,6 +2,7 @@
 import bpy, sys, os, json, gzip, base64, time, argparse
 sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
 from cache_utils import mesh_key, resume_start, complete_checkpoint
+from binary_cache import read_cache
 import numpy as np
 from mathutils import Matrix, Vector
 from pathlib import Path
@@ -25,9 +26,9 @@ def args():
     p.add_argument("--device",choices=["OPTIX","CUDA","CPU"],default="OPTIX")
     return p.parse_args(sys.argv[sys.argv.index("--")+1:])
 
-def read(path):
-    with gzip.open(path,"rt",encoding="utf-8") as f: return json.load(f)
-def arr(s,dtype): return np.frombuffer(base64.b64decode(s),dtype=dtype)
+def read(path):return read_cache(path)
+def raw_bytes(s):return base64.b64decode(s) if isinstance(s,str) else s
+def arr(s,dtype): return np.frombuffer(raw_bytes(s),dtype=dtype)
 def log(*a): print("[cycles]",*a,flush=True)
 def mat4(a): return Matrix(np.array(a).reshape((4,4),order="F").tolist())
 # Three Y-up to Blender Z-up, preserving handedness.
@@ -99,7 +100,7 @@ def configure(a):
 def build(data,folder):
     images={}
     for t in data["textures"]:
-        path=folder/("texture-%03d.png"%t["id"]);path.write_bytes(base64.b64decode(t["png"]))
+        path=folder/("texture-%03d.png"%t["id"]);path.write_bytes(raw_bytes(t["png"]))
         image=bpy.data.images.load(str(path),check_existing=False)
         image.colorspace_settings.name="sRGB" if t["srgb"] else "Non-Color"
         images[t["id"]]=(image,t)

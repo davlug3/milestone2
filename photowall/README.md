@@ -6,5 +6,5 @@ Paper surfaces use a deterministic reduced-coordinate damped bending mode at 120
 
 Preview: npm run dev, /photowall/.
 Production: npm run render:realtime -- --scene photowall
-Default 1920x1080, 24 fps, 528 frames; PNG beauty and unfiltered single-sample float32 TIFF depth.
+Default 1920x1080, 24 fps, 528 frames; PNG beauty only.
 Generated photos and render outputs are not tracked.

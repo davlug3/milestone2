@@ -12,14 +12,14 @@ function save(path,data){writeFileSync(path+'.tmp',data);renameSync(path+'.tmp',
 try{
  browser=await chromium.launch({executablePath:exe,headless,args:['--enable-gpu','--ignore-gpu-blocklist','--use-angle=d3d11','--disable-background-timer-throttling','--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows']});
  for(const scene of scenes){
-  const canvas2d=scene==='slideshow2d',beautyOnly=scene==='title'||canvas2d,vectorMode=scene==='earth',pass=vectorMode?'vectors':'depth';const dest=output[scene];if(existsSync(dest))throw Error('Output already exists: '+dest);mkdirSync(join(dest,'beauty'),{recursive:true});if(!beautyOnly)mkdirSync(join(dest,pass),{recursive:true});
+  const canvas2d=scene==='slideshow2d',beautyOnly=scene==='title'||scene==='photowall'||canvas2d,vectorMode=scene==='earth',pass=vectorMode?'vectors':'depth';const dest=output[scene];if(existsSync(dest))throw Error('Output already exists: '+dest);mkdirSync(join(dest,'beauty'),{recursive:true});if(!beautyOnly)mkdirSync(join(dest,pass),{recursive:true});
   const page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1});page.on('pageerror',e=>console.error('[browser]',e.message));
   const api=scene==='book'?'__demo':'__'+scene;
   await page.goto('http://127.0.0.1:'+server.address().port+'/'+scene+'/?export&quality=high&style=luxury',{waitUntil:'networkidle',timeout:120000});
   await page.waitForFunction(api=>typeof window[api]?.captureProduction==='function',api,{timeout:120000});
   if(scene==='book')await page.waitForFunction(()=>{const p=window.__demo.photoStatus();return p.loadedFaces+p.failedFaces>=p.totalFaces&&window.__demo.simulationCache().ready;},null,{timeout:180000});
   const info=canvas2d?await page.evaluate(api=>({duration:window[api].duration,gpu:'Canvas 2D',float:false}),api):await page.evaluate(api=>{const gl=document.querySelector('canvas').getContext('webgl2'),ext=gl.getExtension('WEBGL_debug_renderer_info');return {duration:window[api].duration,gpu:ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER),float:!!gl.getExtension('EXT_color_buffer_float')};},api);
-  if(!canvas2d&&(!info.float||/swiftshader|llvmpipe|software raster|basic render driver|warp/i.test(info.gpu)))throw Error('Hardware float32 GPU required: '+JSON.stringify(info));
+  if(!canvas2d&&((!beautyOnly&&!info.float)||/swiftshader|llvmpipe|software raster|basic render driver|warp/i.test(info.gpu)))throw Error('Hardware float32 GPU required: '+JSON.stringify(info));
   const count=Math.ceil(Math.min(info.duration,duration??info.duration)*fps);if(!Number.isFinite(count)||count<1)throw Error('Invalid duration');
   console.log('[realtime]',scene,info.gpu,count,'frames');
   const start=performance.now();let near,far,depthSamples;

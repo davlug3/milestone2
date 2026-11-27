@@ -46,3 +46,18 @@ slideshow/public/shared-photos/
 # Python bytecode
 __pycache__/
 *.py[cod]
+
+/slideshow2d/public/configured-photos/
+/slideshow2d/public/photos.json
+
+/.cache/depth/
+/slideshow2d/public/depth/
+
+/slideshow2d/public/depth-hq/
+
+/photowall/public/configured-photos/
+/photowall/public/photos.json
+
+# Earth evaluation textures: verify redistribution terms before publishing.
+/earth/public/*.jpg
+/earth/public/clouds-fair.png

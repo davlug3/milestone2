@@ -715,6 +715,7 @@ const TIMELINE = {
     shadowStatus:()=>({enabled:domeEnabled,...dome?.status()}),
     setDomeShadows:setDome,
     simulationCache:()=>({enabled:cacheEnabled,ready:cacheDone,pages:turnCache.size,total:NUM_TURNS,error:cacheError,bytes:[...turnCache.values()].reduce((n,a)=>n+a.byteLength,0)}),
+    captureProduction:(t:number)=>{setRenderMode("real-time");passes.setPass("beauty");setPlaying(false);if(t<time||t===0)seek(t);else{time=playback.seek(t);stepPagesTo(time);updateCover(time);updateCamera(time);trace.invalidate();}return {beauty:passes.capture("beauty"),depth:passes.captureDepth32()};},
     capturePass:(t:number,pass:PassName)=>{setPlaying(false);if(t<time)seek(t);else{time=playback.seek(t);stepPagesTo(time);updateCover(time);updateCamera(time);}return passes.capture(pass);},
     passIds:()=>passes.idMap(),
     setPass:(value:string)=>{passes.setPass(value);trace.invalidate();},

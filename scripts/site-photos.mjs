@@ -26,3 +26,15 @@ for(const s of scenes.slice(1)){
  await atomic(resolve('slideshow/public',s==='slideshow'?'slides.json':s+'-photos.json'),JSON.stringify({photos,config},null,2));
  console.log('[site photos]',s,photos.length,collections[s].length?'configured':'real-photo fallback');
 }
+
+const archive=await resolvePhotos(resolve('photos.config.jsonc'),'slideshow2d');
+if(!archive.length)throw Error('Configure archive slideshow photos');
+const archivePhotos=await stage(archive,resolve('slideshow2d/public/configured-photos'),'./configured-photos/');
+await atomic(resolve('slideshow2d/public/photos.json'),JSON.stringify({photos:archivePhotos}));
+console.log('[site photos] slideshow2d',archivePhotos.length);
+
+const wallPhotos=await resolvePhotos(resolve('photos.config.jsonc'),'photowall');
+if(!wallPhotos.length)throw Error('Configure wall photos');
+const wallFiles=await stage(wallPhotos,resolve('photowall/public/configured-photos'),'./configured-photos/');
+await atomic(resolve('photowall/public/photos.json'),JSON.stringify({photos:wallFiles}));
+console.log('[site photos] photowall',wallFiles.length);

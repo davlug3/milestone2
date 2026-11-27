@@ -42,7 +42,8 @@
     "test:cycles": "node --test scripts/cycles-presets.test.mjs scripts/render-lock.test.mjs scripts/binary-cache.test.mjs",
     "render:final": "node scripts/render-final.mjs",
     "status": "node scripts/status.mjs",
-    "test:status": "node --test scripts/status.test.mjs"
+    "test:status": "node --test scripts/status.test.mjs",
+    "render:realtime": "node scripts/render-realtime.mjs"
   },
   "dependencies": {
     "three": "^0.180.0",

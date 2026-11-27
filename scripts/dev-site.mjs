@@ -1,4 +1,4 @@
-// One public origin, five Vite dev servers (HMR preserved through the proxy).
+// One public origin, six Vite dev servers (HMR preserved through the proxy).
 import {createServer as createHttpServer,request as httpRequest} from "node:http";
 import {createServer as createViteServer} from "vite";
 import {readFileSync} from "node:fs";
@@ -11,7 +11,7 @@ import {parseArgs} from "node:util";
 const {values}=parseArgs({options:{host:{type:"string",default:"localhost"},port:{type:"string",default:"5173"}},allowPositionals:false});
 const startPort=Number(values.port);if(!Number.isInteger(startPort)||startPort<1||startPort>65535)throw Error("Invalid port");
 const MAX_PORT_TRIES=100;
-const root=process.cwd(),names=["book","slideshow","stats","clothesline","floating"],servers=new Map();
+const root=process.cwd(),names=["book","slideshow","stats","clothesline","floating","earth","title","slideshow2d","photowall"],servers=new Map();
 const preparation=spawnSync(process.execPath,["scripts/site-photos.mjs"],{cwd:root,stdio:"inherit"});if(preparation.status!==0)throw Error("Photo preparation failed");
 const home=()=>readFileSync(resolve(root,"site/index.html"),"utf8");
 const nav='<a id="site-home" href="/" style="position:fixed;z-index:100;top:12px;left:12px;background:#151515bb;color:#eee;text-decoration:none;padding:9px 13px;border-radius:9px;font:14px system-ui">← Presentations</a><script>if(new URLSearchParams(location.search).has("export")||new URLSearchParams(location.search).has("geometry-export"))document.getElementById("site-home").hidden=true;</script>';
@@ -42,7 +42,7 @@ try{
    port++;
   }
  }
- // Each Vite server starts from the public port and increments past it, so all five are distinct.
+ // Each Vite server starts from the public port and increments past it, so all six are distinct.
  for(const name of names){
   const vite=await createViteServer({root:name==="book"?root:resolve(root,name),base:"/"+name+"/",cacheDir:resolve(root,"node_modules/.vite-scenes",name),plugins:[...(name==="stats"?[statsConfigPlugin(resolve(root,"photos.config.jsonc"))]:[]),{name:"local-presentation-navigation",transformIndexHtml(html){return html.replace("</body>",nav+"</body>");}}],server:{host:"127.0.0.1",port,strictPort:false,hmr:{clientPort:port,path:"hmr"},fs:{allow:[root]}},configFile:false,appType:"mpa"});
   await vite.listen();servers.set(name,vite);

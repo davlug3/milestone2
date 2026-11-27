@@ -14,7 +14,7 @@ import {acquireRenderLock} from "./lib/render-lock.mjs";
 import {resolveCyclesPreset} from "./lib/cycles-presets.mjs";
 import { isWSL } from "./lib/windows-browser.mjs";
 const {values:o}=parseArgs({options:{
-  scene:{type:"string",default:"book"},style:{type:"string",default:"luxury"},format:{type:"string",default:"EXR"},passes:{type:"string",default:"all"},"no-build":{type:"boolean",default:false},"reuse-cache":{type:"boolean",default:false},width:{type:"string",default:"1920"},height:{type:"string",default:"1080"},fps:{type:"string",default:"60"},
+  "chunk-size":{type:"string",default:"240"},"depth-far":{type:"string",default:"10"},scene:{type:"string",default:"book"},style:{type:"string",default:"luxury"},format:{type:"string",default:"EXR"},passes:{type:"string",default:"all"},"no-build":{type:"boolean",default:false},"reuse-cache":{type:"boolean",default:false},width:{type:"string",default:"1920"},height:{type:"string",default:"1080"},fps:{type:"string",default:"60"},
   "cache-format":{type:"string",default:"binary"},preset:{type:"string",default:"cinema"},samples:{type:"string"},bounces:{type:"string"},noise:{type:"string"},"min-samples":{type:"string"},"exr-codec":{type:"string",default:"ZIP"},"benchmark-frames":{type:"string"},
   device:{type:"string",default:"OPTIX"},start:{type:"string",default:"0"},duration:{type:"string"},
   output:{type:"string"},cache:{type:"string"},
@@ -22,6 +22,9 @@ const {values:o}=parseArgs({options:{
 }});
 if(o.help){console.log("npm run render:blender -- [--scene book|slideshow|clothesline|floating --style luxury|classic --format PNG|EXR --passes all|essential|beauty --no-build --reuse-cache --cache-format binary|json --width 1920 --height 1080 --fps 60 --preset draft|turbo|fast-production|cinema|master --samples 96 --noise 0.02 --min-samples 16 --exr-codec ZIP|PIZ|DWAA --benchmark-frames 0,60,120 --bounces 8 --device OPTIX|CUDA|CPU --start seconds --duration seconds --output renders/blender-final.mp4 --cache folder --export-only --frames-only]");process.exit(0);}
 const num=(k)=>{const v=Number(o[k]);if(!Number.isInteger(v)||v<=0)throw Error("Invalid "+k);return v;};
+const prores=o.format.toLowerCase()==="prores";
+if(prores){o.format="PNG";o.passes="beauty";o["frames-only"]=true;if(o["benchmark-frames"])throw Error("ProRes does not support sparse benchmarks");}
+const chunkSize=num("chunk-size"),depthFar=Number(o["depth-far"]);if(!Number.isFinite(depthFar)||depthFar<=0)throw Error("Invalid depth-far");
 const apis={book:"__demo",slideshow:"__slideshow",clothesline:"__clothesline",floating:"__floating"},api=apis[o.scene];if(!api||!["luxury","classic"].includes(o.style)||!["PNG","EXR"].includes(o.format))throw Error("Invalid scene/style/format");if(!["all","beauty","essential"].includes(o.passes))throw Error("Invalid passes: use all, essential, or beauty");if(o.passes==="essential"&&o.format!=="EXR")throw Error("Essential passes require EXR");if(o.format==="EXR")o["frames-only"]=true;
 const {samples,bounces,noise,minSamples,diffuse,glossy}=resolveCyclesPreset(o.preset,{samples:o.samples,bounces:o.bounces,noise:o.noise,minSamples:o["min-samples"]});
 if(!["ZIP","PIZ","DWAA"].includes(o["exr-codec"]))throw Error("Choose ZIP, PIZ, or DWAA");
@@ -29,7 +32,7 @@ const benchmark=o["benchmark-frames"]?.split(",").map(Number);if(benchmark&&(!o[
 if(!["binary","json"].includes(o["cache-format"]))throw Error("Invalid cache format");
 const width=num("width"),height=num("height"),fps=num("fps"),start=Number(o.start),duration=o.duration===undefined?null:Number(o.duration);
 if(width%2||height%2||!(noise>0&&noise<=1)||!Number.isFinite(start)||start<0||duration!==null&&!(duration>0)||!["OPTIX","CUDA","CPU"].includes(o.device))throw Error("Invalid render settings");
-const output=projectOutput(o.scene,o.output,{kind:o.preset==="draft"||width<1920?"preview":"final"}),cache=resolve(o.cache??cacheFor(output)),frames=output.replace(/\.mp4$/i,"")+(o.format==="PNG"&&o.passes==="all"?".png-passes":o.format==="PNG"?".png-frames":o.passes==="beauty"?".exr-beauty":".frames");
+const output=projectOutput(o.scene,o.output,{kind:o.preset==="draft"||width<1920?"preview":"final"}),cache=resolve(o.cache??cacheFor(output)),frames=output.replace(/\.mp4$/i,"")+(prores?".prores":o.format==="PNG"&&o.passes==="all"?".png-passes":o.format==="PNG"?".png-frames":o.passes==="beauty"?".exr-beauty":".frames");
 function run(bin,args){const r=spawnSync(bin,args,{stdio:"inherit"});if(r.error)throw r.error;if(r.status!==0)throw Error(bin+" failed: "+r.status);}
 const available=bin=>spawnSync(bin,["--version"],{stdio:"ignore"}).status===0;
 let blender=process.env.BLENDER_PATH;
@@ -39,7 +42,9 @@ if(!blender&&isWSL()){
 }
 blender??="blender";
 if(!o["export-only"]&&!available(blender))throw Error("Blender not found. Set BLENDER_PATH to the executable.");
-const ffmpeg=process.env.FFMPEG_PATH??["ffmpeg","ffmpeg.exe","/mnt/c/msys64/mingw64/bin/ffmpeg.exe"].find(x=>spawnSync(x,["-version"],{stdio:"ignore"}).status===0);
+const ffmpeg=process.env.FFMPEG_PATH??(prores&&blender.endsWith(".exe")?["/mnt/c/msys64/mingw64/bin/ffmpeg.exe","ffmpeg.exe"]:["ffmpeg","ffmpeg.exe","/mnt/c/msys64/mingw64/bin/ffmpeg.exe"]).find(x=>spawnSync(x,["-version"],{stdio:"ignore"}).status===0);
+const ffprobe=process.env.FFPROBE_PATH??(prores&&blender.endsWith(".exe")?["/mnt/c/msys64/mingw64/bin/ffprobe.exe","ffprobe.exe"]:["ffprobe","ffprobe.exe","/mnt/c/msys64/mingw64/bin/ffprobe.exe"]).find(x=>spawnSync(x,["-version"],{stdio:"ignore"}).status===0);
+if(prores&&(!ffmpeg||!ffprobe))throw Error("ProRes requires FFmpeg and FFprobe");
 if(!o["export-only"]&&!o["frames-only"]&&!ffmpeg)throw Error("FFmpeg not found");
 const nativePath=(bin,p)=>isWSL()&&bin.toLowerCase().endsWith(".exe")?execFileSync("wslpath",["-w",p],{encoding:"utf8"}).trim():p;
 function save(path,data){writeFileSync(path+".tmp",o["cache-format"]==="binary"?encodeCache(data):gzipSync(JSON.stringify(data)));renameSync(path+".tmp",path);}
@@ -94,13 +99,13 @@ if(!o["export-only"]){
   try{
   const legacy={settings,samples,bounces,noise,format:o.format,...(o.format==="PNG"||o.passes!=="all"?{passes:o.passes}:{}),device:o.device};
   const compatible=minSamples===Math.min(16,samples)&&diffuse===Math.min(4,bounces)&&glossy===Math.min(4,bounces)&&o["exr-codec"]==="ZIP"&&!benchmark;
-  const config=JSON.stringify(compatible?legacy:{...legacy,minSamples,diffuse,glossy,codec:o["exr-codec"],benchmark:benchmark??null});
+  const config=JSON.stringify(prores?{...legacy,format:"prores",passes:"beauty+depth",minSamples,diffuse,glossy,chunkSize,depthFar,version:1}:compatible?legacy:{...legacy,minSamples,diffuse,glossy,codec:o["exr-codec"],benchmark:benchmark??null});
   if(benchmark&&benchmark.some(i=>i>=JSON.parse(readFileSync(manifest)).count))throw Error("Benchmark frame exceeds cache length");
   mkdirSync(frames,{recursive:true});const marker=join(frames,"settings.json");
   if(existsSync(marker)&&readFileSync(marker,"utf8")!==config)throw Error("Render settings changed; choose another output");
   writeFileSync(marker,config);
   console.log("[render] Blender:",blender,"device:",o.device);
-  run(blender,["-b","--factory-startup","--python-exit-code","1","-P",nativePath(blender,resolve("blender/render_cache.py")),"--","--cache",nativePath(blender,cache),"--output",nativePath(blender,frames),"--width",String(width),"--height",String(height),"--samples",String(samples),"--noise",String(noise),"--bounces",String(bounces),"--device",o.device,"--format",o.format,"--passes",o.passes,"--min-samples",String(minSamples),"--diffuse",String(diffuse),"--glossy",String(glossy),"--exr-codec",o["exr-codec"],...(benchmark?["--benchmark-frames",benchmark.join(",")]:[])]);
+  run(blender,["-b","--factory-startup","--python-exit-code","1","-P",nativePath(blender,resolve("blender/render_cache.py")),"--","--cache",nativePath(blender,cache),"--output",nativePath(blender,frames),"--width",String(width),"--height",String(height),"--samples",String(samples),"--noise",String(noise),"--bounces",String(bounces),"--device",o.device,"--format",o.format,"--passes",o.passes,"--min-samples",String(minSamples),"--diffuse",String(diffuse),"--glossy",String(glossy),"--exr-codec",o["exr-codec"],...(benchmark?["--benchmark-frames",benchmark.join(",")]:[]),...(prores?["--prores","--chunk-size",String(chunkSize),"--depth-far",String(depthFar),"--ffmpeg",nativePath(blender,ffmpeg.startsWith("/")?ffmpeg:execFileSync("which",[ffmpeg],{encoding:"utf8"}).trim()),"--ffprobe",nativePath(blender,ffprobe.startsWith("/")?ffprobe:execFileSync("which",[ffprobe],{encoding:"utf8"}).trim())]:[])]);
   if(!o["frames-only"]){
     const temp=output.replace(/\.mp4$/i,"")+".partial.mp4";
     run(ffmpeg,["-y","-framerate",String(fps),"-start_number","0","-i",nativePath(ffmpeg,join(frames,"frame-%06d.png")),"-frames:v",String(JSON.parse(readFileSync(manifest)).count),"-c:v","libx264","-preset","slow","-crf","15","-pix_fmt","yuv420p","-movflags","+faststart",nativePath(ffmpeg,temp)]);

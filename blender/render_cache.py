@@ -3,6 +3,7 @@ import bpy, sys, os, json, gzip, base64, time, argparse, math
 sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
 from cache_utils import mesh_key, resume_start, complete_checkpoint
 from binary_cache import read_cache
+from prores_output import ProResOutput
 import numpy as np
 from mathutils import Matrix, Vector
 from pathlib import Path
@@ -21,6 +22,11 @@ def args():
     p.add_argument("--glossy",type=int,default=4)
     p.add_argument("--exr-codec",choices=["ZIP","PIZ","DWAA"],default="ZIP")
     p.add_argument("--benchmark-frames")
+    p.add_argument("--prores",action="store_true")
+    p.add_argument("--ffmpeg")
+    p.add_argument("--ffprobe")
+    p.add_argument("--chunk-size",type=int,default=240)
+    p.add_argument("--depth-far",type=float,default=10)
     p.add_argument("--passes",choices=["all","beauty","essential"],default="all")
     p.add_argument("--format",choices=["PNG","EXR"],default="EXR")
     p.add_argument("--device",choices=["OPTIX","CUDA","CPU"],default="OPTIX")
@@ -203,7 +209,7 @@ PASS_SPECS={
  "normal":("Normal","normal"),"position":("Position","position"),"uv":("UV",None),
  "object-id":("IndexOB","index"),"material-id":("IndexMA","index"),"mist":("Mist",None),"alpha":("Alpha",None)
 }
-def png_pass_outputs(scene,out):
+def png_pass_outputs(scene,out,depth_only=False,depth_far=10):
     if bpy.app.version>=(5,0,0):
         tree=bpy.data.node_groups.new("PNG render passes","CompositorNodeTree")
         scene.compositing_node_group=tree
@@ -218,13 +224,14 @@ def png_pass_outputs(scene,out):
     outputs={}
     missing=[]
     for name,(socket,encoding) in PASS_SPECS.items():
+        if depth_only and name!="depth":continue
         modern={"DiffCol":"Diffuse Color","DiffDir":"Diffuse Direct","DiffInd":"Diffuse Indirect","GlossCol":"Glossy Color","GlossDir":"Glossy Direct","GlossInd":"Glossy Indirect","TransCol":"Transmission Color","TransDir":"Transmission Direct","TransInd":"Transmission Indirect","VolumeDir":"Volume Direct","VolumeInd":"Volume Indirect","Emit":"Emission","Env":"Environment","AO":"Ambient Occlusion","IndexOB":"Object Index","IndexMA":"Material Index"}
         source=layers.outputs.get(modern.get(socket,socket)) or layers.outputs.get(socket)
         if source is None or not source.enabled:
             missing.append(name);continue
         if encoding in ("depth","index"):
             node=tree.nodes.new("ShaderNodeMath" if bpy.app.version>=(5,0,0) else "CompositorNodeMath")
-            node.operation="MULTIPLY";node.inputs[1].default_value=.1 if encoding=="depth" else 1/65535
+            node.operation="MULTIPLY";node.inputs[1].default_value=1/depth_far if encoding=="depth" else 1/65535
             node.use_clamp=True;tree.links.new(source,node.inputs[0]);source=node.outputs[0]
         elif encoding in ("normal","position"):
             node=tree.nodes.new("ShaderNodeVectorMath")
@@ -234,7 +241,7 @@ def png_pass_outputs(scene,out):
             tree.links.new(node.outputs[0],offset.inputs[0]);source=offset.outputs[0]
         node=tree.nodes.new("CompositorNodeOutputFile")
         if hasattr(node.format,"media_type"):node.format.media_type="IMAGE"
-        node.format.file_format="PNG";node.format.color_depth="16";node.format.color_mode="RGB";node.format.compression=15
+        node.format.file_format="PNG";node.format.color_depth="16";node.format.color_mode="BW" if depth_only else "RGB";node.format.compression=15
         if hasattr(node,"save_as_render"):node.save_as_render=False
         if hasattr(node.format,"color_management"):
             node.format.color_management="OVERRIDE"
@@ -245,11 +252,12 @@ def png_pass_outputs(scene,out):
             node.directory=str(folder)
             node.file_name="pass-"
             node.file_output_items.clear()
-            node.file_output_items.new("RGBA","image")
+            node.file_output_items.new("FLOAT" if depth_only else "RGBA","image")
             target=node.inputs[0]
         else:
             node.base_path=str(folder);node.file_slots[0].path="pass-";target=node.inputs[0]
         tree.links.new(source,target);outputs[name]=node
+    if depth_only and "depth" not in outputs:raise RuntimeError("Z depth unavailable")
     if missing:log("Unavailable native passes:",", ".join(missing))
     (out/"passes.json").write_text(json.dumps({"beauty":"frame-%06d.png","passes":list(outputs),"unavailable":missing,"encoding":{"depth":"distance / 10 meters, clamped","normal":"normal * 0.5 + 0.5","position":"world position / 40 + 0.5, clamped","object-id":"index / 65535","material-id":"index / 65535","lighting":"linear RGB clamped to PNG range"}},indent=2))
     return outputs
@@ -272,7 +280,9 @@ def main():
         bg=scene.world.node_tree.nodes.get("Background");bg.inputs["Color"].default_value=(*data["background"],1);bg.inputs["Strength"].default_value=max(.1,data.get("environmentIntensity",.2))
     meta=json.loads((folder/"manifest.json").read_text())
     scene.render.fps=meta["fps"]
-    outputs=png_pass_outputs(scene,out) if a.format=="PNG" and a.passes=="all" else {}
+    if a.prores:scene.view_layers[0].use_pass_z=True
+    outputs=png_pass_outputs(scene,out,a.prores,a.depth_far) if a.prores or (a.format=="PNG" and a.passes=="all") else {}
+    video=ProResOutput(out,meta,a) if a.prores else None
     (out/"object-ids.json").write_text(json.dumps({str(obj.pass_index):obj.name for obj in objs.values()},indent=2))
     (out/"material-ids.json").write_text(json.dumps({str(m.pass_index):m.name for m in bpy.data.materials if m.pass_index},indent=2))
     log(len(objs),"meshes;",len(data["materials"]),"materials;",meta["count"],"frames")
@@ -281,10 +291,13 @@ def main():
     limit=max(wanted)+1 if wanted else meta["count"]
     ext="exr" if a.format=="EXR" else "png"
     def done(i):
+        if video:return video.done(i)
         path=out/("frame-%06d.%s"%(i,ext))
         return path.exists() and path.stat().st_size>100 and all((out/name/path.name).exists() and (out/name/path.name).stat().st_size>100 for name in outputs)
     needed=[i for i in range(limit) if (wanted is None or i in wanted) and not done(i)]
-    if not needed:log("All requested frames complete");return
+    if not needed:
+        if video:video.finish()
+        log("All requested frames complete");return
     first=resume_start(min(needed),meta.get("checkpointInterval"),meta["count"])
     if first and not complete_checkpoint(read(folder/("frame-%06d.json.gz"%first)),objs.keys()):first=0
     log("Replay starting at frame",first)
@@ -318,7 +331,9 @@ def main():
         update_seconds=time.monotonic()-frame_start
         ext="exr" if a.format=="EXR" else "png"
         path=out/("frame-%06d.%s"%(i,ext))
-        if path.exists() and path.stat().st_size>100 and all((out/name/path.name).exists() and (out/name/path.name).stat().st_size>100 for name in outputs):log("Resume",i+1);continue
+        if done(i):
+            if video and (i+1)%a.chunk_size==0:video.flush(i//a.chunk_size*a.chunk_size)
+            log("Resume",i+1);continue
         for name in outputs:
             for stale in (out/name).glob("pass-*.png"):stale.unlink()
         start=time.monotonic();log("Rendering",i+1,"/",meta["count"])
@@ -332,5 +347,7 @@ def main():
         elapsed=time.monotonic()-start
         timings.append({"frame":i,"cacheReadSeconds":read_seconds,"updateSeconds":max(0,update_seconds-read_seconds),"nativeRenderAndWriteSeconds":native_seconds,"finalizeSeconds":max(0,elapsed-native_seconds),"renderAndWriteSeconds":elapsed,"bytes":path.stat().st_size})
         log("Finished",i+1,"seconds",round(elapsed,2))
+        if video and ((i+1)%a.chunk_size==0 or i+1==meta["count"]):video.flush(i//a.chunk_size*a.chunk_size)
         if wanted is not None:(out/"benchmark.json").write_text(json.dumps({"samples":a.samples,"bounces":a.bounces,"noise":a.noise,"codec":a.exr_codec,"frames":timings},indent=2))
+    if video:video.finish()
 if __name__=="__main__":main()

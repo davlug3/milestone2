@@ -4,4 +4,4 @@ test("fast settings",()=>assert.equal(resolveCyclesPreset("fast-production").sam
 test("overrides clamp minimum and bounces",()=>assert.deepEqual(resolveCyclesPreset("master",{samples:4,bounces:2}),{samples:4,bounces:2,noise:.005,minSamples:4,diffuse:2,glossy:2}));
 test("invalid",()=>{assert.throws(()=>resolveCyclesPreset("bad"));assert.throws(()=>resolveCyclesPreset("cinema",{noise:0}));});
 
-test("turbo preset",()=>assert.deepEqual(resolveCyclesPreset("turbo"),{samples:24,bounces:4,noise:.06,minSamples:4,diffuse:2,glossy:2}));
+test("turbo preset",()=>assert.deepEqual(resolveCyclesPreset("turbo"),{samples:12,bounces:3,noise:.10,minSamples:4,diffuse:2,glossy:2}));

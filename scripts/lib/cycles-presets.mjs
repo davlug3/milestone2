@@ -1,6 +1,6 @@
 export const CYCLES_PRESETS=Object.freeze({
  draft:{samples:16,bounces:3,noise:.08,minSamples:8,diffuse:2,glossy:2},
- "turbo":{samples:24,bounces:4,noise:.06,minSamples:4,diffuse:2,glossy:2},
+ "turbo":{samples:12,bounces:3,noise:.10,minSamples:4,diffuse:2,glossy:2},
  "fast-production":{samples:48,bounces:6,noise:.03,minSamples:8,diffuse:3,glossy:3},
  cinema:{samples:96,bounces:8,noise:.02,minSamples:16,diffuse:4,glossy:4},
  master:{samples:256,bounces:12,noise:.005,minSamples:32,diffuse:6,glossy:6}

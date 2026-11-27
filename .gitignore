@@ -42,3 +42,7 @@ slideshow/public/shared-photos/
 # Downloaded placeholder assets (not source-controlled)
 /public/page-photos/[0-9]*.jpg
 /public/page-photos/sources.json
+
+# Python bytecode
+__pycache__/
+*.py[cod]

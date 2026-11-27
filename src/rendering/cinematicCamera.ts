@@ -24,5 +24,16 @@ export function cinematicCameraPose(time: number, duration: number) {
   // Dolly back along the viewing ray to preserve the projected subject size.
   const ratio = CAMERA_FOCAL_MM / 35;
   for(let i=0;i<3;i++)position[i]=target[i]+(position[i]-target[i])*ratio;
+  // Elevate the viewing ray by five degrees around the existing subject target.
+  // Preserve camera distance, focal length, dolly timing and subject centering.
+  const elevation = 5 * Math.PI / 180;
+  const dx = position[0] - target[0], dy = position[1] - target[1], dz = position[2] - target[2];
+  const horizontal = Math.hypot(dx, dz);
+  const distance = Math.hypot(horizontal, dy);
+  const pitch = Math.atan2(dy, horizontal) + elevation;
+  const scale = distance * Math.cos(pitch) / horizontal;
+  position[0] = target[0] + dx * scale;
+  position[1] = target[1] + distance * Math.sin(pitch);
+  position[2] = target[2] + dz * scale;
   return { position, target };
 }

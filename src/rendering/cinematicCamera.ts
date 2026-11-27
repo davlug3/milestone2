@@ -5,6 +5,7 @@ export const CAMERA_FOCAL_MM = 100;
 export const CAMERA_SENSOR_W_MM = 36;
 export const CAMERA_SENSOR_H_MM = 24;
 export const BOOK_ASPECT = 16/9;
+export const CAMERA_ORBIT_DEG = 20;
 export function cameraVerticalFov(aspect: number): number {
   const gateHeight = CAMERA_SENSOR_W_MM / Math.max(aspect, 0.01);
   return 2 * Math.atan(gateHeight / (2 * CAMERA_FOCAL_MM)) * 180 / Math.PI;
@@ -33,8 +34,11 @@ export function cinematicCameraPose(time: number, duration: number) {
   const distance = Math.hypot(horizontal, dy);
   const pitch = Math.atan2(dy, horizontal) + elevation;
   const scale = distance * Math.cos(pitch) / horizontal;
-  position[0] = target[0] + dx * scale;
+  // Orbit the optical centre about the book, not a lens roll or a stationary pan.
+  // A centred 20-degree arc adds lateral parallax without changing dolly radius.
+  const orbit = (u - 0.5) * CAMERA_ORBIT_DEG * Math.PI / 180;
+  position[0] = target[0] + (dx * Math.cos(orbit) + dz * Math.sin(orbit)) * scale;
   position[1] = target[1] + distance * Math.sin(pitch);
-  position[2] = target[2] + dz * scale;
+  position[2] = target[2] + (dz * Math.cos(orbit) - dx * Math.sin(orbit)) * scale;
   return { position, target };
 }

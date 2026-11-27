@@ -1,7 +1,7 @@
 import { clamp01 } from "../animation/easing";
 
-/** Fixed 85mm full-frame lens, using a 36mm-wide 16:9 crop in the presentation. */
-export const CAMERA_FOCAL_MM = 85;
+/** Fixed 100mm full-frame lens, using a 36mm-wide 16:9 crop in the presentation. */
+export const CAMERA_FOCAL_MM = 100;
 export const CAMERA_SENSOR_W_MM = 36;
 export const CAMERA_SENSOR_H_MM = 24;
 export const BOOK_ASPECT = 16/9;
@@ -21,8 +21,9 @@ export function cinematicCameraPose(time: number, duration: number) {
   const target: [number, number, number] = [
     lerp(0.015, 0.005), lerp(0.065, 0.025), 0,
   ];
-  // Dolly back along the viewing ray to preserve the projected subject size.
-  const ratio = CAMERA_FOCAL_MM / 35;
+  // Preserve the original 85mm camera path independently of the lens.
+  // Changing focal length now changes framing without moving the camera.
+  const ratio = 85 / 35;
   for(let i=0;i<3;i++)position[i]=target[i]+(position[i]-target[i])*ratio;
   // Elevate the viewing ray by five degrees around the existing subject target.
   // Preserve camera distance, focal length, dolly timing and subject centering.

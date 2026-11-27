@@ -5,6 +5,7 @@ import {readFileSync} from "node:fs";
 import {resolve} from "node:path";
 import {spawnSync} from "node:child_process";
 import {statsConfigPlugin} from "./lib/stats-config.mjs";
+import {handleEditor} from "../tools/photo-editor/server.mjs";
 import {parseArgs} from "node:util";
 const {values}=parseArgs({options:{host:{type:"string",default:"localhost"},port:{type:"string",default:"5173"}},allowPositionals:false});
 const startPort=Number(values.port);if(!Number.isInteger(startPort)||startPort<1||startPort>65535)throw Error("Invalid port");
@@ -15,7 +16,8 @@ const home=()=>readFileSync(resolve(root,"site/index.html"),"utf8");
 const nav='<a id="site-home" href="/" style="position:fixed;z-index:100;top:12px;left:12px;background:#151515bb;color:#eee;text-decoration:none;padding:9px 13px;border-radius:9px;font:14px system-ui">← Presentations</a><script>if(new URLSearchParams(location.search).has("export")||new URLSearchParams(location.search).has("geometry-export"))document.getElementById("site-home").hidden=true;</script>';
 const server=createHttpServer((req,res)=>{
  const url=new URL(req.url,"http://localhost"),name=url.pathname.split("/")[1];
- if(url.pathname==="/"||url.pathname==="/index.html"){res.setHeader("Content-Type","text/html; charset=utf-8");res.end(home());return;}
+ if(name==="editor"){void handleEditor(req,res);return;}
+ if(url.pathname==="/"||url.pathname==="/index.html"){res.setHeader("Content-Type","text/html; charset=utf-8");res.end(home().replace("</main>",'<div style="margin-top:24px"><a href="/editor/" style="color:#c7ae8e">Edit scene photos &amp; statistics →</a></div></main>'));return;}
  if(names.includes(name)&&url.pathname==="/"+name){res.writeHead(302,{Location:"/"+name+"/"+url.search});res.end();return;}
  const vite=servers.get(name);if(!vite){res.writeHead(404);res.end("Not found");return;}
  const upstream=vite.httpServer.address().port;
@@ -40,7 +42,7 @@ try{
  }
  // Each Vite server starts from the public port and increments past it, so all five are distinct.
  for(const name of names){
-  const vite=await createViteServer({root:name==="book"?root:resolve(root,name),base:"/"+name+"/",plugins:[...(name==="stats"?[statsConfigPlugin(resolve(root,"photos.config.jsonc"))]:[]),{name:"local-presentation-navigation",transformIndexHtml(html){return html.replace("</body>",nav+"</body>");}}],server:{host:"127.0.0.1",port,strictPort:false,hmr:{clientPort:port,path:"hmr"},fs:{allow:[root]}},configFile:false,appType:"mpa"});
+  const vite=await createViteServer({root:name==="book"?root:resolve(root,name),base:"/"+name+"/",cacheDir:resolve(root,"node_modules/.vite-scenes",name),plugins:[...(name==="stats"?[statsConfigPlugin(resolve(root,"photos.config.jsonc"))]:[]),{name:"local-presentation-navigation",transformIndexHtml(html){return html.replace("</body>",nav+"</body>");}}],server:{host:"127.0.0.1",port,strictPort:false,hmr:{clientPort:port,path:"hmr"},fs:{allow:[root]}},configFile:false,appType:"mpa"});
   await vite.listen();servers.set(name,vite);
  }
  // WebSocket upgrades are forwarded to the scene's own Vite HMR server.

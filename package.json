@@ -39,7 +39,8 @@
     "dev:book": "vite",
     "render": "node scripts/render-scene.mjs",
     "benchmark:cycles": "node scripts/benchmark-cycles.mjs",
-    "test:cycles": "node --test scripts/cycles-presets.test.mjs scripts/render-lock.test.mjs scripts/binary-cache.test.mjs"
+    "test:cycles": "node --test scripts/cycles-presets.test.mjs scripts/render-lock.test.mjs scripts/binary-cache.test.mjs",
+    "render:final": "node scripts/render-final.mjs"
   },
   "dependencies": {
     "three": "^0.180.0",

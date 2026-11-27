@@ -1,3 +1,4 @@
+import {projectOutput,cacheFor} from "./lib/project-output.mjs";
 import { spawnSync, execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync, existsSync, readFileSync, renameSync, readdirSync } from "node:fs";
 import { resolve, join } from "node:path";
@@ -16,19 +17,19 @@ const {values:o}=parseArgs({options:{
   scene:{type:"string",default:"book"},style:{type:"string",default:"luxury"},format:{type:"string",default:"EXR"},passes:{type:"string",default:"all"},"no-build":{type:"boolean",default:false},"reuse-cache":{type:"boolean",default:false},width:{type:"string",default:"1920"},height:{type:"string",default:"1080"},fps:{type:"string",default:"60"},
   "cache-format":{type:"string",default:"binary"},preset:{type:"string",default:"cinema"},samples:{type:"string"},bounces:{type:"string"},noise:{type:"string"},"min-samples":{type:"string"},"exr-codec":{type:"string",default:"ZIP"},"benchmark-frames":{type:"string"},
   device:{type:"string",default:"OPTIX"},start:{type:"string",default:"0"},duration:{type:"string"},
-  output:{type:"string",default:"renders/blender-final.mp4"},cache:{type:"string"},
+  output:{type:"string"},cache:{type:"string"},
   "export-only":{type:"boolean",default:false},"frames-only":{type:"boolean",default:false},help:{type:"boolean",default:false}
 }});
-if(o.help){console.log("npm run render:blender -- [--scene book|slideshow|clothesline|floating --style luxury|classic --format PNG|EXR --passes all|beauty --no-build --reuse-cache --cache-format binary|json --width 1920 --height 1080 --fps 60 --preset draft|fast-production|cinema|master --samples 96 --noise 0.02 --min-samples 16 --exr-codec ZIP|PIZ --benchmark-frames 0,60,120 --bounces 8 --device OPTIX|CUDA|CPU --start seconds --duration seconds --output renders/blender-final.mp4 --cache folder --export-only --frames-only]");process.exit(0);}
+if(o.help){console.log("npm run render:blender -- [--scene book|slideshow|clothesline|floating --style luxury|classic --format PNG|EXR --passes all|essential|beauty --no-build --reuse-cache --cache-format binary|json --width 1920 --height 1080 --fps 60 --preset draft|fast-production|cinema|master --samples 96 --noise 0.02 --min-samples 16 --exr-codec ZIP|PIZ|DWAA --benchmark-frames 0,60,120 --bounces 8 --device OPTIX|CUDA|CPU --start seconds --duration seconds --output renders/blender-final.mp4 --cache folder --export-only --frames-only]");process.exit(0);}
 const num=(k)=>{const v=Number(o[k]);if(!Number.isInteger(v)||v<=0)throw Error("Invalid "+k);return v;};
-const apis={book:"__demo",slideshow:"__slideshow",clothesline:"__clothesline",floating:"__floating"},api=apis[o.scene];if(!api||!["luxury","classic"].includes(o.style)||!["PNG","EXR"].includes(o.format))throw Error("Invalid scene/style/format");if(!["all","beauty"].includes(o.passes))throw Error("Invalid passes: use all or beauty");if(o.format==="EXR")o["frames-only"]=true;
+const apis={book:"__demo",slideshow:"__slideshow",clothesline:"__clothesline",floating:"__floating"},api=apis[o.scene];if(!api||!["luxury","classic"].includes(o.style)||!["PNG","EXR"].includes(o.format))throw Error("Invalid scene/style/format");if(!["all","beauty","essential"].includes(o.passes))throw Error("Invalid passes: use all, essential, or beauty");if(o.passes==="essential"&&o.format!=="EXR")throw Error("Essential passes require EXR");if(o.format==="EXR")o["frames-only"]=true;
 const {samples,bounces,noise,minSamples,diffuse,glossy}=resolveCyclesPreset(o.preset,{samples:o.samples,bounces:o.bounces,noise:o.noise,minSamples:o["min-samples"]});
-if(!["ZIP","PIZ"].includes(o["exr-codec"]))throw Error("Choose lossless ZIP or PIZ");
+if(!["ZIP","PIZ","DWAA"].includes(o["exr-codec"]))throw Error("Choose ZIP, PIZ, or DWAA");
 const benchmark=o["benchmark-frames"]?.split(",").map(Number);if(benchmark&&(!o["reuse-cache"]||!o["frames-only"]||o["export-only"]||benchmark.some(i=>!Number.isInteger(i)||i<0)||!benchmark.length))throw Error("Benchmark requires --reuse-cache, frame output and valid zero-based frame indices");
 if(!["binary","json"].includes(o["cache-format"]))throw Error("Invalid cache format");
 const width=num("width"),height=num("height"),fps=num("fps"),start=Number(o.start),duration=o.duration===undefined?null:Number(o.duration);
 if(width%2||height%2||!(noise>0&&noise<=1)||!Number.isFinite(start)||start<0||duration!==null&&!(duration>0)||!["OPTIX","CUDA","CPU"].includes(o.device))throw Error("Invalid render settings");
-const output=resolve(o.output),cache=resolve(o.cache??output.replace(/\.mp4$/i,"")+".cache"),frames=output.replace(/\.mp4$/i,"")+(o.format==="PNG"&&o.passes==="all"?".png-passes":o.format==="PNG"?".png-frames":o.passes==="beauty"?".exr-beauty":".frames");
+const output=projectOutput(o.scene,o.output,{kind:o.preset==="draft"||width<1920?"preview":"final"}),cache=resolve(o.cache??cacheFor(output)),frames=output.replace(/\.mp4$/i,"")+(o.format==="PNG"&&o.passes==="all"?".png-passes":o.format==="PNG"?".png-frames":o.passes==="beauty"?".exr-beauty":".frames");
 function run(bin,args){const r=spawnSync(bin,args,{stdio:"inherit"});if(r.error)throw r.error;if(r.status!==0)throw Error(bin+" failed: "+r.status);}
 const available=bin=>spawnSync(bin,["--version"],{stdio:"ignore"}).status===0;
 let blender=process.env.BLENDER_PATH;
@@ -91,7 +92,7 @@ if(existsSync(manifest)){
 if(!o["export-only"]){
   const release=acquireRenderLock(join(tmpdir(),"milestone2-native-render.lock"));
   try{
-  const legacy={settings,samples,bounces,noise,format:o.format,...(o.format==="PNG"||o.passes==="beauty"?{passes:o.passes}:{}),device:o.device};
+  const legacy={settings,samples,bounces,noise,format:o.format,...(o.format==="PNG"||o.passes!=="all"?{passes:o.passes}:{}),device:o.device};
   const compatible=minSamples===Math.min(16,samples)&&diffuse===Math.min(4,bounces)&&glossy===Math.min(4,bounces)&&o["exr-codec"]==="ZIP"&&!benchmark;
   const config=JSON.stringify(compatible?legacy:{...legacy,minSamples,diffuse,glossy,codec:o["exr-codec"],benchmark:benchmark??null});
   if(benchmark&&benchmark.some(i=>i>=JSON.parse(readFileSync(manifest)).count))throw Error("Benchmark frame exceeds cache length");

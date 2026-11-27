@@ -1,10 +1,11 @@
+import {projectOutput} from "../../scripts/lib/project-output.mjs";
 import {spawn,spawnSync,execFileSync} from "node:child_process";
 import {mkdirSync,existsSync,readFileSync,writeFileSync,renameSync,cpSync,copyFileSync,mkdtempSync,rmSync,readdirSync} from "node:fs";
 import {resolve,join} from "node:path";
 import {createInterface} from "node:readline";
 import {parseArgs} from "node:util";
 import {createHash} from "node:crypto";
-const {values:o}=parseArgs({options:{width:{type:"string",default:"1920"},height:{type:"string",default:"1080"},fps:{type:"string",default:"60"},duration:{type:"string"},output:{type:"string",default:"renders/slideshow.mp4"},mode:{type:"string",default:"raytrace"},samples:{type:"string",default:"1536"},headed:{type:"boolean",default:false},headless:{type:"boolean",default:false},"frames-only":{type:"boolean",default:false},help:{type:"boolean",default:false}}});
+const {values:o}=parseArgs({options:{width:{type:"string",default:"1920"},height:{type:"string",default:"1080"},fps:{type:"string",default:"60"},duration:{type:"string"},output:{type:"string"},mode:{type:"string",default:"raytrace"},samples:{type:"string",default:"1536"},headed:{type:"boolean",default:false},headless:{type:"boolean",default:false},"frames-only":{type:"boolean",default:false},help:{type:"boolean",default:false}}});
 if(o.help){console.log("npm run render:video -- [--width 1920 --height 1080 --fps 60 --duration seconds --output renders/slideshow.mp4 --mode raster|raytrace --samples 1536 --headed|--headless --frames-only]");process.exit(0);}
 const integer=k=>{const n=Number(o[k]);if(!Number.isInteger(n)||n<1)throw Error("Invalid "+k);return n;};
 const width=integer("width"),height=integer("height"),fps=integer("fps"),requested=o.duration===undefined?Infinity:Number(o.duration);
@@ -17,7 +18,7 @@ if(!o["frames-only"]&&!ffmpeg)throw Error("Install FFmpeg or set FFMPEG_PATH");
 const pathFor=(exe,p)=>wsl&&exe.toLowerCase().endsWith(".exe")?winPath(p):p;
 function run(bin,args){const r=spawnSync(bin,args,{stdio:"inherit"});if(r.error)throw r.error;if(r.status!==0)throw Error(bin+" failed: "+r.status);}
 run(process.execPath,["scripts/photos.mjs"]);run(process.execPath,["node_modules/vite/bin/vite.js","build"]);
-const output=resolve(o.output),dir=output.replace(/\.mp4$/i,"")+".frames";mkdirSync(dir,{recursive:true});
+const output=projectOutput("slideshow",o.output,{kind:width<1920?"preview":"final"}),dir=output.replace(/\.mp4$/i,"")+".frames";mkdirSync(dir,{recursive:true});
 let temp,child,rl,seq=0,closed=false;const pending=new Map();
 function rejectAll(e){for(const p of pending.values())p.reject(e);pending.clear();}
 function request(method,args={}){return new Promise((resolve,reject)=>{if(closed)return reject(Error("Browser worker closed"));const id=++seq;pending.set(id,{resolve,reject});child.stdin.write(JSON.stringify({id,method,args})+"\n");});}

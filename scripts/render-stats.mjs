@@ -1,12 +1,15 @@
-import {chromium} from "playwright";
+import {projectOutput,cacheFor} from "./lib/project-output.mjs";
 import {readStatsConfig} from "./lib/stats-config.mjs";
+import {chromium} from "playwright";
 import {spawnSync} from "node:child_process";
 import {createServer} from "node:http";
 import {readFileSync,writeFileSync,mkdirSync,statSync} from "node:fs";
 import {resolve,extname,sep,dirname} from "node:path";
 import {parseArgs} from "node:util";
-const {values:o}=parseArgs({options:{data:{type:"string",default:"photos.config.jsonc"},output:{type:"string",default:"renders/stats.mp4"},frames:{type:"string",default:"renders/stats-frames"},layer:{type:"string",default:"composite"},background:{type:"string",default:"luxury"},"frames-only":{type:"boolean",default:false},help:{type:"boolean",default:false}}});
+const {values:o}=parseArgs({options:{data:{type:"string",default:"photos.config.jsonc"},output:{type:"string"},frames:{type:"string"},layer:{type:"string",default:"composite"},background:{type:"string",default:"luxury"},"frames-only":{type:"boolean",default:false},help:{type:"boolean",default:false}}});
 if(o.help){console.log("npm run render:stats -- [--data photos.config.jsonc --output renders/stats.mp4 --frames renders/stats-frames --background luxury|tabletop --layer composite|background|foreground|chroma|typography|accent|separate --frames-only]");process.exit(0);}
+o.output=projectOutput("stats",o.output);
+o.frames=o.frames?projectOutput("stats",o.frames):o.output.replace(/\.mp4$/i,"")+".frames";
 if(!["composite","background","foreground","chroma","typography","accent","separate"].includes(o.layer))throw Error("Invalid layer");
 if(!["luxury","tabletop"].includes(o.background))throw Error("Invalid background");
 const root=resolve("site-dist");if(!statSync(root).isDirectory())throw Error("Run npm run build:site first.");

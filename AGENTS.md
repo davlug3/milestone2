@@ -2,6 +2,10 @@
 
 These instructions apply to every coding agent working on this repository. Read this file before inspecting, editing, running, testing, previewing, or rendering the project.
 
+## Overall AVP workspace contract
+
+Read `../AGENTS.md` before project work. Canonical shared reference: https://drive.google.com/file/d/1UGj8oxuQaHVBQZUabvz4D0H0re0AJFM9/view . Keep Git repositories in GitHub, not Google Drive. All generated EXR, PNG, MP4 and other render deliverables go to `../rendered/<scene>/<preview-or-final>/<job-id>/`; internal caches remain in `renders/`. Use `JILP_RENDER_JOB` to repeat a job ID for resumable renders, or an explicit absolute `--output` under the shared render root. Never upload EXRs automatically. Existing outputs are preserved in place until references are checked.
+
 The project may be developed from different environments on different days:
 
 - **Termux on Android**, sometimes without a desktop session or a usable local browser.

@@ -1,5 +1,5 @@
 """Import the exact Three.js mesh cache and render with Cycles."""
-import bpy, sys, os, json, gzip, base64, time, argparse
+import bpy, sys, os, json, gzip, base64, time, argparse, math
 sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
 from cache_utils import mesh_key, resume_start, complete_checkpoint
 from binary_cache import read_cache
@@ -19,9 +19,9 @@ def args():
     p.add_argument("--min-samples",type=int,default=16)
     p.add_argument("--diffuse",type=int,default=4)
     p.add_argument("--glossy",type=int,default=4)
-    p.add_argument("--exr-codec",choices=["ZIP","PIZ"],default="ZIP")
+    p.add_argument("--exr-codec",choices=["ZIP","PIZ","DWAA"],default="ZIP")
     p.add_argument("--benchmark-frames")
-    p.add_argument("--passes",choices=["all","beauty"],default="all")
+    p.add_argument("--passes",choices=["all","beauty","essential"],default="all")
     p.add_argument("--format",choices=["PNG","EXR"],default="EXR")
     p.add_argument("--device",choices=["OPTIX","CUDA","CPU"],default="OPTIX")
     return p.parse_args(sys.argv[sys.argv.index("--")+1:])
@@ -62,13 +62,19 @@ def configure(a):
     # Blender 5.x filters the file-format enum by media_type.
     image_settings=scene.render.image_settings
     if hasattr(image_settings,"media_type"):
-        image_settings.media_type="MULTI_LAYER_IMAGE" if a.format=="EXR" else "IMAGE"
-    image_settings.file_format="OPEN_EXR_MULTILAYER" if a.format=="EXR" else "PNG"
+        image_settings.media_type="MULTI_LAYER_IMAGE" if a.format=="EXR" and a.passes!="beauty" else "IMAGE"
+    image_settings.file_format=("OPEN_EXR_MULTILAYER" if a.passes!="beauty" else "OPEN_EXR") if a.format=="EXR" else "PNG"
     if a.format=="EXR":
         scene.render.image_settings.color_depth="16"
         scene.render.image_settings.exr_codec=a.exr_codec
     else:
         scene.render.image_settings.color_depth="16"
+    if a.passes=="essential":
+        layer=scene.view_layers[0]
+        for key in ["z","object_index","material_index","ambient_occlusion","shadow","diffuse_color","diffuse_direct","diffuse_indirect"]:
+            if hasattr(layer,"use_pass_"+key):setattr(layer,"use_pass_"+key,True)
+            else:raise RuntimeError("Missing required render pass: "+key)
+        layer.cycles.denoising_store_passes=False
     if a.passes=="all":
         layer=scene.view_layers[0]
         for key in ["z","normal","position","uv","diffuse_color","diffuse_direct","diffuse_indirect","glossy_color","glossy_direct","glossy_indirect","transmission_color","transmission_direct","transmission_indirect","volume_direct","volume_indirect","emit","environment","ambient_occlusion","object_index","material_index","mist"]:
@@ -93,7 +99,7 @@ def configure(a):
     light("Cool rim",(.95,.64,-.9),(0,.03,0),(.55,.69,1),.42,"SUN",.15)
     light("Faint fill",(.18,.42,.58),(0,.03,0),(1,.88,.76),.12,"SUN",.22)
     cam=bpy.data.cameras.new("35mm cinematic");cam.type="PERSP";cam.sensor_fit="VERTICAL";cam.sensor_height=24
-    cam.dof.use_dof=True;cam.dof.aperture_blades=6;cam.dof.aperture_rotation=.15
+    cam.dof.use_dof=False;cam.dof.aperture_blades=6;cam.dof.aperture_rotation=.15
     obj=bpy.data.objects.new("Camera",cam);scene.collection.objects.link(obj);scene.camera=obj
     return scene,obj
 
@@ -110,6 +116,13 @@ def build(data,folder):
         nodes=mat.node_tree.nodes;links=mat.node_tree.links;bs=nodes.get("Principled BSDF")
         for name,value in [("Base Color",(*m["color"],1)),("Roughness",m["roughness"]),("Metallic",m["metalness"]),("Coat Weight",m["coat"]),("Coat Roughness",m["coatRoughness"]),("Sheen Weight",m["sheen"]),("Sheen Roughness",m["sheenRoughness"]),("Sheen Tint",(*m["sheenColor"],1))]:
             bs.inputs[name].default_value=value
+        if "Anisotropic IOR Level" in bs.inputs:
+            bs.inputs["Anisotropic IOR Level"].default_value=m.get("anisotropy",0)
+        if "Anisotropic Rotation" in bs.inputs:
+            bs.inputs["Anisotropic Rotation"].default_value=m.get("anisotropyRotation",0)/(2*math.pi)
+        if m.get("anisotropy",0)>0:
+            tangent=nodes.new("ShaderNodeTangent");tangent.direction_type="UV_MAP";tangent.uv_map="UVMap"
+            links.new(tangent.outputs["Tangent"],bs.inputs["Tangent"])
         def texture(id):
             image,t=images[id];node=nodes.new("ShaderNodeTexImage");node.image=image
             uv=nodes.new("ShaderNodeTexCoord");mapping=nodes.new("ShaderNodeMapping")
@@ -130,7 +143,7 @@ def build(data,folder):
         if "emissive" in m:
             bs.inputs["Emission Color"].default_value=(*m["emissive"],1);bs.inputs["Emission Strength"].default_value=m["emissiveIntensity"]
             if m.get("emissiveMap") is not None:links.new(texture(m["emissiveMap"]).outputs["Color"],bs.inputs["Emission Color"])
-        if m["bump"] is not None:
+        if m["bump"] is not None and not (m.get("normalMap") is not None and m.get("anisotropy",0)>0):
             node=texture(m["bump"]);bump=nodes.new("ShaderNodeBump");bump.inputs["Distance"].default_value=abs(m["bumpScale"])
             links.new(node.outputs["Color"],bump.inputs["Height"]);links.new(bump.outputs["Normal"],bs.inputs["Normal"])
         mat.pass_index=min(m["id"]+1,32767)

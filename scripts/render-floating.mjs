@@ -1,10 +1,12 @@
+import {projectOutput,cacheFor} from "./lib/project-output.mjs";
 import {chromium} from "playwright";
 import {createServer} from "node:http";
 import {readFileSync,writeFileSync,mkdirSync} from "node:fs";
 import {resolve,extname,sep,dirname} from "node:path";
 import {spawnSync} from "node:child_process";
 import {parseArgs} from "node:util";
-const {values:o}=parseArgs({options:{output:{type:"string",default:"renders/floating.mp4"},mode:{type:"string",default:"raytrace"},samples:{type:"string",default:"1536"},duration:{type:"string"},"frames-only":{type:"boolean",default:false}}});
+const {values:o}=parseArgs({options:{output:{type:"string"},mode:{type:"string",default:"raytrace"},samples:{type:"string",default:"1536"},duration:{type:"string"},"frames-only":{type:"boolean",default:false}}});
+o.output=projectOutput("floating",o.output);
 const samples=Number(o.samples);if(!Number.isInteger(samples)||samples<1||!["raster","raytrace"].includes(o.mode))throw Error("Invalid render settings");
 const root=resolve("site-dist"),types={".html":"text/html",".js":"text/javascript",".css":"text/css",".json":"application/json",".jpg":"image/jpeg",".jpeg":"image/jpeg",".png":"image/png",".webp":"image/webp",".svg":"image/svg+xml",".avif":"image/avif"};
 const server=createServer((req,res)=>{try{let p=decodeURIComponent(new URL(req.url,"http://localhost").pathname);if(p.endsWith("/"))p+="index.html";const f=resolve(root,"."+p);if(!f.startsWith(root+sep))throw Error();res.writeHead(200,{"Content-Type":types[extname(f)]||"application/octet-stream"}).end(readFileSync(f));}catch{res.writeHead(404).end();}});

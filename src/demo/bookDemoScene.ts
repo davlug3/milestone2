@@ -21,17 +21,19 @@ import { cameraVerticalFov, cinematicCameraPose, CAMERA_SENSOR_W_MM, CAMERA_FOCA
 import { BOOK_DIMENSIONS as BASE_BOOK_DIMENSIONS } from "../config/bookConfig";
 import { createBookMaterials } from "../book/materials";
 import { createCover } from "../book/cover";
+import { DomeShadows } from "../rendering/domeShadows";
 import { addStudioLighting } from "../rendering/lighting";
 import { createStudioTable } from "../rendering/studioTable";
 import { createClothTexture } from "../rendering/surfaceTextures";
-import { PaperSimulation } from "../physics/PaperSimulation";
+import type { PaperSimulation } from "../physics/PaperSimulation";
 import { TurnHandoff } from "../physics/TurnHandoff";
 import { RenderPose, PLAYBACK_RATE } from "../physics/RenderPose";
 import { bindingLoad, bindingLift } from "../book/bindingFlex";
 import { ThickSheetGeometry } from "../paper/ThickSheetGeometry";
-import { createPagePrints, IDS } from "../paper/PagePrints";
+import { createPagePrints } from "../paper/PagePrints";
 import { createParticle } from "../physics/Particle";
-import { PageTurnController } from "../animation/PageTurnController";
+import type { PageTurnController } from "../animation/PageTurnController";
+import {makeTurn,type TurnSpec} from "./bookTurnSimulation";
 import { Heightfield } from "../physics/Heightfield";
 import { clamp01, smootherstep } from "../animation/easing";
 import {
@@ -51,7 +53,6 @@ import {
   textRoot,
   textStackY,
   textPageY,
-  textPageFloor,
 } from "../book/textBlockBinding";
 import {
   headbandGeometry,
@@ -95,7 +96,7 @@ interface PageInstance {
 }
 
 export async function startBookDemo(container: HTMLElement): Promise<() => void> {
-  const manifest=await browserAssets.json<{photos:string[]}>(import.meta.env.BASE_URL+"page-photos/manifest.json").catch(()=>({photos:IDS.map(id=>id+".jpg")}));
+  const manifest=await browserAssets.json<{photos:string[]}>(import.meta.env.BASE_URL+"page-photos/manifest.json");
   if(!Array.isArray(manifest.photos)||!manifest.photos.length)throw Error("No book photos available");
   const photoPages=planPhotoPages(manifest.photos);
   const BOOK_DIMENSIONS={...BASE_BOOK_DIMENSIONS,sheetCount:bookSheetCount(photoPages.length)};
@@ -373,6 +374,7 @@ const TIMELINE = {
   const cols = 25;
   const rows = 33;
   const pages: PageInstance[] = [];
+  const turnSpec:TurnSpec={dims:BOOK_DIMENSIONS,cols,rows,dt:FIXED_DT,floor:COVER_FLOOR_Y,landBase,landStep,spineWidth:SPINE_PANEL_W,windows:TIMELINE.turns};
 
   for (let k = 0; k < NUM_TURNS; k++) {
     const win = TIMELINE.turns[k];
@@ -383,66 +385,7 @@ const TIMELINE = {
     // sheet down, or the top static sheet). The sheet below is itself bound on
     // the spine plane, so its surface is a ramp, not a flat height. Clamp a
     // shell thickness above it so the turning page cannot lie flush with it.
-    const root = textRoot(BOOK_DIMENSIONS, k);
-    const groundHeight = (x: number, z: number): number =>
-      Math.max(heightfield.heightAt(x, z), textPageFloor(BOOK_DIMENSIONS, k, x + W / 2, COVER_FLOOR_Y) + (x+W/2>=0&&k+1<NUM_SHEETS?restingPageWear(k+1,(x+W/2-textRoot(BOOK_DIMENSIONS,k+1).x)/W,z/H+.5,1):0));
-
-    const sim = new PaperSimulation({
-      cols,
-      rows,
-      width: W,
-      height: H,
-      dt: FIXED_DT,
-      iterations: 12,
-      bendStiffness: 1.2,
-      longRangeBend: true,
-      bendSpans: [3, 4, 5, 6], // longer links => stiffer, smoother sheet
-      plane: "xz",
-      groundHeight,
-    });
-    // The sheet is bound on the spine plane: its inner edge starts at the
-    // binding height for its place in the closed stack and ramps up to the
-    // fore-edge stack height over BIND_RAMP.
-    const spineRestY = root.y;
-    for (const p of sim.particles) {
-      const localX = p.x + W / 2;
-      p.x = p.px = p.x + root.x;
-      p.y = p.py = textPageY(BOOK_DIMENSIONS, k, localX);
-    }
-
-    const spineIndices: number[] = [];
-    const foreEdgeIndices: number[] = [];
-    for (let r = 0; r < rows; r++) {
-      spineIndices.push(r * cols + 0);
-      foreEdgeIndices.push(r * cols + (cols - 1));
-    }
-
-    // On the left the sheet binds at the front cover hinge; the first sheet
-    // turned is the bottom of the left stack, so its fan index is k.
-    const landSpineY = root.y;
-
-    const controller = new PageTurnController({
-      foreEdgeIndices,
-      spineIndices,
-      gutterX: gutterX + root.x,
-      restY,
-      spineRestY,
-      landY,
-      landSpineY,
-      // Preserve both coordinates of the material attachment through the turn.
-      spineTargetX: gutterX + root.x,
-      landSpineStart: 0.5,
-      width: W,
-      duration: win.dur,
-      liftScale: 0.45,
-      lead: 0.03,
-      liftVar: 0.03,
-      rows,
-    });
-    controller.seedZ(sim.particles);
-    controller.setProgress(0);
-    controller.apply(sim.particles);
-
+    const {sim,controller}=makeTurn(turnSpec,k,heightfield);
     const geo = new ThickSheetGeometry(cols, rows, 0.00025);
     const mesh = new THREE.Mesh(geo.geometry, prints.sheet(k));
     mesh.name =
@@ -472,6 +415,19 @@ const TIMELINE = {
   }
 
   // Shared transport; book physics and tracing stay scene-specific.
+  const cacheEnabled=!geometryOnly&&!query.has("export")&&!query.has("live-physics");
+  const turnCache=new Map<number,Float64Array>();
+  let cacheError="",cacheDone=!cacheEnabled;
+  const cacheWorker=cacheEnabled?new Worker(new URL("./bookTurnCache.worker.ts",import.meta.url),{type:"module"}):null;
+  if(cacheWorker){
+    cacheWorker.onmessage=({data})=>{
+      if(data.kind==="page")turnCache.set(data.index,data.frames);
+      else if(data.kind==="done"){cacheDone=true;cacheWorker.terminate();}
+      else if(data.kind==="error"){cacheError=data.message;turnCache.clear();cacheDone=true;cacheWorker.terminate();}
+    };
+    cacheWorker.onerror=e=>{cacheError=e.message||"Simulation worker failed";turnCache.clear();cacheDone=true;cacheWorker.terminate();};
+    cacheWorker.postMessage(turnSpec);
+  }
   let time=0;
   let raf=0;
   const playback=new PlaybackClock(TIMELINE.end,PLAYBACK_RATE);
@@ -485,16 +441,44 @@ const TIMELINE = {
     hidden:geometryOnly||new URLSearchParams(location.search).has("export"),
   });
   let photoRevision=-1;
+  const domeAllowed=!geometryOnly&&!query.has("export");
+  let domeEnabled=domeAllowed&&query.get("shadows")!=="studio";
+  let dome:DomeShadows|null=null;
+  let domeRevision=0;
+  let previewPCSS=query.get("pcss")!=="0",previewGTAO=query.get("gtao")!=="0";
+  if(domeAllowed){
+    for(const [name,initial,change] of [
+      ["PCSS",previewPCSS,(v:boolean)=>{previewPCSS=v;}],
+      ["GTAO",previewGTAO,(v:boolean)=>{previewGTAO=v;}]
+    ] as const){
+      const label=document.createElement("label"),check=document.createElement("input");
+      check.type="checkbox";check.checked=initial;check.onchange=()=>{change(check.checked);dome?.configure(previewPCSS,previewGTAO);domeRevision++;};
+      label.append(check," "+name);controls.ui.append(label);
+    }
+  }
+  function setDome(enabled:boolean){domeEnabled=domeAllowed&&enabled;if(!domeEnabled){dome?.dispose();dome=null;}domeRevision++;}
+  if(domeAllowed){
+    const label=document.createElement("label");label.textContent="Lighting ";
+    const select=document.createElement("select");select.setAttribute("aria-label","Soft shadows");
+    for(const [value,text] of [["studio","Studio (fast)"],["dome","Cinematic · low-key"]]){const opt=document.createElement("option");opt.value=value;opt.textContent=text;select.append(opt);}
+    select.value=domeEnabled?"dome":"studio";select.onchange=()=>setDome(select.value==="dome");label.append(select);controls.ui.append(label);
+  }
   let startupComplete=false;
   let gpuLost=false;
   const passes=createRenderPasses(renderer,scene,camera,mesh=>{
     for(let o:THREE.Object3D|null=mesh;o;o=o.parent)if(o===backCover||o===boundBlock||o===spineCover||o===coverPivot||pages.some(p=>p.mesh===o)||staticSheets.some(p=>p.mesh===o)||headbands.some(h=>h===o))return true;
     return false;
-  },()=>trace.draw(playback.playing&&trace.mode==="ray-traced"));
+  },()=>{
+    if(domeEnabled&&trace.mode==="real-time"){
+      if(!dome){dome=new DomeShadows(renderer,scene,camera,qualityName==="mobile"?2:4);dome.configure(previewPCSS,previewGTAO);}
+      camera.updateMatrixWorld();
+      dome.draw(playback.playing,[time,photoRevision,domeRevision,...camera.matrixWorld.elements,...camera.projectionMatrix.elements].join(","));
+    }else{dome?.invalidate();trace.draw(playback.playing&&trace.mode==="ray-traced");}
+  });
   addStyleControl(controls.ui,style);
   passes.addUI(controls.ui,()=>{setPlaying(false);trace.invalidate();});
   function onContextLost(event:Event){event.preventDefault();gpuLost=true;setPlaying(false);controls.setFrameProgress({phase:"GPU context lost · recovering",ready:false});controls.samples.textContent="Graphics memory limit reached. If recovery stalls, reload in real-time mode.";}
-  function onContextRestored(){gpuLost=false;trace.recover();controls.mode.value="real-time";}
+  function onContextRestored(){dome?.dispose();dome=null;gpuLost=false;trace.recover();controls.mode.value="real-time";}
   renderer.domElement.addEventListener("webglcontextlost",onContextLost);
   renderer.domElement.addEventListener("webglcontextrestored",onContextRestored);
   loadingStage("Loading printed pages…",0,prints.status().totalFaces);
@@ -504,6 +488,7 @@ const TIMELINE = {
   }
   function setPlaying(next:boolean):void{
     if(next&&time>=TIMELINE.end)seek(0);
+    if(next&&!cacheDone)return;
     playback.setPlaying(next);controls.sync(playback);
   }
   controls.sync(playback);
@@ -535,6 +520,7 @@ const TIMELINE = {
   }
 
   function seek(t: number): void {
+    if(!cacheDone)return;
     time = playback.seek(t);
     resetHeightfield();
     for (const pg of pages) resetPage(pg);
@@ -551,6 +537,20 @@ const TIMELINE = {
         0,
         Math.min(pg.maxSteps, Math.floor((t - pg.window.start) / FIXED_DT)),
       );
+      const cached=turnCache.get(pg.index);
+      if(cached&&target>0&&target!==pg.stepped){
+        const particles=pg.sim.particles,stride=particles.length*3;
+        for(let i=0;i<particles.length;i++){
+          const p=particles[i],j=(target-1)*stride+3*i;
+          p.x=cached[j];p.y=cached[j+1];p.z=cached[j+2];
+        }
+        pg.renderPose.capture(particles);
+        for(let i=0;i<particles.length;i++){
+          const p=particles[i],j=target*stride+3*i;
+          p.x=cached[j];p.y=cached[j+1];p.z=cached[j+2];
+        }
+        pg.stepped=target;
+      }else if(!cached){
       while (pg.stepped < target) {
         const local = pg.stepped * FIXED_DT;
         const progress = clamp01(local / pg.window.dur);
@@ -559,6 +559,7 @@ const TIMELINE = {
         pg.controller.apply(pg.sim.particles);
         pg.sim.step();
         pg.stepped++;
+      }
       }
       // Bake once the sheet has settled, so later sheets collide with it.
       if (!pg.baked && pg.stepped >= pg.maxSteps) {
@@ -676,13 +677,15 @@ const TIMELINE = {
     const photoState=prints.status();
     const revision=photoState.loadedFaces+photoState.failedFaces;
     if(revision!==photoRevision){if(!startupComplete)loadingStage("Loading printed pages…",revision,photoState.totalFaces);photoRevision=revision;trace.invalidate();}
+    if(!startupComplete&&revision>=photoState.totalFaces&&!cacheDone)loadingStage("Preparing page-turn simulation…",turnCache.size,NUM_TURNS);
     if(!geometryOnly)passes.render();
-    if(!startupComplete&&revision>=photoState.totalFaces){startupComplete=true;loadingReady();if(photoState.failedFaces)console.warn("[book] Some printed pages use placeholders:",photoState.failedFaces);}
+    if(!startupComplete&&revision>=photoState.totalFaces&&cacheDone){startupComplete=true;loadingReady();if(photoState.failedFaces)console.warn("[book] Some printed pages use placeholders:",photoState.failedFaces);}
     if(trace.contextLost){controls.setFrameProgress({phase:"GPU context lost · recovering",ready:false});raf=requestAnimationFrame(frame);return;}
     controls.mode.value=trace.mode;
     const raster=trace.mode==="real-time"||(playback.playing&&trace.mode==="ray-traced");
     controls.setFrameProgress(passes.pass!=="beauty"?{phase:"Render pass · "+passes.pass,ready:true}:raster?{phase:trace.mode==="ray-traced"?"Real-time playback · pause to trace":"Frame render · Real-time",ready:true}:{phase:trace.complete?"Frame complete":trace.phase,samples:trace.samples,target:trace.goal});
-    controls.samples.textContent=trace.error?"Ray tracing unavailable: "+trace.error:"";
+    const ds=domeEnabled&&trace.mode==="real-time"&&passes.pass==="beauty"?dome?.status():undefined;
+    controls.samples.textContent=trace.error?"Ray tracing unavailable: "+trace.error:ds?(ds.error?"Dome unavailable: "+ds.error:"Cinematic · 3-point + ambient dome"):"";
     raf = requestAnimationFrame(frame);
   }
   raf = requestAnimationFrame(frame);
@@ -709,6 +712,9 @@ const TIMELINE = {
     duration: TIMELINE.end,
     playbackRate: PLAYBACK_RATE,
     photoStatus: prints.status,
+    shadowStatus:()=>({enabled:domeEnabled,...dome?.status()}),
+    setDomeShadows:setDome,
+    simulationCache:()=>({enabled:cacheEnabled,ready:cacheDone,pages:turnCache.size,total:NUM_TURNS,error:cacheError,bytes:[...turnCache.values()].reduce((n,a)=>n+a.byteLength,0)}),
     capturePass:(t:number,pass:PassName)=>{setPlaying(false);if(t<time)seek(t);else{time=playback.seek(t);stepPagesTo(time);updateCover(time);updateCamera(time);}return passes.capture(pass);},
     passIds:()=>passes.idMap(),
     setPass:(value:string)=>{passes.setPass(value);trace.invalidate();},
@@ -748,6 +754,7 @@ const TIMELINE = {
     },
     /** Debug aid: show/hide every object with the given name. */
     debug: (name: string, visible: boolean) => {
+      domeRevision++;
       scene.traverse((o) => {
         if (o.name === name) o.visible = visible;
       });
@@ -860,6 +867,8 @@ const TIMELINE = {
   (window as unknown as { __sceneReady: boolean }).__sceneReady = true;
 
   return () => {
+    dome?.dispose();
+    cacheWorker?.terminate();turnCache.clear();
     cancelAnimationFrame(raf);
     window.removeEventListener("resize", onResize);
     unbindViewport();

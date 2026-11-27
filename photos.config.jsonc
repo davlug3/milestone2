@@ -3,8 +3,8 @@
   // Empty lists use real archive photos from the book (or another configured scene). Each scene has its own collection.
   "book": {
     "photos": [
-      "../jilp-old-pics/Crowd Shots/496095321_9611072475677336_2196480707607302282_n.jpg",
       "../jilp-old-pics/Group Photos/4.png",
+      "../jilp-old-pics/Crowd Shots/496095321_9611072475677336_2196480707607302282_n.jpg",
       "../jilp-old-pics/Crowd Shots/CamScanner 11-14-2023 19.50.jpg",
       "../jilp-old-pics/Crowd Shots/9.png",
       "../jilp-old-pics/Crowd Shots/CamScanner 11-14-2023 19.52_8.jpg",

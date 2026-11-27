@@ -1,11 +1,14 @@
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
-import { createWalnutTextures } from "./surfaceTextures";
+import { createWalnutTextures, createWornWalnutTop, walnutNormalMap } from "./surfaceTextures";
 
 /** Compact antique writing table. The physical book still rests at y=0. */
 export function createStudioTable(scene: THREE.Scene,textureSize=1024) {
   const textures = createWalnutTextures(textureSize);
   const wood = new THREE.MeshPhysicalMaterial({...textures, roughness:0.78, metalness:0, bumpScale:0.00055, clearcoat:0.13, clearcoatRoughness:0.58});
+  const topTextures = createWornWalnutTop(textureSize);
+  const topNormal=walnutNormalMap(topTextures.bumpMap);
+  const wornTop = new THREE.MeshPhysicalMaterial({...topTextures,roughness:.79,metalness:0,bumpScale:.0011,normalMap:topNormal,normalScale:new THREE.Vector2(.8,.8),anisotropy:.42,anisotropyRotation:0,clearcoat:.18,clearcoatRoughness:.45});
   const carved = new THREE.MeshPhysicalMaterial({...textures,color:0xb8a18a,roughness:0.65,bumpScale:0.00025,clearcoat:0.09,clearcoatRoughness:0.74});
   const trim = new THREE.MeshStandardMaterial({color:0x392015,roughness:0.6});
   const brass = new THREE.MeshStandardMaterial({color:0x9f8050,metalness:0.88,roughness:0.38});
@@ -24,8 +27,12 @@ export function createStudioTable(scene: THREE.Scene,textureSize=1024) {
     return mesh(new RoundedBoxGeometry(w,h,d,3,r),m,x,y,z);
   }
   const width=0.83, depth=0.57;
-  const top=box(width,0.035,depth,0.006,wood,0,-0.0175,0);
+  const top=box(width,0.035,depth,0.006,wornTop,0,-0.0175,0);
   top.name="antique-table-top";
+  // Explicit planar top UVs: U follows the long wood grain, V crosses it.
+  const pos=top.geometry.attributes.position,uv=top.geometry.attributes.uv,normal=top.geometry.attributes.normal;
+  for(let i=0;i<pos.count;i++)if(normal.getY(i)>.5)uv.setXY(i,pos.getX(i)/width+.5,pos.getZ(i)/depth+.5);
+  uv.needsUpdate=true;
   box(width-0.012,0.013,depth-0.012,0.005,trim,0,-0.0415,0);
   box(width-0.035,0.015,depth-0.035,0.004,carved,0,-0.055,0);
   // Apron frame with framed drawer and shaped lower molding.
@@ -68,7 +75,9 @@ export function createStudioTable(scene: THREE.Scene,textureSize=1024) {
     scene.remove(group,floor);
     for(const p of parts)p.geometry.dispose();
     floor.geometry.dispose();
-    for(const m of [wood,carved,trim,brass,floorMat])m.dispose();
+    for(const m of [wood,wornTop,carved,trim,brass,floorMat])m.dispose();
+    topNormal.dispose();
+    topTextures.map.dispose();topTextures.bumpMap.dispose();topTextures.roughnessMap.dispose();
     textures.map.dispose();textures.bumpMap.dispose();textures.roughnessMap.dispose();
   };
 }

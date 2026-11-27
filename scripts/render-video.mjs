@@ -1,3 +1,4 @@
+import {projectOutput,cacheFor} from "./lib/project-output.mjs";
 import { spawnSync, execFileSync } from "node:child_process";
 import { mkdirSync, existsSync, readFileSync, writeFileSync, renameSync, statSync } from "node:fs";
 import { resolve, join } from "node:path";
@@ -12,7 +13,7 @@ import { createHash } from "node:crypto";
 const {values:o}=parseArgs({options:{
   width:{type:"string",default:"1920"},height:{type:"string",default:"1080"},
   fps:{type:"string",default:"60"},samples:{type:"string",default:"1536"},bounces:{type:"string",default:"20"},
-  output:{type:"string",default:"renders/final.mp4"},frames:{type:"string"},
+  output:{type:"string"},frames:{type:"string"},
   start:{type:"string",default:"0"},duration:{type:"string"},port:{type:"string",default:"4319"},
   "allow-software":{type:"boolean",default:false},headless:{type:"boolean",default:false},
   verbose:{type:"boolean",default:false},"status-interval":{type:"string",default:"5"},
@@ -26,7 +27,7 @@ if(!Number.isFinite(statusInterval)||statusInterval<=0)throw Error("Invalid --st
 if(width%2||height%2)throw Error("MP4 requires even width and height");
 const start=Number(o.start),requested=o.duration===undefined?null:Number(o.duration);
 if(!Number.isFinite(start)||start<0||requested!==null&&(!Number.isFinite(requested)||requested<=0))throw Error("Invalid start/duration");
-const output=resolve(o.output),dir=resolve(o.frames??output.replace(/\.mp4$/i,"")+".frames");
+const output=projectOutput("book",o.output,{kind:width<1920?"preview":"final"}),dir=o.frames?projectOutput("book",o.frames):output.replace(/\.mp4$/i,"")+".frames";
 function available(bin){return spawnSync(bin,["-version"],{stdio:"ignore"}).status===0;}
 const ffmpeg=process.env.FFMPEG_PATH || (available("ffmpeg")?"ffmpeg":available("ffmpeg.exe")?"ffmpeg.exe":isWSL()&&available("/mnt/c/msys64/mingw64/bin/ffmpeg.exe")?"/mnt/c/msys64/mingw64/bin/ffmpeg.exe":null);
 if(!o["frames-only"]&&!ffmpeg)throw Error("Install FFmpeg or set FFMPEG_PATH");

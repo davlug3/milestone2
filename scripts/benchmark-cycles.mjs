@@ -1,11 +1,12 @@
+import {projectOutput} from "./lib/project-output.mjs";
 import {spawnSync} from "node:child_process";
 import {readFileSync,mkdirSync,existsSync} from "node:fs";
 import {resolve,join} from "node:path";
 import {parseArgs} from "node:util";
-const {values:o}=parseArgs({options:{scene:{type:"string",default:"floating"},cache:{type:"string"},frames:{type:"string",default:"0,1,60,61,120,121"},output:{type:"string",default:"renders/benchmarks"},presets:{type:"string",default:"cinema,fast-production"},codec:{type:"string",default:"ZIP"}}});
+const {values:o}=parseArgs({options:{scene:{type:"string",default:"floating"},cache:{type:"string"},frames:{type:"string",default:"0,1,60,61,120,121"},output:{type:"string"},presets:{type:"string",default:"cinema,fast-production"},codec:{type:"string",default:"ZIP"}}});
 const cache=resolve(o.cache??"renders/"+o.scene+"-cycles.cache"),meta=JSON.parse(readFileSync(join(cache,"manifest.json"),"utf8")),s=meta.settings;
 if(s.scene!==o.scene)throw Error("Cache scene mismatch");
-const root=resolve(o.output, o.scene+"-"+Date.now());mkdirSync(root,{recursive:true});
+const root=projectOutput(o.scene,o.output,{kind:"preview",file:"benchmark"});mkdirSync(root,{recursive:true});
 const results=[];
 for(const preset of o.presets.split(",")){
  const output=join(root,preset+".mp4");

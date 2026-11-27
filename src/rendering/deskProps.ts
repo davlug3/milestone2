@@ -32,14 +32,6 @@ export function createDeskProps(scene:THREE.Scene){
  rod(pen,v(0,.006,.024),v(0,.006,.066),.0061,black);
  for(const z of [.021,.027,.062])rod(pen,v(0,.006,z),v(0,.006,z+.002),.0063,brass);
  rod(pen,v(.003,.012,.060),v(.004,.012,.033),.0012,brass);
- // Folded, thin brass spectacles at the front-left edge.
- const glasses=group("folded-brass-spectacles",-.274,.181,.18);
- for(const x of [-.028,.028]){
-  const rim=part(new THREE.TorusGeometry(.023,.00145,8,36),brass,glasses,x,.005,0);
-  rim.rotation.x=-Math.PI/2;rim.scale.set(1,.77,1);
-  rod(glasses,v(x+(x<0?-.023:.023),.006,0),v(x*.45,.007,.021),.0013,brass);
- }
- rod(glasses,v(-.005,.005,0),v(.005,.005,0),.0015,brass);
  // Small wooden wax seal stamp behind the book, not over the page path.
  const stamp=group("wax-seal-stamp",.302,-.211,.4);
  part(new THREE.CylinderGeometry(.017,.018,.007,24),brass,stamp,0,.0035,0);
@@ -97,11 +89,6 @@ export function createDeskProps(scene:THREE.Scene){
    const link=part(new THREE.TorusGeometry(.0025,.00055,6,14),brass,watch,x,.0018,z);
    link.rotation.set(i%2?-.25:-Math.PI/2,0,.25*Math.cos(i*.4));link.scale.set(1.2,.70,1);
  }
- const key=group("old-brass-key",-.092,.181,-.18);
- const bow=part(new THREE.TorusGeometry(.009,.002,8,24),brass,key,-.018,.003,0);bow.rotation.x=-Math.PI/2;bow.scale.set(.88,1,1);
- rod(key,v(-.010,.003,0),v(.023,.003,0),.0019,brass);
- part(new THREE.BoxGeometry(.008,.0035,.007),brass,key,.020,.0022,.003);
- part(new THREE.BoxGeometry(.002,.0035,.004),brass,key,.017,.0022,.008);
  // Small envelope packet and handwritten slips behind the page sweep.
  const mail=group("old-letter-packet",.199,-.215,.04);
  for(let i=0;i<3;i++){
@@ -130,5 +117,48 @@ export function createDeskProps(scene:THREE.Scene){
    for(let i=0;i<a.count;i++){const xx=a.getX(i),yy=a.getY(i);a.setX(i,xx*(.55+.45*Math.cos(yy/.018*Math.PI)));a.setZ(i,.0014+.0025*Math.pow(xx/.007,2)+.0016*Math.sin(yy*190));}
    g.computeVertexNormals();const m=part(g,ribbonMat,petal,0,.002,0);m.rotation.x=-Math.PI/2;
  }
- return ()=>{scene.remove(root);geometries.forEach(g=>g.dispose());mats.forEach(m=>m.dispose());metalDetail.dispose();};
+ // Foreground framing, supported by the tabletop (world x ±.34,
+ // front edge z=.214). Keep all objects outside the book's z ±.155.
+ const linenDetail=createMicroSurface("paint");
+ const linen=new THREE.MeshPhysicalMaterial({color:0x5b544a,roughness:.98,
+   sheen:.24,sheenRoughness:.95,sheenColor:new THREE.Color(0x807565),
+   normalMap:linenDetail.normalMap,normalScale:new THREE.Vector2(.25,.25),
+   side:THREE.DoubleSide});
+ mats.push(linen);
+ // Narrow folded textile runs over the front-left rim; top lies flat,
+ // with small cloth folds and a rounded droop below the desk edge.
+ const clothGroup=group("foreground-folded-linen",-.215,.189,0);
+ const clothGeo=new THREE.PlaneGeometry(.12,.092,24,24),cp=clothGeo.attributes.position;
+ for(let i=0;i<cp.count;i++){
+   const x=cp.getX(i),t=(cp.getY(i)+.046)/.092;
+   const droop=Math.max(0,(t-.74)/.26);
+   const z=-.029+t*.092-.014*droop*droop;
+   const fold=.0012*(1+droop)*Math.sin(x*190+t*8);
+   cp.setXYZ(i,x,.003+fold-.042*droop*droop,z);
+ }
+ clothGeo.computeVertexNormals();
+ part(clothGeo,linen,clothGroup,0,0,0);
+ // A curled aged note, resting just ahead of the open book.
+ const note=group("foreground-curled-letter",.035,.185,-.12);
+ const noteGeo=new THREE.PlaneGeometry(.093,.036,16,12),np=noteGeo.attributes.position;
+ for(let i=0;i<np.count;i++){
+   const x=np.getX(i),z=np.getY(i),edge=Math.max(0,(Math.abs(x)-.034)/.0125);
+   np.setXYZ(i,x,.001+.006*edge*edge+.0006*Math.sin(x*90+z*70),z);
+ }
+ noteGeo.computeVertexNormals();
+ const letterMat=paper.clone();letterMat.color.set(0x968873);letterMat.roughness=.98;letterMat.side=THREE.DoubleSide;mats.push(letterMat);
+ part(noteGeo,letterMat,note,0,0,0);
+ // Broken, deliberately illegible ink strokes follow the gently curved sheet.
+ const inkGeo=new THREE.BufferGeometry(),verts:number[]=[];
+ for(let row=0;row<4;row++)for(let j=0;j<9;j++){
+   const x=-.033+j*.0075,z=-.011+row*.006;
+   const len=.002+.004*(.5+.5*Math.sin(row*9+j*7));
+   const y=.0014+.0006*Math.sin(x*90+z*70);
+   verts.push(x,y,z,x+len,y,z+.00025,x+len,y,z-.00025);
+ }
+ inkGeo.setAttribute("position",new THREE.Float32BufferAttribute(verts,3));inkGeo.computeVertexNormals();
+ const writing=fadedInk.clone();writing.color.set(0x796c59);writing.side=THREE.DoubleSide;mats.push(writing);
+ part(inkGeo,writing,note,0,0,0);
+ // Dispose the additional cloth texture with the existing prop resources.
+ return ()=>{scene.remove(root);geometries.forEach(g=>g.dispose());mats.forEach(m=>m.dispose());metalDetail.dispose();linenDetail.dispose();};
 }

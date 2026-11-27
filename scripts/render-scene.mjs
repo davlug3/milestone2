@@ -1,3 +1,4 @@
+import {projectOutput} from "./lib/project-output.mjs";
 import {spawnSync} from "node:child_process";
 import {resolve} from "node:path";
 import {existsSync} from "node:fs";
@@ -22,8 +23,8 @@ if(!scenes.includes(scene))throw Error("Unknown scene: "+scene);
 const passes=take("--passes"),noBuild=flag("--no-build"),engine=take("--engine")??"browser";if(!["browser","cycles"].includes(engine))throw Error("Unknown engine: "+engine);
 function run(file,argv,cwd=root){const result=spawnSync(process.execPath,[file,...argv],{cwd,stdio:"inherit",env:process.env});if(result.error)throw result.error;if(result.status!==0)throw Error(file+" failed ("+result.status+")");}
 const siteBuild=()=>{if(!noBuild)run(resolve(root,"scripts/build-site.mjs"),[]);else if(!existsSync(resolve(root,"site-dist",scene,"index.html")))throw Error("Missing site-dist; remove --no-build.");};
-if(engine==="cycles"){if(scene==="stats")throw Error("Statistics uses the 2D renderer; choose --engine browser");if(passes!==undefined&&!["all","beauty"].includes(passes))throw Error("For native render passes use --passes all or --passes beauty");if(!args.some(a=>a==="--output"||a.startsWith("--output=")))args.push("--output","renders/"+scene+"-cycles.mp4");run(resolve(root,"scripts/render-blender.mjs"),["--scene",scene,...(noBuild?["--no-build"]:[]),...(passes!==undefined?["--passes",passes]:[]),...args]);}
+if(engine==="cycles"){if(scene==="stats")throw Error("Statistics uses the 2D renderer; choose --engine browser");if(passes!==undefined&&!["all","beauty","essential"].includes(passes))throw Error("For native render passes use --passes all, essential, or beauty");run(resolve(root,"scripts/render-blender.mjs"),["--scene",scene,...(noBuild?["--no-build"]:[]),...(passes!==undefined?["--passes",passes]:[]),...args]);}
 else if(passes!==undefined){siteBuild();run(resolve(root,"scripts/render-passes.mjs"),["--scene",scene,"--passes",passes,...args]);}
 else if(scene==="book"){if(noBuild)throw Error("--no-build is not supported by the legacy book exporter");run(resolve(root,"scripts/render-video.mjs"),args);}
-else if(scene==="slideshow"){if(noBuild)throw Error("--no-build is not supported by the legacy tabletop exporter");const output=take("--output")??"renders/slideshow.mp4";const absolute=resolve(process.cwd(),output);run(resolve(root,"slideshow/scripts/render.mjs"),["--output",absolute,...args],resolve(root,"slideshow"));}
+else if(scene==="slideshow"){if(noBuild)throw Error("--no-build is not supported by the legacy tabletop exporter");const output=take("--output");const absolute=output?resolve(process.cwd(),output):undefined;run(resolve(root,"slideshow/scripts/render.mjs"),[...(absolute?["--output",absolute]:[]),...args],resolve(root,"slideshow"));}
 else{siteBuild();run(resolve(root,"scripts/render-"+scene+".mjs"),args);}

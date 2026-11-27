@@ -38,3 +38,7 @@ slideshow/public/shared-photos/
 
 /.photo-drive-cache/
 /.env*
+
+# Downloaded placeholder assets (not source-controlled)
+/public/page-photos/[0-9]*.jpg
+/public/page-photos/sources.json

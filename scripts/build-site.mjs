@@ -25,6 +25,7 @@ for(const name of ['book','slideshow','stats','clothesline','floating']){
  writeFileSync(path,html.replace('</body>',"<a id=\"site-home\" href=\"/\" aria-label=\"Back to presentation selection\" style=\"position:fixed;z-index:100;top:12px;left:12px;color:#eee;text-decoration:none;background:#151515bb;padding:9px 13px;border-radius:9px;font:14px system-ui\">← Presentations</a><script>if(new URLSearchParams(location.search).has('export')||!location.pathname.match(/^\\/(book|slideshow|stats|clothesline|floating)\\//))document.getElementById('site-home').hidden=true;</script>"+'</body>'));
 }
 cpSync('site/index.html',resolve(out,'index.html'));
+if(process.env.VERCEL==='1'){run('node',['scripts/build-editor.mjs']);const p=resolve(out,'index.html');writeFileSync(p,readFileSync(p,'utf8').replace('</main>','<div style="margin-top:24px"><a href="/editor/" style="color:#c7ae8e">Edit scene photos &amp; statistics →</a></div></main>'));}
 for(const name of ['book','slideshow','stats','clothesline','floating'])if(!existsSync(resolve(out,name,'index.html')))throw Error('Missing '+name);
 let sha=process.env.VERCEL_GIT_COMMIT_SHA||'';
 if(!/^[a-f0-9]{40}$/i.test(sha)){try{sha=execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim();}catch{sha='';}}

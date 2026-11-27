@@ -3,5 +3,10 @@
   "buildCommand": "npm run build:site",
   "outputDirectory": "site-dist",
   "installCommand": "npm ci",
-  "trailingSlash": true
+  "trailingSlash": true,
+  "functions": {
+    "api/editor.js": {
+      "includeFiles": "{photos.config.jsonc,site-dist/editor/catalog.json}"
+    }
+  }
 }

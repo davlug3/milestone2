@@ -1,6 +1,7 @@
 import {browserAssets} from "../../src/rendering/sceneAssets.ts";
 import * as THREE from "three";
 import {random} from "./pose.js";
+import {triangles,contactIndex,requiredLift} from "./contact.js";
 
 const NX=28,NZ=20;
 const clamp=(v,a=0,b=1)=>Math.max(a,Math.min(b,v));
@@ -113,20 +114,31 @@ export function supportHeight(card,x,z){
     a.getY(k+NX+2)+(a.getY(k+NX+1)-a.getY(k+NX+2))*(1-fx)+(a.getY(k+1)-a.getY(k+NX+2))*(1-fz);
   return card.position.y+y;
 }
-const rotation=new THREE.Matrix4(),point=new THREE.Vector3();
+const rotation=new THREE.Matrix4();
+const CONTACT_GAP=.00012;
 export function placePhoto(card,s,shot,time,previous){
-  const c=shot.config;deformPhoto(card,time-shot.start);
+  const c=shot.config,age=time-shot.start,d=card.userData.photo;
+  const settled=age>=c.flight+c.settle;
+  // Previous prints are fully settled with the default nonoverlapping toss schedule.
+  // Cache only that case; seeking backwards invalidates the cached support.
+  const stable=previous.every(other=>other.visible&&other.userData.photo.settled);
+  const key=[s.x,s.z,s.yaw,...previous.map(other=>other.userData.photo.contactVersion??0)].join('|');
+  if(settled&&stable&&d.settled&&d.contactKey===key)return;
+  deformPhoto(card,age);
   card.rotation.set(s.pitch,s.yaw,s.roll,"YXZ");rotation.makeRotationFromEuler(card.rotation);
-  const a=card.userData.photo.bottom.attributes.position;
-  let required=-Infinity;
-  for(let i=0;i<a.count;i++){
-    point.fromBufferAttribute(a,i).applyMatrix4(rotation);
-    const x=s.x+point.x,z=s.z+point.z;
-    let support=0;
-    for(const other of previous)if(other.visible)support=Math.max(support,supportHeight(other,x,z));
-    required=Math.max(required,support-point.y);
+  const surfaces=[d.bottom,d.top,d.edge].flatMap(g=>triangles(g,rotation,s.x,s.z));
+  const supports=[];
+  for(const other of previous)if(other.visible){
+    const o=other.userData.photo;
+    if(!o.contactIndex){
+      other.updateMatrix();
+      o.contactIndex=contactIndex([o.top,o.bottom,o.edge].flatMap(g=>triangles(g,other.matrix)));
+    }
+    supports.push(o.contactIndex);
   }
-  // The analytic toss height is clearance above contact, not another pile layer.
+  const required=requiredLift(surfaces,supports);
   const lift=Math.max(0,s.height-shot.layer*c.thickness);
-  card.position.set(s.x,required+lift+.00012,s.z);
+  card.position.set(s.x,required+lift+CONTACT_GAP,s.z);
+  d.contactIndex=null;d.contactKey=key;d.settled=settled&&stable;
+  d.contactVersion=(d.contactVersion??0)+1;
 }

@@ -265,7 +265,9 @@ def main():
     a=args();folder=Path(a.cache);out=Path(a.output);out.mkdir(parents=True,exist_ok=True)
     bpy.ops.wm.read_factory_settings(use_empty=True)
     scene,cam=configure(a)
-    data=read(folder/"scene.json.gz");objs=build(data,folder);lights={}
+    data=read(folder/"scene.json.gz");
+    if not data.get("meshes"):raise RuntimeError("Refusing to render empty geometry cache")
+    objs=build(data,folder);lights={}
     if "background" in data:
         bg=scene.world.node_tree.nodes.get("Background");bg.inputs["Color"].default_value=(*data["background"],1);bg.inputs["Strength"].default_value=max(.1,data.get("environmentIntensity",.2))
     meta=json.loads((folder/"manifest.json").read_text())

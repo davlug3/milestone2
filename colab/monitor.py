@@ -29,6 +29,8 @@ class Monitor:
         self.server=None
         self.thread=None
         self.frame=0
+        self.uploaded=0
+        self.uploading=None
         self.timings=deque(maxlen=30)
         self.started=time.monotonic()
     def log(self,line):
@@ -54,6 +56,7 @@ class Monitor:
         return dict(rendered=frame,total=self.total,committed=committed,chunks=chunks,
                     percent=round(frame/self.total*100,2),seconds_per_frame=avg,
                     eta_seconds=round(max(0,self.total-frame)*avg) if avg else None,
+                    uploaded=self.uploaded,uploading=self.uploading,
                     complete=(self.output/'media.json').is_file(),
                     updated=datetime.now(timezone.utc).isoformat())
     def gpu(self):
@@ -83,6 +86,7 @@ class Monitor:
                 if route=='/api/status':data=mon.status()
                 elif route=='/api/gpu':data=mon.gpu()
                 elif route=='/api/system':data=mon.system()
+                elif route=='/api/uploads':data=dict(uploaded=mon.uploaded,uploading=mon.uploading,total=mon.total)
                 elif route=='/api/logs':
                     with mon.lock:data=list(mon.logs)
                 elif route=='/':

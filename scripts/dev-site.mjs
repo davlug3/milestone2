@@ -5,6 +5,7 @@ import {readFileSync} from "node:fs";
 import {resolve} from "node:path";
 import {spawnSync} from "node:child_process";
 import {statsConfigPlugin} from "./lib/stats-config.mjs";
+import {handleStatus} from "../tools/status/server.mjs";
 import {handleEditor} from "../tools/photo-editor/server.mjs";
 import {parseArgs} from "node:util";
 const {values}=parseArgs({options:{host:{type:"string",default:"localhost"},port:{type:"string",default:"5173"}},allowPositionals:false});
@@ -16,8 +17,9 @@ const home=()=>readFileSync(resolve(root,"site/index.html"),"utf8");
 const nav='<a id="site-home" href="/" style="position:fixed;z-index:100;top:12px;left:12px;background:#151515bb;color:#eee;text-decoration:none;padding:9px 13px;border-radius:9px;font:14px system-ui">← Presentations</a><script>if(new URLSearchParams(location.search).has("export")||new URLSearchParams(location.search).has("geometry-export"))document.getElementById("site-home").hidden=true;</script>';
 const server=createHttpServer((req,res)=>{
  const url=new URL(req.url,"http://localhost"),name=url.pathname.split("/")[1];
+ if(name==="status"){void handleStatus(req,res).catch(()=>{if(!res.headersSent)res.writeHead(500);res.end()});return;}
  if(name==="editor"){void handleEditor(req,res);return;}
- if(url.pathname==="/"||url.pathname==="/index.html"){res.setHeader("Content-Type","text/html; charset=utf-8");res.end(home().replace("</main>",'<div style="margin-top:24px"><a href="/editor/" style="color:#c7ae8e">Edit scene photos &amp; statistics →</a></div></main>'));return;}
+ if(url.pathname==="/"||url.pathname==="/index.html"){res.setHeader("Content-Type","text/html; charset=utf-8");res.end(home().replace("</main>",'<div style="margin-top:24px"><a href="/editor/" style="color:#c7ae8e">Edit scene photos &amp; statistics →</a> · <a href="/status/" style="color:#c7ae8e">Render operations →</a></div></main>'));return;}
  if(names.includes(name)&&url.pathname==="/"+name){res.writeHead(302,{Location:"/"+name+"/"+url.search});res.end();return;}
  const vite=servers.get(name);if(!vite){res.writeHead(404);res.end("Not found");return;}
  const upstream=vite.httpServer.address().port;
